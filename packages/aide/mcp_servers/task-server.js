@@ -5,10 +5,12 @@ import crypto from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { clampNumber } from './cli-utils.js';
 import { createDb } from '../shared/data/storage.js';
 import { TaskService } from '../shared/data/services/task-service.js';
 import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createTtyPrompt } from './tty-prompt.js';
+import { capJsonlFile } from '../shared/log-utils.js';
 import { ensureAppDbPath, resolveUiPromptsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
 
@@ -28,6 +30,9 @@ const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MOD
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
+const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
+const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
+const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
 const callerKind = normalizeCallerKind(process.env.MODEL_CLI_CALLER);
 
 ensureDir(root);
@@ -970,6 +975,7 @@ function shouldConfirmTaskCreate(requestCallerKind = callerKind) {
 function appendPromptEntry(entry) {
   try {
     ensureFileExists(promptLogPath);
+    capJsonlFile(promptLogPath, promptLogLimits);
     fs.appendFileSync(promptLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
   } catch {
     // ignore

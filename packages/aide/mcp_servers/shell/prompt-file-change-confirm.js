@@ -2,6 +2,11 @@ import fs from 'fs';
 import crypto from 'crypto';
 
 import { createTtyPrompt } from '../tty-prompt.js';
+import { capJsonlFile } from '../../shared/log-utils.js';
+
+const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
+const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
+const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
 
 function normalizeResponseStatus(status) {
   const value = typeof status === 'string' ? status.trim().toLowerCase() : '';
@@ -25,6 +30,7 @@ export function createPromptFileChangeConfirm({
   function appendPromptEntry(entry) {
     try {
       safeEnsureFileExists(promptLogPath);
+      capJsonlFile(promptLogPath, promptLogLimits);
       fs.appendFileSync(promptLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
     } catch {
       // ignore
@@ -229,5 +235,11 @@ export function createPromptFileChangeConfirm({
     const remark = typeof response?.response?.remark === 'string' ? response.response.remark : '';
     return { status, requestId, remark };
   };
+}
+
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(Math.max(num, min), max);
 }
 

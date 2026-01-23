@@ -10,6 +10,7 @@ import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { registerFilesystemTools } from './filesystem/register-tools.js';
 import { createTtyPrompt } from './tty-prompt.js';
+import { capJsonlFile } from '../shared/log-utils.js';
 import {
   ensureAppDbPath,
   resolveFileChangesPath,
@@ -36,6 +37,9 @@ const fileChangeLogPath =
   process.env.MODEL_CLI_FILE_CHANGES || resolveFileChangesPath(sessionRoot);
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS || resolveUiPromptsPath(sessionRoot);
+const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
+const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
+const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
 const adminDbPath = process.env.MODEL_CLI_TASK_DB || ensureAppDbPath(sessionRoot);
 
 let settingsDb = null;
@@ -282,6 +286,7 @@ function truncateForUi(text, maxChars) {
 function appendPromptEntry(entry) {
   try {
     ensureFileExists(promptLogPath);
+    capJsonlFile(promptLogPath, promptLogLimits);
     fs.appendFileSync(promptLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
   } catch {
     // ignore

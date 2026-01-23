@@ -530,9 +530,9 @@ export function registerShellTools(context = {}) {
     },
     async ({ command, cwd = '.', timeout_ms: timeout, shell, env }, extra) => {
       const workingDir = await ensurePath(cwd);
-      const referencedPaths = assertCommandPathsWithinRoot(command, workingDir) || [];
-      const effectiveTimeout = clampNumber(timeout, 1000, 15 * 60 * 1000, defaultTimeout);
       const usedShell = shell || defaultShell;
+      const referencedPaths = assertCommandPathsWithinRoot(command, workingDir, usedShell) || [];
+      const effectiveTimeout = clampNumber(timeout, 1000, 15 * 60 * 1000, defaultTimeout);
       const confirmEnabled = shouldConfirmFileChanges();
       const looksMutating = looksLikeFileMutationCommand(command);
       const wantsChangeTracking = confirmEnabled || looksMutating;
@@ -894,6 +894,7 @@ export function registerShellTools(context = {}) {
     },
     async ({ command, session, cwd = '.', env, window, preview_lines, preview_wait_ms }) => {
       const workingDir = await ensurePath(cwd);
+      assertCommandPathsWithinRoot(command, workingDir, defaultShell);
       const sessionName = sessions.sanitizeName(session || `sess_${Date.now().toString(36)}`);
       const windowName = window ? sessions.sanitizeName(window) : null;
       const envVars = normalizeEnv(env);

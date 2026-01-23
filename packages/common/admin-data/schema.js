@@ -23,7 +23,7 @@ export const TABLE_SCHEMAS = {
   },
   secrets: {
     name: 'secrets',
-    description: '环境变量密钥（由 UI 管理，运行时注入到进程 env）',
+    description: '环境变量密钥（由 UI 管理，可选注入到进程 env）',
     columns: [
       { name: 'id', type: 'string', required: true, note: 'UUID 主键' },
       { name: 'name', type: 'string', required: true, note: '环境变量名，如 DEEPSEEK_API_KEY' },
@@ -132,6 +132,7 @@ export const TABLE_SCHEMAS = {
       { name: 'confirmMainTaskCreate', type: 'boolean', required: false, note: '主流程任务创建确认' },
       { name: 'confirmSubTaskCreate', type: 'boolean', required: false, note: '子流程任务创建确认' },
       { name: 'confirmFileChanges', type: 'boolean', required: false, note: '文件变更确认（含 shell/file MCP）' },
+      { name: 'injectSecretsToEnv', type: 'boolean', required: false, note: '是否将 secrets 注入到进程 env' },
       { name: 'uiTerminalMode', type: 'enum(auto|system|headless)', required: false, note: '浮动岛发消息时的终端模式' },
       { name: 'createdAt', type: 'datetime', required: true },
       { name: 'updatedAt', type: 'datetime', required: true },
@@ -279,6 +280,7 @@ export const runtimeSettingsSchema = z.object({
   confirmMainTaskCreate: z.boolean().optional().default(false),
   confirmSubTaskCreate: z.boolean().optional().default(false),
   confirmFileChanges: z.boolean().optional().default(false),
+  injectSecretsToEnv: z.boolean().optional().default(false),
   uiPromptWorkdir: z.string().trim().optional().default(''),
   uiTerminalMode: z.enum(['auto', 'system', 'headless']).optional().default('auto'),
 });
@@ -331,6 +333,7 @@ export const DEFAULT_RUNTIME_SETTINGS = {
   confirmMainTaskCreate: false,
   confirmSubTaskCreate: false,
   confirmFileChanges: false,
+  injectSecretsToEnv: false,
   uiPromptWorkdir: '',
   uiTerminalMode: 'auto',
 };

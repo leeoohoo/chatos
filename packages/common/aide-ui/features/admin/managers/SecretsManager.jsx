@@ -92,7 +92,7 @@ function SecretsManager({ data, onCreate, onUpdate, onDelete, loading }) {
   return (
     <EntityManager
       title="API Keys"
-      description="在 UI 中保存 API Key（模型调用只从这里读取；也会注入到进程 env 供部分工具使用）。"
+      description="在 UI 中保存 API Key（模型调用只从这里读取；是否注入进程 env 可在灵动岛开关中控制）。"
       data={data}
       fields={fields}
       columns={columns}

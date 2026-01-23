@@ -21,6 +21,11 @@ import {
   resolveUiFlags,
   sanitizeAdminSnapshotForUi as sanitizeAdminSnapshotForUiHelper,
 } from './session-api-helpers.js';
+import { capJsonlFile } from '../packages/aide/shared/log-utils.js';
+
+const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
+const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
+const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
 
 export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWindowGetter, sessions, uiFlags } = {}) {
   if (!defaultPaths) {
@@ -677,6 +682,7 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
 
     try {
       ensureFileExists(defaultPaths.uiPrompts);
+      capJsonlFile(defaultPaths.uiPrompts, promptLogLimits);
       fs.appendFileSync(defaultPaths.uiPrompts, `${JSON.stringify(entry)}\n`, 'utf8');
     } catch (err) {
       return { ok: false, message: err?.message || String(err) };
@@ -716,6 +722,7 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     };
     try {
       ensureFileExists(defaultPaths.uiPrompts);
+      capJsonlFile(defaultPaths.uiPrompts, promptLogLimits);
       fs.appendFileSync(defaultPaths.uiPrompts, `${JSON.stringify(entry)}\n`, 'utf8');
       return { ok: true };
     } catch (err) {
@@ -798,4 +805,10 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     startTasksWatcher,
     startUiPromptsWatcher,
   };
+}
+
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(Math.max(num, min), max);
 }

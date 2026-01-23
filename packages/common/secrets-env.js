@@ -3,6 +3,15 @@ export function applySecretsToProcessEnv(services) {
   if (!secretService || typeof secretService.list !== 'function') {
     return;
   }
+  const envOverride = parseEnvFlag(process.env.MODEL_CLI_SECRETS_TO_ENV || process.env.MODEL_CLI_INJECT_SECRETS);
+  let runtimeAllowed = false;
+  try {
+    runtimeAllowed = services?.settings?.getRuntime?.()?.injectSecretsToEnv === true;
+  } catch {
+    runtimeAllowed = false;
+  }
+  const allowInjection = envOverride === null ? runtimeAllowed : envOverride;
+  if (!allowInjection) return;
   const isWindows = process.platform === 'win32';
   const listEnvKeys = (envName) => {
     const name = typeof envName === 'string' ? envName.trim() : '';
@@ -39,5 +48,13 @@ export function applySecretsToProcessEnv(services) {
     }
     process.env[name] = value;
   });
+}
+
+function parseEnvFlag(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) return null;
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') return true;
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+  return null;
 }
 

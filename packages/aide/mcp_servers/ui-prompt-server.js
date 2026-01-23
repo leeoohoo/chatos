@@ -7,6 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createTtyPrompt } from './tty-prompt.js';
+import { capJsonlFile } from '../shared/log-utils.js';
 import { resolveUiPromptsPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
 
@@ -23,6 +24,11 @@ const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
 const MAX_WAIT_MS = 2_147_483_647; // ~24.8 days (max safe setTimeout)
+const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
+const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
+const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
+const SECRET_MASK = '******';
+const secretKeysByRequest = new Map();
 
 ensureFileExists(promptLogPath);
 
@@ -76,6 +82,10 @@ server.registerTool(
     const normalized = normalizeKvFields(input?.fields);
 
     const requestId = crypto.randomUUID();
+    const secretKeys = collectSecretKeys(normalized);
+    if (secretKeys.size > 0) {
+      secretKeysByRequest.set(requestId, secretKeys);
+    }
     appendPromptEntry({
       ts: new Date().toISOString(),
       type: 'ui_prompt',
@@ -87,7 +97,7 @@ server.registerTool(
         title: safeTrim(input?.title),
         message: safeTrim(input?.message),
         allowCancel,
-        fields: normalized,
+        fields: redactKvFieldsForLog(normalized, secretKeys),
       },
     });
 
@@ -173,7 +183,7 @@ server.registerTool(
             ...(runId ? { runId } : {}),
             response: terminalResult || { status: 'canceled' },
           };
-          appendPromptEntry(entry);
+          appendPromptEntry(redactPromptEntry(entry, secretKeys));
           return entry;
         } finally {
           tty.close();
@@ -197,7 +207,7 @@ server.registerTool(
             ...(runId ? { runId } : {}),
             response: first.res || { status: 'canceled' },
           };
-          appendPromptEntry(entry);
+          appendPromptEntry(redactPromptEntry(entry, secretKeys));
           return entry;
         } finally {
           abort.abort();
@@ -206,6 +216,10 @@ server.registerTool(
       }
       return await waitForPromptResponse({ requestId, timeoutMs });
     })();
+    if (secretKeys.size > 0) {
+      scrubPromptResponseInLog(requestId, secretKeys);
+      secretKeysByRequest.delete(requestId);
+    }
     const status = normalizeResponseStatus(response?.response?.status);
     const values = status === 'ok' ? normalizeKvValues(response?.response?.values, normalized) : {};
 
@@ -462,9 +476,99 @@ main().catch((err) => {
 function appendPromptEntry(entry) {
   try {
     ensureFileExists(promptLogPath);
+    capJsonlFile(promptLogPath, promptLogLimits);
     fs.appendFileSync(promptLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
   } catch {
     // ignore prompt write errors
+  }
+}
+
+function collectSecretKeys(fields) {
+  const keys = new Set();
+  (Array.isArray(fields) ? fields : []).forEach((field) => {
+    if (!field || typeof field !== 'object') return;
+    if (field.secret !== true) return;
+    const key = typeof field.key === 'string' ? field.key.trim() : '';
+    if (key) keys.add(key);
+  });
+  return keys;
+}
+
+function redactKvFieldsForLog(fields, secretKeys) {
+  if (!secretKeys || secretKeys.size === 0) return fields;
+  return (Array.isArray(fields) ? fields : []).map((field) => {
+    if (!field || typeof field !== 'object') return field;
+    const key = typeof field.key === 'string' ? field.key.trim() : '';
+    if (!key || !secretKeys.has(key)) return field;
+    const next = { ...field };
+    if (Object.prototype.hasOwnProperty.call(next, 'default')) {
+      delete next.default;
+    }
+    return next;
+  });
+}
+
+function redactKvValues(values, secretKeys) {
+  if (!secretKeys || secretKeys.size === 0) return values;
+  if (!values || typeof values !== 'object') return values;
+  const output = { ...values };
+  secretKeys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(output, key)) {
+      output[key] = SECRET_MASK;
+    }
+  });
+  return output;
+}
+
+function redactPromptEntry(entry, secretKeys) {
+  if (!secretKeys || secretKeys.size === 0 || !entry || typeof entry !== 'object') return entry;
+  const next = { ...entry };
+  if (next.prompt?.kind === 'kv' && Array.isArray(next.prompt.fields)) {
+    next.prompt = {
+      ...next.prompt,
+      fields: redactKvFieldsForLog(next.prompt.fields, secretKeys),
+    };
+  }
+  if (next.response && typeof next.response === 'object' && next.response.values) {
+    next.response = {
+      ...next.response,
+      values: redactKvValues(next.response.values, secretKeys),
+    };
+  }
+  return next;
+}
+
+function scrubPromptResponseInLog(requestId, secretKeys) {
+  const id = typeof requestId === 'string' ? requestId.trim() : '';
+  if (!id || !secretKeys || secretKeys.size === 0) return;
+  try {
+    if (!fs.existsSync(promptLogPath)) return;
+    const raw = fs.readFileSync(promptLogPath, 'utf8');
+    const lines = raw.split('\n').filter((line) => line.trim().length > 0);
+    let changed = false;
+    const nextLines = lines.map((line) => {
+      try {
+        const parsed = JSON.parse(line);
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          parsed.type === 'ui_prompt' &&
+          parsed.action === 'response' &&
+          parsed.requestId === id
+        ) {
+          changed = true;
+          return JSON.stringify(redactPromptEntry(parsed, secretKeys));
+        }
+      } catch {
+        // ignore parse errors
+      }
+      return line;
+    });
+    if (changed) {
+      fs.writeFileSync(promptLogPath, `${nextLines.join('\n')}\n`, 'utf8');
+    }
+  } catch {
+    // ignore scrub errors
   }
 }
 

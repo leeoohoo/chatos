@@ -71,6 +71,7 @@ export class SettingsService extends BaseService {
       retry: toInt(base.retry),
       mcpTimeoutMs: toInt(base.mcpTimeoutMs),
       mcpMaxTimeoutMs: toInt(base.mcpMaxTimeoutMs),
+      injectSecretsToEnv: Boolean(base.injectSecretsToEnv),
       uiPromptWorkdir: normalizeWorkdir(base.uiPromptWorkdir),
     };
   }

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { resolveAppStateDir } from './state-paths.js';
+import { capJsonlFile } from './log-utils.js';
 
 function ensureDir(filePath) {
   const dir = path.dirname(filePath);
@@ -11,6 +12,12 @@ function ensureDir(filePath) {
   } catch {
     // ignore
   }
+}
+
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(Math.max(num, min), max);
 }
 
 function ensureRunId(env) {
@@ -90,6 +97,20 @@ export function createRuntimeLogger(options = {}) {
   const runId = typeof options.runId === 'string' && options.runId.trim() ? options.runId.trim() : ensureRunId(env);
   const includeStack =
     options.includeStack ?? (env.MODEL_CLI_LOG_STACK === '1' || env.MODEL_CLI_DEBUG === '1');
+  const logMaxBytes = clampNumber(
+    options.maxBytes ?? env.MODEL_CLI_RUNTIME_LOG_MAX_BYTES,
+    0,
+    100 * 1024 * 1024,
+    10 * 1024 * 1024
+  );
+  const logMaxLines = clampNumber(
+    options.maxLines ?? env.MODEL_CLI_RUNTIME_LOG_MAX_LINES,
+    0,
+    200_000,
+    20_000
+  );
+  const logLimits = { maxBytes: logMaxBytes, maxLines: logMaxLines };
+  const shouldCap = logMaxBytes > 0 || logMaxLines > 0;
 
   const write = (level, message, meta, err) => {
     const entry = {
@@ -109,6 +130,9 @@ export function createRuntimeLogger(options = {}) {
       if (formatted) entry.error = formatted;
     }
     try {
+      if (shouldCap) {
+        capJsonlFile(filePath, logLimits);
+      }
       fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, 'utf8');
     } catch {
       // ignore logging errors

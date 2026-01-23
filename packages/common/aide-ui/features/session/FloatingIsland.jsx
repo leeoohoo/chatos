@@ -92,6 +92,7 @@ function FloatingIsland({
   const confirmMainTaskCreate = runtimeSettings?.confirmMainTaskCreate === true;
   const confirmSubTaskCreate = runtimeSettings?.confirmSubTaskCreate === true;
   const confirmFileChanges = runtimeSettings?.confirmFileChanges === true;
+  const injectSecretsToEnv = runtimeSettings?.injectSecretsToEnv === true;
   const landConfigId = typeof runtimeSettings?.landConfigId === 'string' ? runtimeSettings.landConfigId.trim() : '';
   const landConfigOptions = useMemo(() => {
     const list = Array.isArray(landConfigs) ? landConfigs : [];
@@ -321,6 +322,14 @@ function FloatingIsland({
                     disabled={settingsSaving}
                   />
                   <Text>文件变更</Text>
+                </Space>
+                <Space size={6} align="center">
+                  <Switch
+                    checked={injectSecretsToEnv}
+                    onChange={(checked) => applyRuntimeSettingsPatch({ injectSecretsToEnv: checked })}
+                    disabled={settingsSaving}
+                  />
+                  <Text>注入密钥 Env</Text>
                 </Space>
                 <Space size={6} align="center">
                   <Switch

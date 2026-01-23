@@ -24,6 +24,15 @@ if (args.help || args.h) {
   process.exit(0);
 }
 
+function resolveBoolFlag(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
 const root = path.resolve(args.root || process.cwd());
 const serverName = args.name || 'shell_tasks';
 // Default timeout raised to 5 minutes; can be adjusted via --timeout/--timeout-ms up to 15 minutes
@@ -33,7 +42,18 @@ const defaultShell =
   args.shell ||
   process.env.SHELL ||
   (process.platform === 'win32' ? process.env.COMSPEC || process.env.ComSpec || 'cmd.exe' : '/bin/bash');
-const workspaceNote = `Workspace root: ${root}. Paths must stay inside this directory; absolute paths outside will be rejected.`;
+const allowUnsafeShell = resolveBoolFlag(
+  args['allow-unsafe-shell'] ?? process.env.MODEL_CLI_ALLOW_UNSAFE_SHELL,
+  false
+);
+const workspaceNote = [
+  `Workspace root: ${root}.`,
+  'The server checks literal path arguments to keep them inside this directory.',
+  'This is not a sandbox.',
+  allowUnsafeShell
+    ? 'Shell expansions are allowed (unsafe).'
+    : 'Shell expansions/variable substitutions are blocked by default (set MODEL_CLI_ALLOW_UNSAFE_SHELL=1 to bypass).',
+].join(' ');
 const sessionRoot = resolveSessionRoot();
 const sessions = createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot });
 const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
@@ -125,11 +145,24 @@ async function ensurePath(relPath = '.') {
 }
 
 function buildOutsideRootMessage(relPath) {
-  return `Path "${relPath}" is outside the workspace root (${root}). Use paths inside this root or set cwd relative to it.`;
+  return `Path "${relPath}" is outside the workspace root (${root}). Use literal paths inside this root or set cwd within it.`;
 }
 
-function assertCommandPathsWithinRoot(commandText, workingDir = root) {
-  const tokens = splitCommandTokens(commandText);
+function assertCommandPathsWithinRoot(commandText, workingDir = root, shellPath = defaultShell) {
+  if (!allowUnsafeShell) {
+    const unsafe = detectUnsafeShellSyntax(commandText, shellPath);
+    if (unsafe.length > 0) {
+      const details = unsafe.join(', ');
+      throw new Error(
+        [
+          'Command contains shell expansions that cannot be safely checked for workspace confinement.',
+          `Detected: ${details}`,
+          'Rewrite using literal paths inside the workspace root, or set MODEL_CLI_ALLOW_UNSAFE_SHELL=1 to bypass.',
+        ].join('\n')
+      );
+    }
+  }
+  const tokens = splitCommandTokens(commandText, shellPath);
   if (tokens.length === 0) {
     return [];
   }
@@ -179,11 +212,96 @@ function assertCommandPathsWithinRoot(commandText, workingDir = root) {
   return Array.from(resolvedPaths);
 }
 
-function splitCommandTokens(input) {
+function resolveShellKind(shellPath) {
+  const base = path.basename(String(shellPath || '')).toLowerCase();
+  if (base === 'cmd.exe' || base === 'cmd') return 'cmd';
+  if (base === 'powershell.exe' || base === 'powershell' || base === 'pwsh.exe' || base === 'pwsh') {
+    return 'powershell';
+  }
+  return 'sh';
+}
+
+function detectUnsafeShellSyntax(commandText, shellPath = defaultShell) {
+  const input = String(commandText || '');
+  if (!input.trim()) return [];
+  const shellKind = resolveShellKind(shellPath);
+  const issues = new Set();
+
+  if (shellKind === 'cmd') {
+    if (/%[A-Za-z_][A-Za-z0-9_]*%/.test(input)) {
+      issues.add('cmd env expansion (%VAR%)');
+    }
+    if (/![A-Za-z_][A-Za-z0-9_]*!/.test(input)) {
+      issues.add('cmd delayed expansion (!VAR!)');
+    }
+    return Array.from(issues);
+  }
+
+  let quote = null;
+  let escape = false;
+  const usesBackslashEscape = shellKind === 'sh';
+  const usesBacktickEscape = shellKind === 'powershell';
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (usesBackslashEscape && char === '\\' && quote !== "'") {
+      escape = true;
+      continue;
+    }
+    if (usesBacktickEscape && char === '`' && quote !== "'") {
+      escape = true;
+      continue;
+    }
+    if (char === "'" && quote !== '"') {
+      quote = quote === "'" ? null : "'";
+      continue;
+    }
+    if (char === '"' && quote !== "'") {
+      quote = quote === '"' ? null : '"';
+      continue;
+    }
+    if (quote === "'") continue;
+
+    if (char === '$') {
+      const next = input[i + 1];
+      if (!next) continue;
+      if (next === '(') {
+        issues.add('command substitution ($())');
+        continue;
+      }
+      if (next === '{') {
+        issues.add('parameter expansion (${...})');
+        continue;
+      }
+      if (/[A-Za-z0-9_?#!$*@-]/.test(next)) {
+        issues.add('variable expansion ($VAR)');
+        continue;
+      }
+    }
+    if (shellKind !== 'powershell' && char === '`') {
+      issues.add('command substitution (`...`)');
+      continue;
+    }
+    if ((char === '<' || char === '>') && input[i + 1] === '(') {
+      issues.add('process substitution (<(...))');
+    }
+  }
+  return Array.from(issues);
+}
+
+function splitCommandTokens(input, shellPath = defaultShell) {
   const tokens = [];
   let current = '';
   let quote = null;
   let escape = false;
+  const shellKind = resolveShellKind(shellPath);
+  const allowSemicolon = shellKind !== 'cmd';
+  const escapeChar = shellKind === 'sh' ? '\\' : shellKind === 'powershell' ? '`' : '';
+  const isSeparator = (char) =>
+    char === '|' || char === '&' || char === '<' || char === '>' || (allowSemicolon && char === ';');
   for (let i = 0; i < input.length; i += 1) {
     const char = input[i];
     if (escape) {
@@ -191,7 +309,7 @@ function splitCommandTokens(input) {
       escape = false;
       continue;
     }
-    if (char === '\\') {
+    if (escapeChar && char === escapeChar && quote !== "'") {
       escape = true;
       continue;
     }
@@ -208,6 +326,13 @@ function splitCommandTokens(input) {
       continue;
     }
     if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+    if (isSeparator(char)) {
       if (current) {
         tokens.push(current);
         current = '';
@@ -599,6 +724,7 @@ function printHelp() {
       '  --timeout <ms>      Default command timeout (1000-900000 ms, default 300000)',
       '  --max-buffer <b>    Max STDOUT/STDERR buffer (min 16KB, default 2MB)',
       '  --shell <path>      Optional shell override',
+      '  --allow-unsafe-shell  Allow shell expansions/variable substitution (weakens path checks)',
       '  --name <id>         MCP server name',
       '  --help              Show help',
     ].join('\n')
