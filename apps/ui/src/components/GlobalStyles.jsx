@@ -7,22 +7,18 @@ const EXTRA_CSS = `
         flex-wrap: nowrap;
       }
       .ds-nav-merged.ds-nav-fixed {
-        width: clamp(320px, 52vw, 460px);
         max-width: 100%;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        display: inline-flex;
         align-items: center;
-        justify-items: center;
+        justify-content: center;
       }
       .ds-nav-merged.ds-nav-fixed .ds-seg {
-        width: 100%;
+        width: auto;
         min-width: 0;
-        justify-content: center;
       }
       .ds-nav-merged.ds-nav-fixed .ant-segmented-group {
-        width: 100%;
+        width: auto;
         min-width: 0;
-        justify-content: center;
       }
       .ds-admin-page {
         width: 100%;
