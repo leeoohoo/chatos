@@ -1,0 +1,36 @@
+function normalizeHostApp(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function getHostApp(env = process.env) {
+  return normalizeHostApp(env?.MODEL_CLI_HOST_APP);
+}
+
+export function isChatosHost() {
+  return getHostApp() === 'chatos';
+}
+
+export function normalizeMcpServerName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function isExternalOnlyMcpServerName(name) {
+  return false;
+}
+
+export function allowExternalOnlyMcpServers() {
+  const override = normalizeHostApp(process.env.MODEL_CLI_ALLOW_EXTERNAL_ONLY_MCP);
+  if (override === '1' || override === 'true' || override === 'yes') {
+    return true;
+  }
+  return isChatosHost();
+}
+

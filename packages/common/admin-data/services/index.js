@@ -1,0 +1,64 @@
+import { TABLE_SCHEMAS } from '../schema.js';
+import { ModelService } from './model-service.js';
+import { SecretService } from './secret-service.js';
+import { McpService } from './mcp-service.js';
+import { SubagentService } from './subagent-service.js';
+import { PromptService } from './prompt-service.js';
+import { EventService } from './event-service.js';
+import { TaskService } from './task-service.js';
+import { SettingsService } from './settings-service.js';
+import { LandConfigService } from './land-config-service.js';
+
+function stripPromptTypeField(db) {
+  const prompts = db.list('prompts') || [];
+  prompts.forEach((prompt) => {
+    if (!prompt?.id) return;
+    if (!Object.prototype.hasOwnProperty.call(prompt, 'type')) return;
+    try {
+      db.update('prompts', prompt.id, { type: undefined });
+    } catch {
+      // ignore migration errors
+    }
+  });
+}
+
+export function createAdminServices(db) {
+  stripPromptTypeField(db);
+  const models = new ModelService(db);
+  const secrets = new SecretService(db);
+  const mcpServers = new McpService(db);
+  const subagents = new SubagentService(db);
+  const prompts = new PromptService(db);
+  const events = new EventService(db);
+  const tasks = new TaskService(db);
+  const settings = new SettingsService(db);
+  const landConfigs = new LandConfigService(db);
+  settings.ensureRuntime();
+
+  const snapshot = () => ({
+    models: models.list(),
+    secrets: secrets.list(),
+    mcpServers: mcpServers.list(),
+    subagents: subagents.list(),
+    prompts: prompts.list(),
+    events: events.list(),
+    tasks: tasks.list(),
+    settings: settings.list(),
+    landConfigs: landConfigs.list(),
+  });
+
+  return {
+    models,
+    secrets,
+    mcpServers,
+    subagents,
+    prompts,
+    events,
+    tasks,
+    settings,
+    landConfigs,
+    snapshot,
+    schema: () => TABLE_SCHEMAS,
+    dbPath: db.path,
+  };
+}
