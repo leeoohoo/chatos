@@ -195,7 +195,10 @@ function CliAppBody({ host, mountContainer }) {
   const dispatchRunId = useMemo(() => {
     const selection = typeof runFilter === 'string' ? runFilter.trim() : '';
     if (!selection) return null;
-    if (selection === RUN_FILTER_ALL || selection === RUN_FILTER_UNKNOWN) return null;
+    if (selection === RUN_FILTER_ALL || selection === RUN_FILTER_UNKNOWN) {
+      const latest = normalizeRunId(visibleRunSummary?.latestRunId);
+      return latest || null;
+    }
     if (selection === RUN_FILTER_AUTO) {
       const latest = normalizeRunId(visibleRunSummary?.latestRunId);
       return latest || null;

@@ -34,7 +34,7 @@
     "ui:build:release": "node scripts/build-ui.js --release && node scripts/build-cli-ui-plugin.js --release",
     "build": "npm run ui:build",
     "ui": "node scripts/build-ui.js --skip-if-present && node scripts/build-cli-ui-plugin.js --skip-if-present && electron electron/main.js",
-    "rebuild:better-sqlite3": "bash -lc 'SDKROOT=\"$(xcrun --sdk macosx --show-sdk-path)\" DEVELOPER_DIR=\"/Applications/Xcode-beta.app/Contents/Developer\" PYTHON=\"/usr/local/bin/python3.11\" npm_config_python=\"/usr/local/bin/python3.11\" CC=\"/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang\" CXX=\"/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++\" CXXFLAGS=\"-std=c++20 -isysroot $SDKROOT\" npm_config_cxxflags=\"-std=c++20 -isysroot $SDKROOT\" npx electron-rebuild -f -w better-sqlite3'",
+    "rebuild:electron": "bash -lc 'SDKROOT=\"$(xcrun --sdk macosx --show-sdk-path)\" DEVELOPER_DIR=\"/Applications/Xcode-beta.app/Contents/Developer\" PYTHON=\"/usr/local/bin/python3.11\" npm_config_python=\"/usr/local/bin/python3.11\" CC=\"/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang\" CXX=\"/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++\" CXXFLAGS=\"-std=c++20 -isysroot $SDKROOT\" npm_config_cxxflags=\"-std=c++20 -isysroot $SDKROOT\" npx electron-rebuild -f -w better-sqlite3'",
     "prepack": "node scripts/build-ui.js --release --skip-if-present && node scripts/build-cli-ui-plugin.js --release --skip-if-present",
     "desktop:dist": "npm run ui:build:release && npx --yes electron-builder@24.13.3"
   },

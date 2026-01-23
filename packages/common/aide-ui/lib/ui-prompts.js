@@ -30,10 +30,12 @@ export function pickActiveUiPrompt(pending = [], preferredRunId) {
   const list = Array.isArray(pending) ? pending : [];
   if (list.length === 0) return null;
   const prefer = normalizeRunId(preferredRunId);
-  const preferable =
-    prefer && prefer !== RUN_FILTER_ALL && prefer !== RUN_FILTER_UNKNOWN
-      ? list.find((entry) => normalizeRunId(entry?.runId) === prefer)
-      : null;
-  return preferable || list[0];
+  if (prefer && prefer !== RUN_FILTER_ALL && prefer !== RUN_FILTER_UNKNOWN) {
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (normalizeRunId(list[i]?.runId) === prefer) {
+        return list[i];
+      }
+    }
+  }
+  return list[list.length - 1];
 }
-

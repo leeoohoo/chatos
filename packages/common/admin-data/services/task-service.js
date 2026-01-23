@@ -16,10 +16,11 @@ export class TaskService extends BaseService {
     const now = new Date().toISOString();
     const resolvedRunId = this.#resolveRunId(runId);
     const resolvedSessionId = this.#resolveSessionId(sessionId);
+    const normalizedTitle = this.#requireTitle(title);
     const task = {
       id: this.#generateId(),
-      title: this.#requireTitle(title),
-      details: this.#requireMeaningfulDetails(details),
+      title: normalizedTitle,
+      details: this.#coerceDetails(details, normalizedTitle),
       priority: this.#normalizePriority(priority),
       status: this.#normalizeStatus(status),
       tags: this.#normalizeTags(tags),
@@ -69,7 +70,14 @@ export class TaskService extends BaseService {
     }
     const updated = this.#normalizeTaskShape(existing);
     if (title !== undefined) updated.title = this.#requireTitle(title);
-    if (details !== undefined) updated.details = this.#requireMeaningfulDetails(details);
+    if (details !== undefined) {
+      const normalizedDetails = typeof details === 'string' ? details.trim() : '';
+      if (normalizedDetails) {
+        updated.details = this.#requireMeaningfulDetails(details);
+      } else if (!appendNote) {
+        updated.details = '';
+      }
+    }
     if (appendNote) {
       const prefix = updated.details ? `${updated.details}\n` : '';
       updated.details = `${prefix}备注: ${appendNote.trim()}`;
@@ -154,6 +162,16 @@ export class TaskService extends BaseService {
       throw new Error('title is required');
     }
     return text;
+  }
+
+  #coerceDetails(details, title) {
+    const text = typeof details === 'string' ? details.trim() : '';
+    if (text.length >= 15) {
+      return text;
+    }
+    const base = (text || String(title || '').trim() || 'Task').replace(/\s+/g, ' ');
+    const context = base.length > 180 ? `${base.slice(0, 177)}...` : base;
+    return `Context: ${context}\nAcceptance: TBD`;
   }
 
   #requireMeaningfulDetails(details, options = {}) {

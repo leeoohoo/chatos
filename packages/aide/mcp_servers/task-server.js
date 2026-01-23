@@ -177,6 +177,10 @@ function registerTools() {
         sessionId: pickSessionId(item?.sessionId) || sessionDefault,
         _index: idx,
       }));
+      const promptRunId =
+        draftTasks.find((task) => typeof task?.runId === 'string' && task.runId.trim())?.runId ||
+        runDefault ||
+        runId;
 
       let confirmed = { status: 'ok', tasks: draftTasks, remark: '' };
       if (shouldConfirm) {
@@ -197,7 +201,7 @@ function registerTools() {
           type: 'ui_prompt',
           action: 'request',
           requestId,
-          ...(runId ? { runId } : {}),
+          ...(promptRunId ? { runId: promptRunId } : {}),
           prompt: {
             kind: 'task_confirm',
             title: promptTitle,
@@ -507,7 +511,7 @@ function registerTools() {
               type: 'ui_prompt',
               action: 'response',
               requestId,
-              ...(runId ? { runId } : {}),
+              ...(promptRunId ? { runId: promptRunId } : {}),
               response: terminalResult || { status: 'canceled' },
             });
 
@@ -562,7 +566,7 @@ function registerTools() {
                   type: 'ui_prompt',
                   action: 'response',
                   requestId,
-                  ...(runId ? { runId } : {}),
+                  ...(promptRunId ? { runId: promptRunId } : {}),
                   response: terminalResult,
                 });
                 const parsed = applyConfirmResponse({ response: terminalResult });
