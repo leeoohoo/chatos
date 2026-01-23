@@ -134,4 +134,4 @@ README.en.md / README.zh.md
 - **Windows garbled Unicode output**: your console code page is likely not UTF-8 (65001). Run `chcp 65001` before starting; the CLI also tries to switch to UTF-8 at startup (disable via `MODEL_CLI_DISABLE_WIN_UTF8=1`).
 
 ## License
-MIT (same as upstream). See `LICENSE`.
+PolyForm Noncommercial 1.0.0 — non-commercial use only. Commercial use requires a separate license. See `LICENSE`.

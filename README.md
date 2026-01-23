@@ -104,4 +104,4 @@ stateDir = `<stateRoot>/<hostApp>`（旧 `legacyStateRoot/<hostApp>` 自动迁�
 更多细节与完整指南请看 `README.en.md` / `README.zh.md`。   
 
 ## License
-MIT (same as upstream). See `LICENSE`.
+PolyForm Noncommercial 1.0.0 — non-commercial use only. Commercial use requires a separate license. See `LICENSE`.

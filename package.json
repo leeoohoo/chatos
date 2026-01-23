@@ -2,7 +2,7 @@
   "name": "@leeoohoo/chatos",
   "version": "0.1.1",
   "description": "Terminal chat client for multiple AI models (Node.js implementation).",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "bin": {
     "chatos": "cli/src/index.js",
     "chatosui": "bin/chatosui.js"
@@ -23,6 +23,7 @@
     "scripts/**/*",
     "mcp_config_restore.json",
     "mcp_config_update.json",
+    "LICENSE",
     "README.md",
     "README.en.md",
     "README.zh.md"

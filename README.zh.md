@@ -135,4 +135,4 @@ README.en.md / README.zh.md
 - **Windows 终端中文乱码**：通常是终端代码页不是 UTF-8（65001）。可先执行 `chcp 65001` 再运行；CLI 也会尝试在启动时临时切到 UTF-8（如需关闭可设 `MODEL_CLI_DISABLE_WIN_UTF8=1`）。
 
 ## License
-MIT（同上游）。见 `LICENSE`。
+PolyForm Noncommercial 1.0.0（仅限非商业用途）。商业使用需另行授权。见 `LICENSE`。
