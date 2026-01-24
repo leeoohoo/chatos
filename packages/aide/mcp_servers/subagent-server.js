@@ -51,6 +51,7 @@ const [
   { buildUserPromptMessages },
   { buildLandConfigSelection, resolveLandConfig },
   { createEventLogger },
+  { resolveSubagentInvocationModel, describeModelError, shouldFallbackToCurrentModelOnError },
 ] = await Promise.all([
   importEngine('subagents/index.js'),
   importEngine('subagents/selector.js'),
@@ -63,6 +64,7 @@ const [
   importEngine('prompts.js'),
   importEngine('land-config.js'),
   importEngine('event-log.js'),
+  importEngine('subagents/model.js'),
 ]);
 
 const args = parseArgs(process.argv.slice(2));
@@ -98,6 +100,26 @@ function appendPromptBlock(baseText, extraText) {
   return `${base}\n\n${extra}`;
 }
 
+function getModelAuthDebug(config, modelName) {
+  if (!config || typeof config.getModel !== 'function') return null;
+  try {
+    const settings = config.getModel(modelName);
+    const rawKey = settings?.api_key ?? settings?.apiKey ?? '';
+    const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '').trim();
+    const keySuffix = key ? key.slice(-4) : '';
+    return {
+      model: settings?.name || modelName,
+      provider: settings?.provider || null,
+      base_url: settings?.base_url || null,
+      api_key_env: settings?.api_key_env || settings?.apiKeyEnv || null,
+      key_length: key ? key.length : 0,
+      key_suffix: keySuffix || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function normalizeTraceValue(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -115,6 +137,31 @@ function extractTraceMeta(meta) {
   const parentSpanId = normalizeTraceValue(candidate?.parentSpanId);
   if (!traceId && !spanId && !parentSpanId) return null;
   return { traceId, spanId, parentSpanId };
+}
+
+function buildConfigSignature(models = [], secrets = []) {
+  const modelParts = (Array.isArray(models) ? models : [])
+    .filter((m) => m && typeof m === 'object')
+    .map((m) => {
+      const id = String(m.id || '').trim();
+      const name = String(m.name || '').trim();
+      const updatedAt = String(m.updatedAt || '').trim();
+      const provider = String(m.provider || '').trim();
+      const modelId = String(m.model || '').trim();
+      const keyEnv = String(m.apiKeyEnv || m.api_key_env || '').trim();
+      return `m:${id}:${name}:${provider}:${modelId}:${keyEnv}:${updatedAt}`;
+    })
+    .sort();
+  const secretParts = (Array.isArray(secrets) ? secrets : [])
+    .filter((s) => s && typeof s === 'object')
+    .map((s) => {
+      const id = String(s.id || '').trim();
+      const name = String(s.name || '').trim();
+      const updatedAt = String(s.updatedAt || '').trim();
+      return `s:${id}:${name}:${updatedAt}`;
+    })
+    .sort();
+  return `${modelParts.join('|')}#${secretParts.join('|')}`;
 }
 
 const { services: adminServices, defaultPaths } = getAdminServices();
@@ -467,13 +514,17 @@ function resolveCommand(plugin, commandId) {
   return null;
 }
 
-async function loadAppConfig() {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
+async function loadAppConfig(options = {}) {
+  const force = options?.force === true;
   const models = adminServices.models.list();
   const secrets = adminServices.secrets?.list ? adminServices.secrets.list() : [];
+  const signature = buildConfigSignature(models, secrets);
+  if (!force && cachedConfig && cachedConfigSignature === signature) {
+    return cachedConfig;
+  }
+  cachedConfigSignature = signature;
   cachedConfig = createAppConfigFromModels(models, secrets);
+  cachedClient = null;
   const runtime = await ensureMcpRuntime();
   if (runtime) {
     runtime.applyToConfig(cachedConfig);
@@ -567,7 +618,17 @@ function isToolAllowed(name) {
   return true;
 }
 
-async function executeSubAgent({ task, agentId, category, skills = [], model, query, commandId, trace }) {
+async function executeSubAgent({
+  task,
+  agentId,
+  category,
+  skills = [],
+  model,
+  callerModel,
+  query,
+  commandId,
+  trace,
+}) {
   const traceMeta = extractTraceMeta(trace);
   const agentRef = await pickAgent({ agentId, category, skills, query, commandId, task });
   if (!agentRef) {
@@ -609,21 +670,34 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
     reasoning = promptInfo.extra?.reasoning !== false;
   }
 
-  const config = await loadAppConfig();
-  const client = getClient(config);
-  const targetModel =
+  let config = await loadAppConfig();
+  let client = getClient(config);
+  const normalizedCallerModel = typeof callerModel === 'string' ? callerModel.trim() : '';
+  const configuredModel =
     model || // explicit override from request
     commandModel || // model declared on the command, if any
     agentRef.agent.model || // per-agent model from plugin manifest
-    (typeof config.getModel === 'function' ? config.getModel(null).name : null); // default fallback
+    null;
+  const defaultModel =
+    typeof config.getModel === 'function' ? config.getModel(null).name : null;
+  let targetModel = resolveSubagentInvocationModel({
+    configuredModel,
+    currentModel: normalizedCallerModel,
+    client,
+    defaultModel: defaultModel || DEFAULT_MODEL_NAME,
+  });
   if (!targetModel) {
     throw new Error('Target model could not be resolved; check configuration.');
   }
+  const fallbackModel =
+    normalizedCallerModel && normalizedCallerModel !== targetModel ? normalizedCallerModel : '';
+  let usedFallbackModel = false;
   const sessionPrompt = withSubagentGuardrails(withTaskTracking(systemPrompt, internalPrompt));
   eventLogger?.log?.('subagent_start', {
     agent: agentRef.agent.id,
     task,
     command: commandMeta?.id || null,
+    model: targetModel,
     trace: traceMeta || undefined,
   });
   const session = new ChatSession(sessionPrompt, {
@@ -685,6 +759,8 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
   };
 
   let response;
+  let refreshedConfig = false;
+  let loggedAuthDebug = false;
   try {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       applyCorrections();
@@ -717,7 +793,65 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
         });
         break;
       } catch (err) {
-        if (err?.name === 'AbortError' && pendingCorrections.length > 0) {
+        if (err?.name === 'AbortError') {
+          if (pendingCorrections.length > 0) {
+            continue;
+          }
+        }
+        const info = describeModelError(err);
+        if (!loggedAuthDebug && (info.reason === 'auth_error' || info.reason === 'config_error')) {
+          loggedAuthDebug = true;
+          const debugInfo = getModelAuthDebug(config, targetModel);
+          const authDebugPayload = {
+            model: targetModel,
+            configuredModel,
+            callerModel: normalizedCallerModel || null,
+            dbPath: adminServices?.dbPath || null,
+            sessionRoot: SESSION_ROOT,
+            mcpConfigPath,
+            modelInfo: debugInfo,
+            error: info,
+          };
+          eventLogger?.log?.('subagent_auth_debug', authDebugPayload);
+          console.error('[subagent_router] auth_debug', authDebugPayload);
+        }
+        if (!refreshedConfig && (info.reason === 'auth_error' || info.reason === 'config_error')) {
+          refreshedConfig = true;
+          config = await loadAppConfig({ force: true });
+          client = getClient(config);
+          targetModel = resolveSubagentInvocationModel({
+            configuredModel,
+            currentModel: normalizedCallerModel,
+            client,
+            defaultModel: defaultModel || DEFAULT_MODEL_NAME,
+          });
+          if (targetModel) {
+            continue;
+          }
+        }
+        if (!usedFallbackModel && fallbackModel && shouldFallbackToCurrentModelOnError(err)) {
+          const failedModel = targetModel;
+          const detail = [info.reason, info.status ? `HTTP ${info.status}` : null, info.message]
+            .filter(Boolean)
+            .join(' - ');
+          const notice = `子流程模型 "${failedModel}" 调用失败（${detail || info.name}），本轮回退到主流程模型 "${fallbackModel}"。`;
+          usedFallbackModel = true;
+          targetModel = fallbackModel;
+          try {
+            eventLogger?.log?.('subagent_notice', {
+              agent: agentRef.agent.id,
+              text: notice,
+              source: 'system',
+              kind: 'agent',
+              fromModel: failedModel,
+              toModel: fallbackModel,
+              reason: info.reason,
+              error: info,
+              trace: traceMeta || undefined,
+            });
+          } catch {
+            // ignore
+          }
           continue;
         }
         throw err;

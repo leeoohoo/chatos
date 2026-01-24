@@ -163,11 +163,24 @@ export function registerSubagentTools(context = {}) {
         category: z.string().optional().describe('Category hint for auto-pick'),
         skills: z.array(z.string()).optional().describe('Skills to activate/prefer'),
         model: z.string().optional().describe('Optional model override'),
+        caller_model: z.string().optional().describe('Optional caller model for fallback'),
         query: z.string().optional().describe('Keyword search for names/descriptions/skills/commands'),
         command_id: z.string().optional().describe('Optional command ID/name; will run that command if present'),
       }),
     },
-    async ({ task, agent_id: agentId, category, skills = [], model, query, command_id: commandId }, extra) => {
+    async (
+      {
+        task,
+        agent_id: agentId,
+        category,
+        skills = [],
+        model,
+        caller_model: callerModel,
+        query,
+        command_id: commandId,
+      },
+      extra
+    ) => {
       try {
         const result = await executeSubAgent({
           task,
@@ -175,6 +188,7 @@ export function registerSubagentTools(context = {}) {
           category,
           skills,
           model,
+          callerModel,
           query,
           commandId,
           trace: extra?._meta,
@@ -201,12 +215,35 @@ export function registerSubagentTools(context = {}) {
         category: z.string().optional().describe('Category hint for auto-pick'),
         skills: z.array(z.string()).optional().describe('Skills to activate/prefer'),
         model: z.string().optional().describe('Optional model override'),
+        caller_model: z.string().optional().describe('Optional caller model for fallback'),
         query: z.string().optional().describe('Keyword search for names/descriptions/skills/commands'),
         command_id: z.string().optional().describe('Optional command ID/name; will run that command if present'),
       }),
     },
-    async ({ task, agent_id: agentId, category, skills = [], model, query, command_id: commandId }, extra) => {
-      const job = createAsyncJob({ task, agentId, category, skills, model, query, commandId, trace: extra?._meta });
+    async (
+      {
+        task,
+        agent_id: agentId,
+        category,
+        skills = [],
+        model,
+        caller_model: callerModel,
+        query,
+        command_id: commandId,
+      },
+      extra
+    ) => {
+      const job = createAsyncJob({
+        task,
+        agentId,
+        category,
+        skills,
+        model,
+        callerModel,
+        query,
+        commandId,
+        trace: extra?._meta,
+      });
       startAsyncJob(job);
       return jsonTextResponse({
         job_id: job.id,

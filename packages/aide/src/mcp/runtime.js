@@ -1206,10 +1206,24 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
       parameters,
       handler: async (args = {}, toolContext = {}) => {
         const signal = toolContext?.signal;
+        const callerModel =
+          typeof toolContext?.model === 'string' ? toolContext.model.trim() : '';
+        const mergedArgs = {
+          ...(args && typeof args === 'object' ? args : {}),
+        };
+        if (callerModel && !mergedArgs.caller_model) {
+          mergedArgs.caller_model = callerModel;
+        }
         let jobId = null;
         try {
           throwIfAborted(signal);
-          const start = await callSubagentTool(client, requestOptions, 'start_sub_agent_async', args, { signal });
+          const start = await callSubagentTool(
+            client,
+            requestOptions,
+            'start_sub_agent_async',
+            mergedArgs,
+            { signal }
+          );
           jobId = start?.job_id;
           if (!jobId) {
             const errMsg = start?.error ? `：${start.error}` : '：未返回 job_id';
