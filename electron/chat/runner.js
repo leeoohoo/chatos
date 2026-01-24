@@ -102,6 +102,60 @@ function normalizePromptLanguage(value) {
   return '';
 }
 
+function applyRuntimeSettingsToEnv(runtimeConfig) {
+  if (!runtimeConfig || typeof runtimeConfig !== 'object') return;
+  const pickNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : undefined;
+  };
+  const normalizeShellSafetyMode = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'strict' || raw === 'relaxed') return raw;
+    return '';
+  };
+  const normalizeSymlinkPolicy = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'allow' || raw === 'deny') return raw;
+    return '';
+  };
+  const normalizeLogLevel = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'off' || raw === 'info' || raw === 'debug') return raw;
+    return '';
+  };
+  const normalizePromptLogMode = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'full' || raw === 'minimal') return raw;
+    return '';
+  };
+  const setNumberEnv = (key, value) => {
+    if (Number.isFinite(value)) {
+      process.env[key] = String(value);
+    }
+  };
+
+  const shellSafetyMode = normalizeShellSafetyMode(runtimeConfig.shellSafetyMode);
+  if (shellSafetyMode) {
+    process.env.MODEL_CLI_SHELL_SAFETY_MODE = shellSafetyMode;
+  }
+  const symlinkPolicy = normalizeSymlinkPolicy(runtimeConfig.filesystemSymlinkPolicy);
+  if (symlinkPolicy) {
+    process.env.MODEL_CLI_ALLOW_SYMLINK_ESCAPE = symlinkPolicy === 'allow' ? '1' : '0';
+  }
+  const logLevel = normalizeLogLevel(runtimeConfig.mcpToolLogLevel);
+  if (logLevel) {
+    process.env.MODEL_CLI_MCP_LOG_LEVEL = logLevel;
+  }
+  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES', pickNumber(runtimeConfig.mcpToolLogMaxBytes));
+  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_LINES', pickNumber(runtimeConfig.mcpToolLogMaxLines));
+  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS', pickNumber(runtimeConfig.mcpToolLogMaxFieldChars));
+  setNumberEnv('MODEL_CLI_MCP_STARTUP_CONCURRENCY', pickNumber(runtimeConfig.mcpStartupConcurrency));
+  const promptLogMode = normalizePromptLogMode(runtimeConfig.uiPromptLogMode);
+  if (promptLogMode) {
+    process.env.MODEL_CLI_UI_PROMPTS_LOG_MODE = promptLogMode;
+  }
+}
+
 function appendEventLog(eventPath, type, payload, runId) {
   if (!eventPath) return;
   try {
@@ -1189,6 +1243,7 @@ export function createChatRunner({
     const client = new ModelClient(config);
 
     const runtimeConfig = adminServices.settings?.getRuntimeConfig ? adminServices.settings.getRuntimeConfig() : null;
+    applyRuntimeSettingsToEnv(runtimeConfig);
     const promptLanguage = runtimeConfig?.promptLanguage || null;
     const fallbackWorkspaceRoot = normalizeWorkspaceRoot(workspaceRoot) || process.cwd();
     const resolveToolWorkdir = () => {

@@ -1,6 +1,27 @@
+import fs from 'fs';
 import path from 'path';
 
-export function createWorkspaceResolver({ root }) {
+function resolveRealPath(target) {
+  try {
+    if (typeof fs.realpathSync.native === 'function') {
+      return fs.realpathSync.native(target);
+    }
+    return fs.realpathSync(target);
+  } catch {
+    return null;
+  }
+}
+
+function findExistingParent(targetPath) {
+  let current = targetPath;
+  while (current && current !== path.dirname(current)) {
+    if (fs.existsSync(current)) return current;
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+export function createWorkspaceResolver({ root, allowSymlinkEscape = true } = {}) {
   const workspaceRoot = path.resolve(root || process.cwd());
 
   const isInsideWorkspace = (target) => {
@@ -40,6 +61,20 @@ export function createWorkspaceResolver({ root }) {
     const candidate = path.resolve(base, input);
     if (!isInsideWorkspace(candidate)) {
       throw new Error(buildOutsideRootMessage(rawPath));
+    }
+    if (!allowSymlinkEscape) {
+      const existingParent = findExistingParent(candidate);
+      const realParent = existingParent ? resolveRealPath(existingParent) : null;
+      if (realParent && !isInsideWorkspace(realParent)) {
+        throw new Error(buildOutsideRootMessage(rawPath));
+      }
+      if (realParent) {
+        const relativeTail = path.relative(existingParent, candidate);
+        const resolved = path.resolve(realParent, relativeTail);
+        if (!isInsideWorkspace(resolved)) {
+          throw new Error(buildOutsideRootMessage(rawPath));
+        }
+      }
     }
     return candidate;
   };

@@ -13,6 +13,15 @@ import { createTtyPrompt } from './tty-prompt.js';
 import { capJsonlFile } from '../shared/log-utils.js';
 import { ensureAppDbPath, resolveUiPromptsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
+import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import {
+  createDedupeStore,
+  readDedupeEntry,
+  writeDedupeEntry,
+  removeDedupeEntry,
+  flushDedupeStore,
+} from './shared/dedupe-store.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -22,6 +31,7 @@ if (args.help || args.h) {
 
 const root = path.resolve(args.root || process.cwd());
 const serverName = args.name || 'task_manager';
+const { textResponse, structuredResponse } = createToolResponder({ serverName });
 const sessionRoot = resolveSessionRoot();
 const adminDbPath =
   process.env.MODEL_CLI_TASK_DB ||
@@ -34,6 +44,16 @@ const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES
 const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
 const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
 const callerKind = normalizeCallerKind(process.env.MODEL_CLI_CALLER);
+const taskDedupeStorePath =
+  process.env.MODEL_CLI_TASK_DEDUPE ||
+  path.join(path.dirname(adminDbPath), 'task-dedupe.json');
+const taskDedupeStore = createDedupeStore({
+  filePath: taskDedupeStorePath,
+  maxEntries: 5000,
+  ttlMs: 7 * 24 * 60 * 60 * 1000,
+  maxIdsPerKey: 20,
+});
+const enqueueTaskWrite = createWriteQueue();
 
 ensureDir(root);
 ensureDir(path.dirname(adminDbPath));
@@ -55,6 +75,22 @@ const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 
 registerTools();
 
@@ -77,6 +113,7 @@ function registerTools() {
       priority: z.enum(['high', 'medium', 'low']).optional().describe('Priority (default medium)'),
       status: z.enum(['todo', 'doing', 'blocked', 'done']).optional().describe('Initial status (default todo)'),
       tags: z.array(z.string()).optional().describe('Tags, e.g., ["backend","release"]'),
+      dedupe_key: z.string().optional().describe('Optional idempotency key to dedupe repeated calls'),
       runId: z.string().optional().describe('Run ID (optional; defaults to current run)'),
       sessionId: z.string().optional().describe('Session ID (optional; defaults to current session)'),
       caller: z
@@ -95,6 +132,7 @@ function registerTools() {
       priority: z.enum(['high', 'medium', 'low']).optional().describe('Priority (default medium)'),
       status: z.enum(['todo', 'doing', 'blocked', 'done']).optional().describe('Initial status (default todo)'),
       tags: z.array(z.string()).optional().describe('Tags, e.g., ["backend","release"]'),
+      dedupe_key: z.string().optional().describe('Optional idempotency key to dedupe repeated calls'),
       tasks: z
         .union([batchTaskInput, z.string()])
         .optional()
@@ -171,17 +209,26 @@ function registerTools() {
 
       const requestCallerKind = pickCallerKind(normalizedPayload?.caller);
       const shouldConfirm = shouldConfirmTaskCreate(requestCallerKind);
-      const draftTasks = inputs.map((item, idx) => ({
-        draftId: crypto.randomUUID(),
-        title: typeof item?.title === 'string' ? item.title : '',
-        details: typeof item?.details === 'string' ? item.details : '',
-        priority: typeof item?.priority === 'string' ? item.priority : '',
-        status: typeof item?.status === 'string' ? item.status : '',
-        tags: Array.isArray(item?.tags) ? item.tags : [],
-        runId: pickRunId(item?.runId) || runDefault,
-        sessionId: pickSessionId(item?.sessionId) || sessionDefault,
-        _index: idx,
-      }));
+      const draftTasks = inputs.map((item, idx) => {
+        const resolvedRunId = pickRunId(item?.runId) || runDefault;
+        const resolvedSessionId = pickSessionId(item?.sessionId) || sessionDefault;
+        const dedupeKey = buildTaskDedupeKey(item?.dedupe_key, {
+          runId: resolvedRunId,
+          sessionId: resolvedSessionId,
+        });
+        return {
+          draftId: crypto.randomUUID(),
+          title: typeof item?.title === 'string' ? item.title : '',
+          details: typeof item?.details === 'string' ? item.details : '',
+          priority: typeof item?.priority === 'string' ? item.priority : '',
+          status: typeof item?.status === 'string' ? item.status : '',
+          tags: Array.isArray(item?.tags) ? item.tags : [],
+          runId: resolvedRunId,
+          sessionId: resolvedSessionId,
+          dedupeKey,
+          _index: idx,
+        };
+      });
       const promptRunId =
         draftTasks.find((task) => typeof task?.runId === 'string' && task.runId.trim())?.runId ||
         runDefault ||
@@ -615,30 +662,47 @@ function registerTools() {
       }
 
       const draftById = new Map(draftTasks.map((t) => [t.draftId, t]));
-      const created = confirmed.tasks.map((item) => {
-        const prev = item?.draftId ? draftById.get(item.draftId) : null;
-        return taskDb.addTask({
-          title: safeTrim(item.title),
-          details: typeof item.details === 'string' ? item.details : '',
-          priority: normalizeTaskPriority(item.priority),
-          status: normalizeTaskStatus(item.status),
-          tags: normalizeTags(item.tags),
-          runId: pickRunId(prev?.runId) || runDefault,
-          sessionId: pickSessionId(prev?.sessionId) || sessionDefault,
+      const { created, deduped, total } = await enqueueTaskWrite(() => {
+        const payloads = confirmed.tasks.map((item) => {
+          const prev = item?.draftId ? draftById.get(item.draftId) : null;
+          const runIdResolved = pickRunId(prev?.runId) || runDefault;
+          const sessionIdResolved = pickSessionId(prev?.sessionId) || sessionDefault;
+          return {
+            title: safeTrim(item.title),
+            details: typeof item.details === 'string' ? item.details : '',
+            priority: normalizeTaskPriority(item.priority),
+            status: normalizeTaskStatus(item.status),
+            tags: normalizeTags(item.tags),
+            runId: runIdResolved,
+            sessionId: sessionIdResolved,
+            dedupeKey: prev?.dedupeKey || '',
+          };
         });
+        const result = createTasksWithDedupe(payloads);
+        const totalOpen = taskDb.listTasks({
+          runId: runDefault,
+          allRuns: false,
+          allSessions: true,
+          includeDone: false,
+          limit: 100000,
+        }).length;
+        flushDedupeStore(taskDedupeStore);
+        return {
+          created: result.created,
+          deduped: dedupeTasksById(result.deduped),
+          total: totalOpen,
+        };
       });
-      const total = taskDb.listTasks({
-        runId: runDefault,
-        allRuns: false,
-        allSessions: true,
-        includeDone: false,
-        limit: 100000,
-      }).length;
+      const createdCount = created.length;
+      const dedupedCount = deduped.length;
       const header =
-        created.length > 1
-          ? `Created ${created.length} task(s) (${total} total open)`
-          : `Task created (${total} total open)`;
-      const summary = created.map((task) => renderTaskSummary(task)).join('\n\n');
+        createdCount > 0
+          ? `Created ${createdCount} task(s) (${total} total open${dedupedCount ? `, ${dedupedCount} deduped` : ''})`
+          : dedupedCount > 0
+            ? `No new tasks created (${dedupedCount} deduped, ${total} total open)`
+            : `No tasks created (${total} total open)`;
+      const summaryTasks = createdCount > 0 ? created : deduped;
+      const summary = summaryTasks.map((task) => renderTaskSummary(task)).join('\n\n');
 
       const changeSummary = buildTaskConfirmSummary({
         before: draftTasks,
@@ -646,10 +710,11 @@ function registerTools() {
         remark: confirmed.remark,
       });
 
-      return structuredResponse(`${header}\n${summary}${changeSummary ? `\n\n${changeSummary}` : ''}`, {
-        status: 'ok',
+      return structuredResponse(`${header}${summary ? `\n${summary}` : ''}${changeSummary ? `\n\n${changeSummary}` : ''}`, {
+        status: createdCount > 0 ? 'ok' : 'noop',
         caller: requestCallerKind,
         created: created.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority })),
+        deduped: deduped.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority })),
         user_changes: buildTaskConfirmChanges({ before: draftTasks, after: confirmed.tasks }),
         remark: confirmed.remark || '',
       });
@@ -728,14 +793,16 @@ function registerTools() {
       }),
     },
     async ({ id, title, details, append_note: appendNote, priority, status, tags }) => {
-      const task = taskDb.updateTask(id, {
-        title,
-        details,
-        appendNote,
-        priority,
-        status,
-        tags,
-      });
+      const task = await enqueueTaskWrite(() =>
+        taskDb.updateTask(id, {
+          title,
+          details,
+          appendNote,
+          priority,
+          status,
+          tags,
+        })
+      );
       return textResponse(renderTaskSummary(task, 'Task updated'));
     }
   );
@@ -756,7 +823,7 @@ function registerTools() {
       }),
     },
     async ({ id, note }) => {
-      const task = taskDb.completeTask(id, note);
+      const task = await enqueueTaskWrite(() => taskDb.completeTask(id, note));
       return textResponse(renderTaskSummary(task, 'Task marked as done'));
     }
   );
@@ -778,13 +845,15 @@ function registerTools() {
       }),
     },
     async ({ mode, allSessions, allRuns, runId, sessionId }) => {
-      const result = taskDb.clearTasks({
-        mode: mode || 'done',
-        allSessions,
-        allRuns,
-        runId: allRuns ? '' : pickRunId(runId),
-        sessionId: allSessions ? '' : pickSessionId(sessionId),
-      });
+      const result = await enqueueTaskWrite(() =>
+        taskDb.clearTasks({
+          mode: mode || 'done',
+          allSessions,
+          allRuns,
+          runId: allRuns ? '' : pickRunId(runId),
+          sessionId: allSessions ? '' : pickSessionId(sessionId),
+        })
+      );
       return textResponse(`Cleared ${result.removed} task(s), ${result.remaining} remaining.`);
     }
   );
@@ -803,14 +872,17 @@ function registerTools() {
       if (confirm !== true) {
         throw new Error('Refusing to delete task without confirm=true.');
       }
-      const task = taskDb.get(id);
-      if (!task) {
-        throw new Error(`未找到 ID 为 ${id} 的任务。`);
-      }
-      const removed = taskDb.remove(id);
-      if (!removed) {
-        throw new Error(`删除任务失败：${id}`);
-      }
+      const task = await enqueueTaskWrite(() => {
+        const existing = taskDb.get(id);
+        if (!existing) {
+          throw new Error(`未找到 ID 为 ${id} 的任务。`);
+        }
+        const removed = taskDb.remove(id);
+        if (!removed) {
+          throw new Error(`删除任务失败：${id}`);
+        }
+        return existing;
+      });
       return textResponse(renderTaskSummary(task, 'Task deleted'));
     }
   );
@@ -842,29 +914,6 @@ function renderTaskSummary(task, prefix = '') {
     .filter(Boolean)
     .join('\n');
   return `${header}${body}`;
-}
-
-function textResponse(text) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-  };
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function ensureDir(dirPath) {
@@ -1097,6 +1146,93 @@ function normalizeTags(value) {
   list.forEach((tag) => {
     const t = safeTrim(tag);
     if (t) out.push(t);
+  });
+  return out;
+}
+
+function createWriteQueue() {
+  let chain = Promise.resolve();
+  return (fn) => {
+    const run = chain.then(fn, fn);
+    chain = run.catch(() => {});
+    return run;
+  };
+}
+
+function buildTaskDedupeKey(rawKey, { runId, sessionId } = {}) {
+  const key = safeTrim(rawKey);
+  if (!key) return '';
+  const scopeParts = [];
+  const normalizedRunId = safeTrim(runId);
+  const normalizedSessionId = safeTrim(sessionId);
+  if (normalizedRunId) scopeParts.push(`run=${normalizedRunId}`);
+  if (normalizedSessionId) scopeParts.push(`session=${normalizedSessionId}`);
+  const scope = scopeParts.join('|');
+  return scope ? `${scope}::${key}` : key;
+}
+
+function createTasksWithDedupe(payloads = []) {
+  const created = [];
+  const deduped = [];
+  const toCreate = [];
+  const localDedupe = new Map();
+
+  (Array.isArray(payloads) ? payloads : []).forEach((payload) => {
+    const key = safeTrim(payload?.dedupeKey);
+    if (key) {
+      const entry = readDedupeEntry(taskDedupeStore, key);
+      if (entry) {
+        const existingTasks = (Array.isArray(entry.ids) ? entry.ids : [])
+          .map((id) => taskDb.get(id))
+          .filter(Boolean);
+        if (existingTasks.length > 0) {
+          deduped.push(...existingTasks);
+          writeDedupeEntry(taskDedupeStore, key, existingTasks.map((task) => task.id));
+          return;
+        }
+        removeDedupeEntry(taskDedupeStore, key);
+      }
+      const local = localDedupe.get(key);
+      if (local) {
+        local.duplicates.push(payload);
+        return;
+      }
+      localDedupe.set(key, { payload, duplicates: [] });
+    }
+    toCreate.push(payload);
+  });
+
+  const inserts = toCreate.map(({ dedupeKey, ...rest }) => rest);
+  const createdTasks = inserts.length > 0 ? taskDb.addTasks(inserts) : [];
+  const createdByKey = new Map();
+  createdTasks.forEach((task, index) => {
+    const key = safeTrim(toCreate[index]?.dedupeKey);
+    if (!key) return;
+    createdByKey.set(key, task);
+    writeDedupeEntry(taskDedupeStore, key, [task.id]);
+  });
+
+  localDedupe.forEach((entry, key) => {
+    const task = createdByKey.get(key);
+    if (!task) return;
+    if (Array.isArray(entry.duplicates) && entry.duplicates.length > 0) {
+      entry.duplicates.forEach(() => deduped.push(task));
+    }
+  });
+
+  created.push(...createdTasks);
+  return { created, deduped };
+}
+
+function dedupeTasksById(tasks) {
+  const list = Array.isArray(tasks) ? tasks : [];
+  const seen = new Set();
+  const out = [];
+  list.forEach((task) => {
+    const id = safeTrim(task?.id);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push(task);
   });
   return out;
 }

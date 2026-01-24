@@ -33,6 +33,16 @@ export const TOOL_ERROR_CODES = {
   RATE_LIMITED: 'rate_limited',
 };
 
+const ERROR_CODE_PATTERNS = [
+  { code: TOOL_ERROR_CODES.INVALID_ARGUMENT, patterns: [/invalid argument/i, /input validation/i, /invalid params/i] },
+  { code: TOOL_ERROR_CODES.NOT_FOUND, patterns: [/not found/i, /unknown .*id/i] },
+  { code: TOOL_ERROR_CODES.PERMISSION_DENIED, patterns: [/permission denied/i, /outside the workspace/i, /writes are disabled/i] },
+  { code: TOOL_ERROR_CODES.TIMEOUT, patterns: [/timeout/i, /timed out/i] },
+  { code: TOOL_ERROR_CODES.CONFLICT, patterns: [/conflict/i, /already exists/i] },
+  { code: TOOL_ERROR_CODES.NOT_SUPPORTED, patterns: [/not supported/i, /unsupported/i] },
+  { code: TOOL_ERROR_CODES.RATE_LIMITED, patterns: [/rate limit/i, /too many requests/i] },
+];
+
 function normalizeStatus(value, fallback = TOOL_STATUS.OK) {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (!raw) return fallback;
@@ -77,8 +87,29 @@ function normalizeError(input) {
   return fallback ? { message: fallback } : null;
 }
 
+function inferErrorCode(err, fallback = TOOL_ERROR_CODES.INTERNAL) {
+  const message = normalizeError(err)?.message || '';
+  if (!message) return fallback;
+  for (const entry of ERROR_CODE_PATTERNS) {
+    if (entry.patterns.some((pattern) => pattern.test(message))) {
+      return entry.code;
+    }
+  }
+  return fallback;
+}
+
 function normalizeServerName(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function estimatePayloadSize(value) {
+  if (value == null) return 0;
+  if (typeof value === 'string') return Buffer.byteLength(value, 'utf8');
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+  } catch {
+    return 0;
+  }
 }
 
 function buildChatosMeta(structuredContent, options = {}) {
@@ -126,9 +157,11 @@ export function structuredResponse(text, structuredContent, options = {}) {
 export function errorResponse(message, options = {}) {
   const text = typeof message === 'string' ? message : message?.message || 'Tool failed';
   const errorPayload = normalizeError(options.error || message) || { message: text };
+  const code = normalizeCode(options.code || errorPayload.code || inferErrorCode(errorPayload));
   return structuredResponse(text, options.data || {}, {
     ...options,
     status: options.status || TOOL_STATUS.ERROR,
+    code,
     error: errorPayload,
   });
 }
@@ -148,4 +181,89 @@ export function createToolResponder({ serverName } = {}) {
         ...(server ? { server } : {}),
       }),
   };
+}
+
+export function patchMcpServer(server, options = {}) {
+  if (!server || typeof server.registerTool !== 'function') {
+    throw new Error('patchMcpServer requires a valid MCP server instance');
+  }
+  if (server.__chatosPatched) {
+    return server;
+  }
+  const serverName = normalizeServerName(options.serverName);
+  const logger = options.logger && typeof options.logger.log === 'function' ? options.logger : null;
+  const responder = createToolResponder({ serverName });
+  const originalRegisterTool = server.registerTool.bind(server);
+  const originalCreateToolError =
+    typeof server.createToolError === 'function' ? server.createToolError.bind(server) : null;
+
+  server.registerTool = (name, definition, handler) => {
+    if (typeof handler !== 'function') {
+      return originalRegisterTool(name, definition, handler);
+    }
+    const toolName = String(name || '').trim() || 'unknown_tool';
+    const wrapped = async (args, extra) => {
+      const start = Date.now();
+      const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : {};
+      const sessionId =
+        typeof meta?.sessionId === 'string'
+          ? meta.sessionId
+          : typeof meta?.session_id === 'string'
+            ? meta.session_id
+            : '';
+      const trace = meta?.chatos?.trace || meta?.trace || undefined;
+      logger?.log?.('tool_call', {
+        server: serverName || undefined,
+        tool: toolName,
+        sessionId,
+        args,
+        size: estimatePayloadSize(args),
+        trace,
+      });
+      try {
+        const result = await handler(args, extra);
+        const elapsedMs = Date.now() - start;
+        logger?.log?.('tool_result', {
+          server: serverName || undefined,
+          tool: toolName,
+          sessionId,
+          elapsedMs,
+          isError: Boolean(result?.isError),
+          size: estimatePayloadSize(result?.structuredContent || result?.content),
+          trace,
+        });
+        return result;
+      } catch (err) {
+        const elapsedMs = Date.now() - start;
+        logger?.log?.('tool_error', {
+          server: serverName || undefined,
+          tool: toolName,
+          sessionId,
+          elapsedMs,
+          message: err?.message || String(err),
+          trace,
+        });
+        const response = responder.errorResponse(err, {
+          tool: toolName,
+          trace,
+          status: TOOL_STATUS.ERROR,
+        });
+        return { ...response, isError: true };
+      }
+    };
+    return originalRegisterTool(name, definition, wrapped);
+  };
+
+  if (originalCreateToolError) {
+    server.createToolError = (message) => {
+      const response = responder.errorResponse(message, {
+        status: TOOL_STATUS.ERROR,
+        code: inferErrorCode(message),
+      });
+      return { ...response, isError: true };
+    };
+  }
+
+  server.__chatosPatched = true;
+  return server;
 }

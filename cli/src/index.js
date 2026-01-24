@@ -278,6 +278,26 @@ function applyRuntimeSettings(config) {
     if (raw === 'zh' || raw === 'en') return raw;
     return undefined;
   };
+  const normalizeShellSafetyMode = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'strict' || raw === 'relaxed') return raw;
+    return undefined;
+  };
+  const normalizeSymlinkPolicy = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'allow' || raw === 'deny') return raw;
+    return undefined;
+  };
+  const normalizeLogLevel = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'off' || raw === 'info' || raw === 'debug') return raw;
+    return undefined;
+  };
+  const normalizePromptLogMode = (value) => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'full' || raw === 'minimal') return raw;
+    return undefined;
+  };
   const pickNumber = (value) => {
     const num = Number(value);
     return Number.isFinite(num) ? num : undefined;
@@ -288,6 +308,11 @@ function applyRuntimeSettings(config) {
   const setNumberEnv = (key, value) => {
     if (Number.isFinite(value)) {
       process.env[key] = String(value);
+    }
+  };
+  const setStringEnv = (key, value) => {
+    if (typeof value === 'string' && value.trim()) {
+      process.env[key] = value.trim();
     }
   };
   const summaryThreshold = pickNumber(config.summaryTokenThreshold);
@@ -314,6 +339,26 @@ function applyRuntimeSettings(config) {
   setNumberEnv('MODEL_CLI_RETRY', pickNumber(config.retry));
   setNumberEnv('MODEL_CLI_MCP_TIMEOUT_MS', pickNumber(config.mcpTimeoutMs));
   setNumberEnv('MODEL_CLI_MCP_MAX_TIMEOUT_MS', pickNumber(config.mcpMaxTimeoutMs));
+  const shellSafetyMode = normalizeShellSafetyMode(config.shellSafetyMode);
+  if (shellSafetyMode) {
+    setStringEnv('MODEL_CLI_SHELL_SAFETY_MODE', shellSafetyMode);
+  }
+  const symlinkPolicy = normalizeSymlinkPolicy(config.filesystemSymlinkPolicy);
+  if (symlinkPolicy) {
+    setFlag('MODEL_CLI_ALLOW_SYMLINK_ESCAPE', symlinkPolicy === 'allow');
+  }
+  const logLevel = normalizeLogLevel(config.mcpToolLogLevel);
+  if (logLevel) {
+    setStringEnv('MODEL_CLI_MCP_LOG_LEVEL', logLevel);
+  }
+  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES', pickNumber(config.mcpToolLogMaxBytes));
+  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_LINES', pickNumber(config.mcpToolLogMaxLines));
+  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS', pickNumber(config.mcpToolLogMaxFieldChars));
+  setNumberEnv('MODEL_CLI_MCP_STARTUP_CONCURRENCY', pickNumber(config.mcpStartupConcurrency));
+  const promptLogMode = normalizePromptLogMode(config.uiPromptLogMode);
+  if (promptLogMode) {
+    setStringEnv('MODEL_CLI_UI_PROMPTS_LOG_MODE', promptLogMode);
+  }
   return normalized;
 }
 

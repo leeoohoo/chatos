@@ -162,6 +162,7 @@ if (landSelection) {
 let cachedConfig = null;
 let cachedClient = null;
 let mcpRuntimePromise = null;
+let cachedConfigSignature = '';
 const mcpConfigPath =
   process.env.SUBAGENT_CONFIG_PATH ||
   args.config ||

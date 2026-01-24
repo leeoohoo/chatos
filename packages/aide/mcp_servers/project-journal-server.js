@@ -7,6 +7,15 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { resolveAppStateDir, STATE_FILE_NAMES } from '../shared/state-paths.js';
 import { resolveSessionRoot as resolveSessionRootCore } from '../shared/session-root.js';
+import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import {
+  createDedupeStore,
+  readDedupeEntry,
+  writeDedupeEntry,
+  removeDedupeEntry,
+  flushDedupeStore,
+} from './shared/dedupe-store.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -25,6 +34,7 @@ const resolveEnv = envWorkspaceRoot
   : process.env;
 const root = resolveAppStateDir(sessionRoot, { preferSessionRoot: explicitSessionRoot, env: resolveEnv });
 const serverName = args.name || 'project_journal';
+const { textResponse, structuredResponse } = createToolResponder({ serverName });
 const execLogPath = resolveStorePath(
   args['exec-log'] || args.exec_log || args.execLog,
   STATE_FILE_NAMES.projectExecLog
@@ -33,6 +43,16 @@ const projectInfoPath = resolveStorePath(
   args['project-info'] || args.project_info || args.projectInfo,
   STATE_FILE_NAMES.projectInfo
 );
+const journalDedupeStorePath =
+  process.env.MODEL_CLI_PROJECT_JOURNAL_DEDUPE ||
+  path.join(path.dirname(execLogPath), 'project-journal-dedupe.json');
+const journalDedupeStore = createDedupeStore({
+  filePath: journalDedupeStorePath,
+  maxEntries: 5000,
+  ttlMs: 30 * 24 * 60 * 60 * 1000,
+  maxIdsPerKey: 20,
+});
+const enqueueJournalWrite = createWriteQueue();
 
 ensureDir(root);
 ensureFileExists(execLogPath, '');
@@ -42,6 +62,23 @@ const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 
 registerTools();
 
@@ -77,32 +114,62 @@ function registerTools() {
         files: z.array(z.string()).optional().describe('Changed/added files (relative paths)'),
         highlights: z.array(z.string()).optional().describe('Key changes / additions'),
         next_steps: z.array(z.string()).optional().describe('Suggested next steps'),
+        dedupe_key: z.string().optional().describe('Optional idempotency key to dedupe repeated calls'),
         runId: z.string().optional().describe('Run ID (optional; defaults to current run)'),
         sessionId: z.string().optional().describe('Session ID (optional; defaults to current session)'),
       }),
     },
     async (input) => {
-      const ts = new Date().toISOString();
-      const entry = {
-        id: crypto.randomUUID(),
-        ts,
-        title: '',
-        tags: normalizeTags(input?.tags, input?.tag),
-        summary: safeTrim(input?.summary),
-        details: typeof input?.details === 'string' ? input.details : '',
-        files: normalizeStringArray(input?.files),
-        highlights: normalizeStringArray(input?.highlights),
-        nextSteps: normalizeStringArray(input?.next_steps),
-        runId: pickRunId(input?.runId),
-        sessionId: pickSessionId(input?.sessionId),
-      };
-      entry.title = safeTrim(input?.title) || buildDefaultTitle(ts, entry.tags);
+      const result = await enqueueJournalWrite(() => {
+        const runId = pickRunId(input?.runId);
+        const sessionId = pickSessionId(input?.sessionId);
+        const dedupeKey = buildJournalDedupeKey(input?.dedupe_key, {
+          scope: 'exec_log',
+          runId,
+          sessionId,
+        });
+        if (dedupeKey) {
+          const existing = readDedupeEntry(journalDedupeStore, dedupeKey);
+          if (existing) {
+            const resolved = resolveExecLogFromIds(existing.ids);
+            if (resolved) {
+              writeDedupeEntry(journalDedupeStore, dedupeKey, [resolved.id]);
+              flushDedupeStore(journalDedupeStore);
+              return { entry: resolved, deduped: true };
+            }
+            removeDedupeEntry(journalDedupeStore, dedupeKey);
+          }
+        }
 
-      appendJsonl(execLogPath, entry);
+        const ts = new Date().toISOString();
+        const entry = {
+          id: crypto.randomUUID(),
+          ts,
+          title: '',
+          tags: normalizeTags(input?.tags, input?.tag),
+          summary: safeTrim(input?.summary),
+          details: typeof input?.details === 'string' ? input.details : '',
+          files: normalizeStringArray(input?.files),
+          highlights: normalizeStringArray(input?.highlights),
+          nextSteps: normalizeStringArray(input?.next_steps),
+          runId,
+          sessionId,
+        };
+        entry.title = safeTrim(input?.title) || buildDefaultTitle(ts, entry.tags);
 
-      return structuredResponse(renderExecLogSummary(entry, 'Execution log recorded'), {
-        status: 'ok',
-        entry,
+        appendJsonl(execLogPath, entry);
+        if (dedupeKey) {
+          writeDedupeEntry(journalDedupeStore, dedupeKey, [entry.id]);
+        }
+        flushDedupeStore(journalDedupeStore);
+        return { entry, deduped: false };
+      });
+
+      const header = result.deduped ? 'Execution log already recorded (deduped)' : 'Execution log recorded';
+      return structuredResponse(renderExecLogSummary(result.entry, header), {
+        status: result.deduped ? 'noop' : 'ok',
+        entry: result.entry,
+        deduped: result.deduped === true,
       });
     }
   );
@@ -221,7 +288,7 @@ function registerTools() {
       }),
     },
     async (input) => {
-      const updated = writeProjectInfo(input, { overwrite: input?.overwrite === true });
+      const updated = await enqueueJournalWrite(() => writeProjectInfo(input, { overwrite: input?.overwrite === true }));
       const payload = projectInfoForOutput(updated, { includeIterations: true, iterationsLimit: 10 });
       return structuredResponse('Project info saved.', { status: 'ok', info: payload });
     }
@@ -237,31 +304,59 @@ function registerTools() {
         summary: z.string().optional().describe('Short iteration summary'),
         details: z.string().optional().describe('Longer details (optional)'),
         tags: z.array(z.string()).optional().describe('Tags for this iteration'),
+        dedupe_key: z.string().optional().describe('Optional idempotency key to dedupe repeated calls'),
       }),
     },
     async (input) => {
-      const info = readProjectInfo();
-      const now = new Date().toISOString();
-      const entry = {
-        id: crypto.randomUUID(),
-        ts: now,
-        title: safeTrim(input?.title),
-        summary: safeTrim(input?.summary),
-        details: typeof input?.details === 'string' ? input.details : '',
-        tags: normalizeTags(input?.tags),
-      };
-      const iterations = Array.isArray(info.iterations) ? info.iterations.slice() : [];
-      iterations.unshift(entry);
-      const next = {
-        ...info,
-        iterations,
-        updatedAt: now,
-        createdAt: info.createdAt || now,
-        version: 1,
-      };
-      atomicWriteJson(projectInfoPath, next);
-      const payload = projectInfoForOutput(next, { includeIterations: true, iterationsLimit: 10 });
-      return structuredResponse('Project iteration saved.', { status: 'ok', iteration: entry, info: payload });
+      const result = await enqueueJournalWrite(() => {
+        const dedupeKey = buildJournalDedupeKey(input?.dedupe_key, { scope: 'iteration' });
+        if (dedupeKey) {
+          const existing = readDedupeEntry(journalDedupeStore, dedupeKey);
+          if (existing) {
+            const resolved = resolveIterationFromIds(existing.ids);
+            if (resolved) {
+              writeDedupeEntry(journalDedupeStore, dedupeKey, [resolved.id]);
+              flushDedupeStore(journalDedupeStore);
+              return { iteration: resolved, deduped: true, info: readProjectInfo() };
+            }
+            removeDedupeEntry(journalDedupeStore, dedupeKey);
+          }
+        }
+
+        const info = readProjectInfo();
+        const now = new Date().toISOString();
+        const entry = {
+          id: crypto.randomUUID(),
+          ts: now,
+          title: safeTrim(input?.title),
+          summary: safeTrim(input?.summary),
+          details: typeof input?.details === 'string' ? input.details : '',
+          tags: normalizeTags(input?.tags),
+        };
+        const iterations = Array.isArray(info.iterations) ? info.iterations.slice() : [];
+        iterations.unshift(entry);
+        const next = {
+          ...info,
+          iterations,
+          updatedAt: now,
+          createdAt: info.createdAt || now,
+          version: 1,
+        };
+        atomicWriteJson(projectInfoPath, next);
+        if (dedupeKey) {
+          writeDedupeEntry(journalDedupeStore, dedupeKey, [entry.id]);
+        }
+        flushDedupeStore(journalDedupeStore);
+        return { iteration: entry, deduped: false, info: next };
+      });
+      const payload = projectInfoForOutput(result.info, { includeIterations: true, iterationsLimit: 10 });
+      const message = result.deduped ? 'Project iteration already saved (deduped).' : 'Project iteration saved.';
+      return structuredResponse(message, {
+        status: result.deduped ? 'noop' : 'ok',
+        iteration: result.iteration,
+        info: payload,
+        deduped: result.deduped === true,
+      });
     }
   );
 }
@@ -650,35 +745,56 @@ function safeTrim(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function createWriteQueue() {
+  let chain = Promise.resolve();
+  return (fn) => {
+    const run = chain.then(fn, fn);
+    chain = run.catch(() => {});
+    return run;
+  };
+}
+
+function buildJournalDedupeKey(rawKey, { scope, runId, sessionId } = {}) {
+  const key = safeTrim(rawKey);
+  if (!key) return '';
+  const parts = [];
+  const scopePart = safeTrim(scope);
+  if (scopePart) parts.push(scopePart);
+  const normalizedRunId = safeTrim(runId);
+  const normalizedSessionId = safeTrim(sessionId);
+  if (normalizedRunId) parts.push(`run=${normalizedRunId}`);
+  if (normalizedSessionId) parts.push(`session=${normalizedSessionId}`);
+  const prefix = parts.join('|');
+  return prefix ? `${prefix}::${key}` : key;
+}
+
+function resolveExecLogFromIds(ids) {
+  const list = Array.isArray(ids) ? ids : [];
+  for (const id of list) {
+    const entry = findExecLogById(id);
+    if (entry) return entry;
+  }
+  return null;
+}
+
+function resolveIterationFromIds(ids) {
+  const list = Array.isArray(ids) ? ids : [];
+  if (list.length === 0) return null;
+  const info = readProjectInfo();
+  const iterations = Array.isArray(info.iterations) ? info.iterations : [];
+  for (const id of list) {
+    const match = iterations.find((entry) => entry?.id === id);
+    if (match) return match;
+  }
+  return null;
+}
+
 function clampNumber(value, min, max, fallback) {
   const parsed = Number(value);
   if (Number.isFinite(parsed)) {
     return Math.min(Math.max(parsed, min), max);
   }
   return fallback;
-}
-
-function textResponse(text) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-  };
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function parseArgs(input) {

@@ -9,6 +9,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { resolveAppStateDir, resolveAppStatePath, resolveFileChangesPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
+import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
 
 const fsp = fs.promises;
 
@@ -39,6 +41,7 @@ const fsOps = createFilesystemOps({
   fileChangeLogPath,
   logProgress: (msg) => console.error(`[${serverName}] ${msg}`),
 });
+const { textResponse, structuredResponse } = createToolResponder({ serverName });
 
 const lspConfig = loadLspConfig({ root, configPathRaw });
 
@@ -46,6 +49,23 @@ const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 
 async function main() {
   const transport = new StdioServerTransport();
@@ -125,8 +145,8 @@ function registerTools() {
         server_id: z.string().optional().describe('Optional server id override'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.hover(input);
+    async (input, extra) => {
+      const result = await lspManager.hover({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -147,8 +167,8 @@ function registerTools() {
         server_id: z.string().optional().describe('Optional server id override'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.definition(input);
+    async (input, extra) => {
+      const result = await lspManager.definition({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -170,8 +190,8 @@ function registerTools() {
         server_id: z.string().optional().describe('Optional server id override'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.references(input);
+    async (input, extra) => {
+      const result = await lspManager.references({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -192,8 +212,8 @@ function registerTools() {
         server_id: z.string().optional().describe('Optional server id override'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.completion(input);
+    async (input, extra) => {
+      const result = await lspManager.completion({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -212,8 +232,8 @@ function registerTools() {
         server_id: z.string().optional().describe('Optional server id override'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.documentSymbols(input);
+    async (input, extra) => {
+      const result = await lspManager.documentSymbols({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -228,8 +248,8 @@ function registerTools() {
         server_id: z.string().min(1).describe('Server id (workspace symbol needs a running server)'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.workspaceSymbols(input);
+    async (input, extra) => {
+      const result = await lspManager.workspaceSymbols({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -251,8 +271,8 @@ function registerTools() {
         apply: z.boolean().optional().describe('Apply edits to disk (default false)'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.formatDocument(input);
+    async (input, extra) => {
+      const result = await lspManager.formatDocument({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -275,8 +295,8 @@ function registerTools() {
         apply: z.boolean().optional().describe('Apply edits to disk (default false)'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.rename(input);
+    async (input, extra) => {
+      const result = await lspManager.rename({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -295,8 +315,8 @@ function registerTools() {
         server_id: z.string().optional().describe('Optional server id override'),
       }),
     },
-    async (input) => {
-      const result = await lspManager.getDiagnostics(input);
+    async (input, extra) => {
+      const result = await lspManager.getDiagnostics({ ...input, signal: extra?.signal });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -313,6 +333,7 @@ class LspManager {
     this.maxFileBytes = clampNumber(maxFileBytes, 1024, 5 * 1024 * 1024, 512 * 1024);
     this.defaultTimeoutMs = clampNumber(defaultTimeoutMs, 1000, 5 * 60 * 1000, 30 * 1000);
     this.clients = new Map();
+    this.starting = new Map();
   }
 
   listServers() {
@@ -374,28 +395,46 @@ class LspManager {
 
   async start(serverId) {
     const cfg = this.getServerConfig(serverId);
-    let client = this.clients.get(cfg.id);
-    if (client && client.isRunning()) {
+    const existing = this.clients.get(cfg.id);
+    if (existing && existing.isRunning()) {
       return { status: 'ok', server_id: cfg.id, running: true, message: `✓ ${cfg.id} already running.` };
     }
-    client = new LspClient({
-      id: cfg.id,
-      command: cfg.command,
-      args: cfg.args,
-      cwd: this.root,
-      env: cfg.env,
-      initializationOptions: cfg.initializationOptions,
-      rootUri: toFileUri(this.root),
-      workspaceName: path.basename(this.root),
-      serverName: this.serverName,
-      fsOps: this.fsOps,
-      allowWrites: this.allowWrites,
-      maxFileBytes: this.maxFileBytes,
-      defaultTimeoutMs: this.defaultTimeoutMs,
-    });
-    await client.start();
-    this.clients.set(cfg.id, client);
-    return { status: 'ok', server_id: cfg.id, running: true, message: `✓ Started ${cfg.id}.` };
+    if (this.starting.has(cfg.id)) {
+      return await this.starting.get(cfg.id);
+    }
+    const startPromise = (async () => {
+      if (existing && !existing.isRunning()) {
+        try {
+          await existing.stop({ force: true });
+        } catch {
+          // ignore stop failures
+        }
+      }
+      const client = new LspClient({
+        id: cfg.id,
+        command: cfg.command,
+        args: cfg.args,
+        cwd: this.root,
+        env: cfg.env,
+        initializationOptions: cfg.initializationOptions,
+        rootUri: toFileUri(this.root),
+        workspaceName: path.basename(this.root),
+        serverName: this.serverName,
+        fsOps: this.fsOps,
+        allowWrites: this.allowWrites,
+        maxFileBytes: this.maxFileBytes,
+        defaultTimeoutMs: this.defaultTimeoutMs,
+      });
+      await client.start();
+      this.clients.set(cfg.id, client);
+      return { status: 'ok', server_id: cfg.id, running: true, message: `✓ Started ${cfg.id}.` };
+    })();
+    this.starting.set(cfg.id, startPromise);
+    try {
+      return await startPromise;
+    } finally {
+      this.starting.delete(cfg.id);
+    }
   }
 
   async stop(serverId, { force } = {}) {
@@ -427,125 +466,181 @@ class LspManager {
     return { serverId, client };
   }
 
-  async hover({ path: filePath, line, character, server_id: serverIdOverride }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const position = toLspPosition({ line, character });
-    const result = await client.request('textDocument/hover', {
-      textDocument: { uri: doc.uri },
-      position,
-    });
-    return { status: 'ok', tool: 'lsp_hover', server_id: serverId, document: doc, position: { line, character }, result };
-  }
-
-  async definition({ path: filePath, line, character, server_id: serverIdOverride }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const position = toLspPosition({ line, character });
-    const result = await client.request('textDocument/definition', {
-      textDocument: { uri: doc.uri },
-      position,
-    });
-    return { status: 'ok', tool: 'lsp_definition', server_id: serverId, document: doc, position: { line, character }, result };
-  }
-
-  async references({ path: filePath, line, character, include_declaration, server_id: serverIdOverride }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const position = toLspPosition({ line, character });
-    const result = await client.request('textDocument/references', {
-      textDocument: { uri: doc.uri },
-      position,
-      context: { includeDeclaration: include_declaration !== false },
-    });
-    return { status: 'ok', tool: 'lsp_references', server_id: serverId, document: doc, position: { line, character }, result };
-  }
-
-  async completion({ path: filePath, line, character, server_id: serverIdOverride }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const position = toLspPosition({ line, character });
-    const result = await client.request('textDocument/completion', {
-      textDocument: { uri: doc.uri },
-      position,
-    });
-    return { status: 'ok', tool: 'lsp_completion', server_id: serverId, document: doc, position: { line, character }, result };
-  }
-
-  async documentSymbols({ path: filePath, server_id: serverIdOverride }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const result = await client.request('textDocument/documentSymbol', {
-      textDocument: { uri: doc.uri },
-    });
-    return { status: 'ok', tool: 'lsp_document_symbols', server_id: serverId, document: doc, result };
-  }
-
-  async workspaceSymbols({ query, server_id: serverId }) {
-    await this.start(serverId);
-    const client = this.clients.get(serverId);
-    if (!client) throw new Error(`Failed to start language server: ${serverId}`);
-    const result = await client.request('workspace/symbol', { query: String(query || '') });
-    return { status: 'ok', tool: 'lsp_workspace_symbols', server_id: serverId, query: String(query || ''), result };
-  }
-
-  async formatDocument({ path: filePath, server_id: serverIdOverride, tab_size, insert_spaces, apply }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const options = {
-      tabSize: clampNumber(tab_size, 1, 16, 2),
-      insertSpaces: insert_spaces !== false,
-    };
-    const edits = await client.request('textDocument/formatting', {
-      textDocument: { uri: doc.uri },
-      options,
-    });
-
-    let applied = null;
-    if (apply) {
-      applied = await client.applyTextEditsToDisk({ uri: doc.uri, edits });
+  async runWithClient(filePathRel, overrideId, action) {
+    const { serverId, client } = await this.ensureClientForPath(filePathRel, overrideId);
+    try {
+      return await action(client, serverId);
+    } catch (err) {
+      if (client.isRunning()) {
+        throw err;
+      }
+      await this.start(serverId);
+      const restarted = this.clients.get(serverId);
+      if (!restarted) {
+        throw err;
+      }
+      return await action(restarted, serverId);
     }
-
-    return {
-      status: 'ok',
-      tool: 'lsp_format_document',
-      server_id: serverId,
-      document: doc,
-      options,
-      result: { edits, applied },
-    };
   }
 
-  async rename({ path: filePath, line, character, new_name, server_id: serverIdOverride, apply }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const position = toLspPosition({ line, character });
-    const edit = await client.request('textDocument/rename', {
-      textDocument: { uri: doc.uri },
-      position,
-      newName: String(new_name || ''),
+  async hover({ path: filePath, line, character, server_id: serverIdOverride, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const position = toLspPosition({ line, character });
+      const result = await client.request(
+        'textDocument/hover',
+        {
+          textDocument: { uri: doc.uri },
+          position,
+        },
+        { signal }
+      );
+      return { status: 'ok', tool: 'lsp_hover', server_id: serverId, document: doc, position: { line, character }, result };
     });
-
-    let applied = null;
-    if (apply) {
-      applied = await client.applyWorkspaceEditToDisk(edit);
-    }
-
-    return {
-      status: 'ok',
-      tool: 'lsp_rename',
-      server_id: serverId,
-      document: doc,
-      position: { line, character },
-      result: { edit, applied },
-    };
   }
 
-  async getDiagnostics({ path: filePath, server_id: serverIdOverride }) {
-    const { serverId, client } = await this.ensureClientForPath(filePath, serverIdOverride);
-    const doc = await client.syncDocument({ path: filePath });
-    const diagnostics = client.getDiagnostics(doc.uri);
-    return { status: 'ok', tool: 'lsp_get_diagnostics', server_id: serverId, document: doc, result: diagnostics || [] };
+  async definition({ path: filePath, line, character, server_id: serverIdOverride, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const position = toLspPosition({ line, character });
+      const result = await client.request(
+        'textDocument/definition',
+        {
+          textDocument: { uri: doc.uri },
+          position,
+        },
+        { signal }
+      );
+      return { status: 'ok', tool: 'lsp_definition', server_id: serverId, document: doc, position: { line, character }, result };
+    });
+  }
+
+  async references({ path: filePath, line, character, include_declaration, server_id: serverIdOverride, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const position = toLspPosition({ line, character });
+      const result = await client.request(
+        'textDocument/references',
+        {
+          textDocument: { uri: doc.uri },
+          position,
+          context: { includeDeclaration: include_declaration !== false },
+        },
+        { signal }
+      );
+      return { status: 'ok', tool: 'lsp_references', server_id: serverId, document: doc, position: { line, character }, result };
+    });
+  }
+
+  async completion({ path: filePath, line, character, server_id: serverIdOverride, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const position = toLspPosition({ line, character });
+      const result = await client.request(
+        'textDocument/completion',
+        {
+          textDocument: { uri: doc.uri },
+          position,
+        },
+        { signal }
+      );
+      return { status: 'ok', tool: 'lsp_completion', server_id: serverId, document: doc, position: { line, character }, result };
+    });
+  }
+
+  async documentSymbols({ path: filePath, server_id: serverIdOverride, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const result = await client.request(
+        'textDocument/documentSymbol',
+        {
+          textDocument: { uri: doc.uri },
+        },
+        { signal }
+      );
+      return { status: 'ok', tool: 'lsp_document_symbols', server_id: serverId, document: doc, result };
+    });
+  }
+
+  async workspaceSymbols({ query, server_id: serverIdOverride, signal } = {}) {
+    const queryText = String(query || '');
+    return await this.runWithClient('', serverIdOverride, async (client, serverId) => {
+      const result = await client.request('workspace/symbol', { query: queryText }, { signal });
+      return { status: 'ok', tool: 'lsp_workspace_symbols', server_id: serverId, query: queryText, result };
+    });
+  }
+
+  async formatDocument({ path: filePath, server_id: serverIdOverride, tab_size, insert_spaces, apply, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const options = {
+        tabSize: clampNumber(tab_size, 1, 16, 2),
+        insertSpaces: insert_spaces !== false,
+      };
+      const edits = await client.request(
+        'textDocument/formatting',
+        {
+          textDocument: { uri: doc.uri },
+          options,
+        },
+        { signal }
+      );
+
+      let applied = null;
+      if (apply) {
+        applied = await client.applyTextEditsToDisk({ uri: doc.uri, edits });
+      }
+
+      return {
+        status: 'ok',
+        tool: 'lsp_format_document',
+        server_id: serverId,
+        document: doc,
+        options,
+        result: { edits, applied },
+      };
+    });
+  }
+
+  async rename({ path: filePath, line, character, new_name, server_id: serverIdOverride, apply, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      const position = toLspPosition({ line, character });
+      const edit = await client.request(
+        'textDocument/rename',
+        {
+          textDocument: { uri: doc.uri },
+          position,
+          newName: String(new_name || ''),
+        },
+        { signal }
+      );
+
+      let applied = null;
+      if (apply) {
+        applied = await client.applyWorkspaceEditToDisk(edit);
+      }
+
+      return {
+        status: 'ok',
+        tool: 'lsp_rename',
+        server_id: serverId,
+        document: doc,
+        position: { line, character },
+        result: { edit, applied },
+      };
+    });
+  }
+
+  async getDiagnostics({ path: filePath, server_id: serverIdOverride, signal } = {}) {
+    return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
+      const doc = await client.syncDocument({ path: filePath });
+      if (signal?.aborted) {
+        throw new Error('LSP request aborted');
+      }
+      const diagnostics = client.getDiagnostics(doc.uri);
+      return { status: 'ok', tool: 'lsp_get_diagnostics', server_id: serverId, document: doc, result: diagnostics || [] };
+    });
   }
 }
 
@@ -589,12 +684,20 @@ class LspClient {
   }
 
   isRunning() {
-    return Boolean(this.proc && !this.proc.killed);
+    return Boolean(
+      this.proc &&
+        this.proc.exitCode === null &&
+        this.proc.signalCode === null &&
+        !this.proc.killed
+    );
   }
 
   async start() {
-    if (this.proc) {
+    if (this.proc && this.isRunning()) {
       throw new Error(`LSP client already started: ${this.id}`);
+    }
+    if (this.proc && !this.isRunning()) {
+      this.resetState();
     }
     const env = { ...process.env, ...(this.env || {}) };
     this.proc = spawn(this.command, this.args, {
@@ -638,10 +741,7 @@ class LspClient {
         }
       }
     }
-    this.proc = null;
-    this.initialized = false;
-    this.documentState.clear();
-    this.diagnosticsByUri.clear();
+    this.resetState();
     this.rejectAllPending(new Error(`LSP server stopped: ${this.id}`));
   }
 
@@ -681,17 +781,37 @@ class LspClient {
 
   onExit(code, signal) {
     const err = new Error(`LSP server exited: ${this.id} (code=${code ?? 'n/a'}, signal=${signal ?? 'n/a'})`);
-    this.rejectAllPending(err);
+    this.handleProcessExit(err);
   }
 
   onError(err) {
     const e = err instanceof Error ? err : new Error(String(err || 'LSP process error'));
-    this.rejectAllPending(e);
+    this.handleProcessExit(e);
+  }
+
+  handleProcessExit(err) {
+    this.resetState();
+    this.rejectAllPending(err);
+  }
+
+  resetState() {
+    this.proc = null;
+    this.initialized = false;
+    this.buffer = Buffer.alloc(0);
+    this.documentState.clear();
+    this.diagnosticsByUri.clear();
   }
 
   rejectAllPending(err) {
     for (const entry of this.pending.values()) {
       clearTimeout(entry.timeout);
+      if (entry.signal && entry.abortHandler) {
+        try {
+          entry.signal.removeEventListener('abort', entry.abortHandler);
+        } catch {
+          // ignore
+        }
+      }
       entry.reject(err);
     }
     this.pending.clear();
@@ -727,24 +847,62 @@ class LspClient {
     this.send({ jsonrpc: '2.0', method, params: params === undefined ? null : params });
   }
 
-  request(method, params, { timeoutMs } = {}) {
+  request(method, params, { timeoutMs, signal } = {}) {
     const id = this.nextRequestId++;
     const msg = { jsonrpc: '2.0', id, method, params: params === undefined ? null : params };
     const ms = clampNumber(timeoutMs, 100, 5 * 60 * 1000, this.defaultTimeoutMs);
     return new Promise((resolve, reject) => {
+      const abortHandler = () => {
+        if (!this.pending.has(id)) return;
+        clearTimeout(timeout);
+        this.pending.delete(id);
+        this.sendCancelRequest(id);
+        reject(new Error(`LSP request aborted: ${method}`));
+      };
       const timeout = setTimeout(() => {
         this.pending.delete(id);
+        this.sendCancelRequest(id);
+        if (signal && abortHandler) {
+          try {
+            signal.removeEventListener('abort', abortHandler);
+          } catch {
+            // ignore
+          }
+        }
         reject(new Error(`LSP request timeout: ${method} (${ms}ms)`));
       }, ms);
-      this.pending.set(id, { resolve, reject, timeout, method });
+      this.pending.set(id, { resolve, reject, timeout, method, signal, abortHandler });
+      if (signal && typeof signal.addEventListener === 'function') {
+        if (signal.aborted) {
+          abortHandler();
+          return;
+        }
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
       try {
         this.send(msg);
       } catch (err) {
         clearTimeout(timeout);
         this.pending.delete(id);
+        if (signal && abortHandler) {
+          try {
+            signal.removeEventListener('abort', abortHandler);
+          } catch {
+            // ignore
+          }
+        }
         reject(err);
       }
     });
+  }
+
+  sendCancelRequest(id) {
+    if (!Number.isFinite(id)) return;
+    try {
+      this.send({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id } });
+    } catch {
+      // ignore
+    }
   }
 
   async handleMessage(message) {
@@ -774,6 +932,13 @@ class LspClient {
       if (!pending) return;
       clearTimeout(pending.timeout);
       this.pending.delete(id);
+      if (pending.signal && pending.abortHandler) {
+        try {
+          pending.signal.removeEventListener('abort', pending.abortHandler);
+        } catch {
+          // ignore
+        }
+      }
       if (message.error) {
         pending.reject(new Error(message.error.message || 'LSP error'));
       } else {
@@ -1175,24 +1340,6 @@ function ensureDir(targetDir) {
     }
     throw err;
   }
-}
-
-function textResponse(text) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-  };
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    ...textResponse(text),
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function renderJson(value) {

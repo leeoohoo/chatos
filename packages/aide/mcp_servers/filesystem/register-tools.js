@@ -244,7 +244,11 @@ async function searchInTree(startDir, needle, options = {}) {
       if (Number.isFinite(maxBytes) && maxBytes > 0 && stats.size > maxBytes) {
         continue;
       }
-      const content = await fsp.readFile(current, 'utf8');
+      const buffer = await fsp.readFile(current);
+      if (isBinary(buffer)) {
+        continue;
+      }
+      const content = buffer.toString('utf8');
       const lines = content.split(/\r?\n/);
       for (let i = 0; i < lines.length; i += 1) {
         if (lines[i].includes(needle)) {
@@ -317,6 +321,7 @@ export function registerFilesystemTools({
   allowWrites,
   root,
   maxFileBytes,
+  maxWriteBytes,
   searchLimit,
   fsOps,
   logProgress,
@@ -349,6 +354,7 @@ export function registerFilesystemTools({
 
   const note = typeof workspaceNote === 'string' ? workspaceNote : '';
   const safeMaxFileBytes = clampNumber(maxFileBytes, 1024, 1024 * 1024, 256 * 1024);
+  const safeMaxWriteBytes = clampNumber(maxWriteBytes, 1024, 100 * 1024 * 1024, safeMaxFileBytes);
   const safeSearchLimit = clampNumber(searchLimit, 1, 200, 40);
   const safeRoot = typeof root === 'string' && root.trim() ? root.trim() : process.cwd();
 
@@ -411,7 +417,11 @@ export function registerFilesystemTools({
       if (stats.size > safeMaxFileBytes) {
         throw new Error(`File too large (${formatBytes(stats.size)}), exceeds limit ${formatBytes(safeMaxFileBytes)}.`);
       }
-      const content = await fsp.readFile(target, { encoding: 'utf8' });
+      const buffer = await fsp.readFile(target);
+      if (isBinary(buffer)) {
+        throw new Error('Target appears to be a binary file; read_file only supports UTF-8 text.');
+      }
+      const content = buffer.toString('utf8');
       const lines = content.split(/\r?\n/);
       const numberedContent = lines.map((line, i) => `${(i + 1).toString().padStart(6, ' ')} | ${line}`).join('\n');
       const header = `# ${relativePath(target)} (size: ${formatBytes(stats.size)})`;
@@ -495,6 +505,12 @@ ${note}`,
       const payload = await resolveWritePayload(args);
       if (!payload) {
         throw new Error('No content to write; aborted.');
+      }
+      const payloadBytes = Buffer.byteLength(payload, 'utf8');
+      if (safeMaxWriteBytes > 0 && payloadBytes > safeMaxWriteBytes) {
+        throw new Error(
+          `Write payload too large (${formatBytes(payloadBytes)}), exceeds limit ${formatBytes(safeMaxWriteBytes)}.`
+        );
       }
       const confirmResult = await confirmFileChangeIfNeeded?.({
         tool: 'write_file',
@@ -604,6 +620,12 @@ ${note}`,
       const newString = String(newRaw ?? '');
 
       const isCreateNewFile = oldString === '' && !fileExists;
+      const payloadBytes = Buffer.byteLength(oldString, 'utf8') + Buffer.byteLength(newString, 'utf8');
+      if (safeMaxWriteBytes > 0 && payloadBytes > safeMaxWriteBytes) {
+        throw new Error(
+          `Edit payload too large (${formatBytes(payloadBytes)}), exceeds limit ${formatBytes(safeMaxWriteBytes)}.`
+        );
+      }
 
       if (!isCreateNewFile && !fileExists) {
         throw new Error(`File not found: ${relPathLabel}. To create a new file, set old_string="" or use write_file.`);
@@ -869,6 +891,12 @@ ${note}`,
 
       if (!patchText || !patchText.trim()) {
         throw new Error('Patch content is empty; nothing to apply.');
+      }
+      const patchBytes = Buffer.byteLength(patchText, 'utf8');
+      if (safeMaxWriteBytes > 0 && patchBytes > safeMaxWriteBytes) {
+        throw new Error(
+          `Patch payload too large (${formatBytes(patchBytes)}), exceeds limit ${formatBytes(safeMaxWriteBytes)}.`
+        );
       }
 
       // 验证 patch 格式（friendly patch 使用不同语法）

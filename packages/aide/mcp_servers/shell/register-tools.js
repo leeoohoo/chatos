@@ -504,6 +504,8 @@ export function registerShellTools(context = {}) {
     textResponse,
     structuredResponse,
     truncateForUi,
+    analyzeShellCommand,
+    shellSafetyMode,
   } = context;
 
   if (!server) throw new Error('Missing MCP server');
@@ -531,6 +533,11 @@ export function registerShellTools(context = {}) {
     async ({ command, cwd = '.', timeout_ms: timeout, shell, env }, extra) => {
       const workingDir = await ensurePath(cwd);
       const usedShell = shell || defaultShell;
+      const analysis = typeof analyzeShellCommand === 'function' ? analyzeShellCommand(command) : null;
+      const safetyMode = typeof shellSafetyMode === 'string' ? shellSafetyMode : 'strict';
+      if (analysis?.dangerous && safetyMode !== 'relaxed') {
+        throw new Error('Command blocked: detected high-risk shell pattern. Please review or use a safer command.');
+      }
       const referencedPaths = assertCommandPathsWithinRoot(command, workingDir, usedShell) || [];
       const effectiveTimeout = clampNumber(timeout, 1000, 15 * 60 * 1000, defaultTimeout);
       const confirmEnabled = shouldConfirmFileChanges();
@@ -626,6 +633,7 @@ export function registerShellTools(context = {}) {
         interruptedForPrompt: false,
         prompt: null,
       };
+      const startedAt = Date.now();
       execResult = await execCommandWithPromptAbort({
         command,
         options,
@@ -634,7 +642,12 @@ export function registerShellTools(context = {}) {
         promptIdleMs: 500,
         abortSignal: extra?.signal,
       });
+      const elapsedMs = Date.now() - startedAt;
 
+      const warningBlock =
+        analysis && Array.isArray(analysis.warnings) && analysis.warnings.length > 0
+          ? `\n\n[Warnings]\n- ${analysis.warnings.join('\n- ')}`
+          : '';
       formatted = formatCommandResult({
         command,
         cwd: workingDir,
@@ -643,7 +656,9 @@ export function registerShellTools(context = {}) {
         exitCode: execResult.exitCode,
         signal: execResult.signal,
         timedOut: execResult.timedOut,
-      });
+        elapsedMs,
+        bytesReceived: execResult.bytesReceived,
+      }) + warningBlock;
 
       if (execResult.interruptedForPrompt) {
         const promptLine = execResult?.prompt?.line ? `\nDetected prompt: ${execResult.prompt.line}` : '';
@@ -894,6 +909,11 @@ export function registerShellTools(context = {}) {
     },
     async ({ command, session, cwd = '.', env, window, preview_lines, preview_wait_ms }) => {
       const workingDir = await ensurePath(cwd);
+      const analysis = typeof analyzeShellCommand === 'function' ? analyzeShellCommand(command) : null;
+      const safetyMode = typeof shellSafetyMode === 'string' ? shellSafetyMode : 'strict';
+      if (analysis?.dangerous && safetyMode !== 'relaxed') {
+        throw new Error('Command blocked: detected high-risk shell pattern. Please review or use a safer command.');
+      }
       assertCommandPathsWithinRoot(command, workingDir, defaultShell);
       const sessionName = sessions.sanitizeName(session || `sess_${Date.now().toString(36)}`);
       const windowName = window ? sessions.sanitizeName(window) : null;
@@ -931,12 +951,16 @@ export function registerShellTools(context = {}) {
         previewText = '';
       }
 
+      const warningBlock =
+        analysis && Array.isArray(analysis.warnings) && analysis.warnings.length > 0
+          ? `\n\n[Warnings]\n- ${analysis.warnings.join('\n- ')}`
+          : '';
       const previewBlock =
         previewWaitMs > 0
           ? `\n\n--- preview (last ${previewLines} lines) ---\n${previewText || '<empty>'}\n--- end preview ---`
           : '';
       return textResponse(
-        `Started session "${result.sessionName}"${reuseRemark}${result.windowName ? ` window "${result.windowName}"` : ''}.${paths}${previewBlock}`
+        `Started session "${result.sessionName}"${reuseRemark}${result.windowName ? ` window "${result.windowName}"` : ''}.${paths}${warningBlock}${previewBlock}`
       );
     }
   );

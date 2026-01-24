@@ -17,6 +17,8 @@ import {
   resolveTerminalsDir,
   resolveUiPromptsPath,
 } from '../shared/state-paths.js';
+import { patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -27,7 +29,8 @@ if (args.help || args.h) {
 const root = path.resolve(args.root || process.cwd());
 const allowWrites = booleanFromArg(args.write) || /write/i.test(String(args.mode || ''));
 const serverName = args.name || (allowWrites ? 'code_writer' : 'project_files');
-const maxFileBytes = clampNumber(args['max-bytes'], 1024, 1024 * 1024, 256 * 1024);
+let maxFileBytes = clampNumber(args['max-bytes'], 1024, 50 * 1024 * 1024, 256 * 1024);
+let maxWriteBytes = clampNumber(args['max-write-bytes'], 1024, 100 * 1024 * 1024, 5 * 1024 * 1024);
 const searchLimit = clampNumber(args['max-search-results'], 1, 200, 40);
 const workspaceNote = `Workspace root: ${root}. Paths must stay inside this directory; absolute or relative paths resolving outside will be rejected.`;
 
@@ -51,6 +54,24 @@ try {
   settingsDb = null;
 }
 
+const runtimeConfig = settingsDb?.getRuntime?.() || null;
+const symlinkPolicyRaw =
+  typeof runtimeConfig?.filesystemSymlinkPolicy === 'string'
+    ? runtimeConfig.filesystemSymlinkPolicy.trim().toLowerCase()
+    : '';
+const allowSymlinkEscape =
+  symlinkPolicyRaw === 'deny' || symlinkPolicyRaw === 'disallow'
+    ? false
+    : resolveBoolFlag(process.env.MODEL_CLI_ALLOW_SYMLINK_ESCAPE, true);
+const runtimeMaxFileBytes = clampNumber(runtimeConfig?.filesystemMaxFileBytes, 1024, 50 * 1024 * 1024, null);
+if (Number.isFinite(runtimeMaxFileBytes)) {
+  maxFileBytes = runtimeMaxFileBytes;
+}
+const runtimeMaxWriteBytes = clampNumber(runtimeConfig?.filesystemMaxWriteBytes, 1024, 100 * 1024 * 1024, null);
+if (Number.isFinite(runtimeMaxWriteBytes)) {
+  maxWriteBytes = runtimeMaxWriteBytes;
+}
+
 ensureDir(root, allowWrites);
 ensureFileExists(promptLogPath);
 
@@ -58,6 +79,22 @@ const server = new McpServer({
   name: `${serverName}`,
   version: '0.2.0',
 });
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 
 appendRunPid({ pid: process.pid, kind: 'mcp', name: serverName });
 
@@ -99,6 +136,7 @@ const fsOps = createFilesystemOps({
   fileChangeLogPath,
   logProgress,
   appendRunPid,
+  allowSymlinkEscape,
 });
 const { generateUnifiedDiff } = fsOps;
 
@@ -110,6 +148,7 @@ registerFilesystemTools({
   allowWrites,
   root,
   maxFileBytes,
+  maxWriteBytes,
   searchLimit,
   fsOps,
   logProgress,
@@ -422,6 +461,15 @@ function booleanFromArg(value) {
   return false;
 }
 
+function resolveBoolFlag(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
 function clampNumber(value, min, max, fallback) {
   const parsed = Number(value);
   if (Number.isFinite(parsed)) {
@@ -476,6 +524,7 @@ function printHelp() {
       '  --mode <read|write>      Compatibility flag; write == --write',
       '  --name <id>              MCP server name (for logging)',
       '  --max-bytes <n>          Max bytes to read per file (default 256KB)',
+      '  --max-write-bytes <n>    Max bytes to write per operation (default 5MB)',
       '  --max-search-results <n> Max search hits to return (default 40)',
       '  --help                   Show help',
     ].join('\n')

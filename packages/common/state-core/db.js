@@ -461,6 +461,28 @@ function createSqlJsDb({ SQL, dbPath, seed = {}, migrateFromJson = true, legacyJ
         return clone(payload);
       });
     },
+    insertMany(table, records) {
+      return withDb((db, { markDirty }) => {
+        const list = Array.isArray(records) ? records : [];
+        if (list.length === 0) return [];
+        const inserted = [];
+        list.forEach((record) => {
+          const payload = record && typeof record === 'object' ? { ...record } : {};
+          payload.id = payload.id || genId();
+          const ts = now();
+          payload.createdAt = payload.createdAt || ts;
+          payload.updatedAt = ts;
+          execWithChangesSqlJs(
+            db,
+            'INSERT INTO records (table_name, id, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+            [table, payload.id, JSON.stringify(payload), payload.createdAt, payload.updatedAt]
+          );
+          inserted.push(clone(payload));
+        });
+        markDirty();
+        return inserted;
+      });
+    },
     update(table, id, patch) {
       return withDb((db, { markDirty }) => {
         const existingRow = selectOneSqlJs(db, 'SELECT payload FROM records WHERE table_name = ? AND id = ?', [
@@ -600,6 +622,29 @@ function createBetterSqliteDb({
           [table, payload.id, JSON.stringify(payload), payload.createdAt, payload.updatedAt]
         );
         return clone(payload);
+      });
+    },
+    insertMany(table, records) {
+      return withDb((db) => {
+        const list = Array.isArray(records) ? records : [];
+        if (list.length === 0) return [];
+        const insert = db.prepare(
+          'INSERT INTO records (table_name, id, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        );
+        const runBatch = db.transaction((items) => {
+          const out = [];
+          items.forEach((record) => {
+            const payload = record && typeof record === 'object' ? { ...record } : {};
+            payload.id = payload.id || genId();
+            const ts = now();
+            payload.createdAt = payload.createdAt || ts;
+            payload.updatedAt = ts;
+            insert.run([table, payload.id, JSON.stringify(payload), payload.createdAt, payload.updatedAt]);
+            out.push(clone(payload));
+          });
+          return out;
+        });
+        return runBatch(list);
       });
     },
     update(table, id, patch) {

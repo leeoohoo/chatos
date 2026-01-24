@@ -5,10 +5,13 @@ import crypto from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { createDb } from '../shared/data/storage.js';
+import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { registerFilesystemTools } from './filesystem/register-tools.js';
-import { resolveFileChangesPath } from '../shared/state-paths.js';
-import { createToolResponder } from './shared/tool-helpers.js';
+import { ensureAppDbPath, resolveFileChangesPath } from '../shared/state-paths.js';
+import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
 
 const fsp = fs.promises;
 
@@ -21,7 +24,8 @@ if (args.help || args.h) {
 const root = path.resolve(args.root || process.cwd());
 const allowWrites = booleanFromArg(args.write) || /write/i.test(String(args.mode || ''));
 const serverName = args.name || 'code_maintainer';
-const maxFileBytes = clampNumber(args['max-bytes'], 1024, 1024 * 1024, 256 * 1024);
+let maxFileBytes = clampNumber(args['max-bytes'], 1024, 50 * 1024 * 1024, 256 * 1024);
+let maxWriteBytes = clampNumber(args['max-write-bytes'], 1024, 100 * 1024 * 1024, 5 * 1024 * 1024);
 const searchLimit = clampNumber(args['max-search-results'], 1, 200, 40);
 const workspaceNote = `Workspace root: ${root}. Paths must stay inside this directory; absolute or relative paths resolving outside will be rejected.`;
 
@@ -30,11 +34,56 @@ ensureDir(root, allowWrites);
 const sessionRoot = resolveSessionRoot();
 const fileChangeLogPath =
   process.env.MODEL_CLI_FILE_CHANGES || resolveFileChangesPath(sessionRoot);
+const adminDbPath = process.env.MODEL_CLI_TASK_DB || ensureAppDbPath(sessionRoot);
+
+let settingsDb = null;
+try {
+  const db = createDb({ dbPath: adminDbPath });
+  settingsDb = new SettingsService(db);
+  settingsDb.ensureRuntime();
+} catch {
+  settingsDb = null;
+}
+
+const runtimeConfig = settingsDb?.getRuntime?.() || null;
+const symlinkPolicyRaw =
+  typeof runtimeConfig?.filesystemSymlinkPolicy === 'string'
+    ? runtimeConfig.filesystemSymlinkPolicy.trim().toLowerCase()
+    : '';
+const allowSymlinkEscape =
+  symlinkPolicyRaw === 'deny' || symlinkPolicyRaw === 'disallow'
+    ? false
+    : resolveBoolFlag(process.env.MODEL_CLI_ALLOW_SYMLINK_ESCAPE, true);
+const runtimeMaxFileBytes = clampNumber(runtimeConfig?.filesystemMaxFileBytes, 1024, 50 * 1024 * 1024, null);
+if (Number.isFinite(runtimeMaxFileBytes)) {
+  maxFileBytes = runtimeMaxFileBytes;
+}
+const runtimeMaxWriteBytes = clampNumber(runtimeConfig?.filesystemMaxWriteBytes, 1024, 100 * 1024 * 1024, null);
+if (Number.isFinite(runtimeMaxWriteBytes)) {
+  maxWriteBytes = runtimeMaxWriteBytes;
+}
 
 const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 const { textResponse, structuredResponse } = createToolResponder({ serverName });
 
 function logProgress(message) {
@@ -46,6 +95,7 @@ const fsOps = createFilesystemOps({
   serverName,
   fileChangeLogPath,
   logProgress,
+  allowSymlinkEscape,
 });
 
 registerFilesystemTools({
@@ -56,6 +106,7 @@ registerFilesystemTools({
   allowWrites,
   root,
   maxFileBytes,
+  maxWriteBytes,
   searchLimit,
   fsOps,
   logProgress,
@@ -118,7 +169,11 @@ function registerCodeMaintenanceTools({
       if (stats.size > safeMaxFileBytes) {
         throw new Error(`File too large (${formatBytes(stats.size)}), exceeds limit ${formatBytes(safeMaxFileBytes)}.`);
       }
-      const content = await fsp.readFile(target, { encoding: 'utf8' });
+      const buffer = await fsp.readFile(target);
+      if (isBinaryBuffer(buffer)) {
+        throw new Error('Target appears to be a binary file; read_file_raw only supports UTF-8 text.');
+      }
+      const content = buffer.toString('utf8');
       const rel = relativePath(target);
       const sha256 = hashContent(content);
       return structuredResponse(content, {
@@ -154,7 +209,11 @@ function registerCodeMaintenanceTools({
       if (stats.size > safeMaxFileBytes) {
         throw new Error(`File too large (${formatBytes(stats.size)}), exceeds limit ${formatBytes(safeMaxFileBytes)}.`);
       }
-      const content = await fsp.readFile(target, { encoding: 'utf8' });
+      const buffer = await fsp.readFile(target);
+      if (isBinaryBuffer(buffer)) {
+        throw new Error('Target appears to be a binary file; read_file_range only supports UTF-8 text.');
+      }
+      const content = buffer.toString('utf8');
       const lines = content.split(/\r?\n/);
       const totalLines = lines.length;
       const start = clampNumber(startLine, 1, totalLines, 1);
@@ -381,6 +440,17 @@ function formatBytes(bytes) {
   return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
 }
 
+function isBinaryBuffer(buffer, sampleSize = 512) {
+  if (!buffer) return false;
+  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  if (buf.length === 0) return false;
+  const sample = buf.length > sampleSize ? buf.subarray(0, sampleSize) : buf;
+  for (const byte of sample) {
+    if (byte === 0) return true;
+  }
+  return false;
+}
+
 function parseArgs(input) {
   const result = { _: [] };
   for (let i = 0; i < input.length; i += 1) {
@@ -455,6 +525,7 @@ function printHelp() {
       '  --mode <read|write>      Compatibility flag; write == --write',
       '  --name <id>              MCP server name (for logging)',
       '  --max-bytes <n>          Max bytes to read per file (default 256KB)',
+      '  --max-write-bytes <n>    Max bytes to write per operation (default 5MB)',
       '  --max-search-results <n> Max search hits to return (default 40)',
       '  --help                   Show help',
     ].join('\n')

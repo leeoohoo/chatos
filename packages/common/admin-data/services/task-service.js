@@ -13,24 +13,19 @@ export class TaskService extends BaseService {
   }
 
   addTask({ title, details, priority, status, tags, sessionId, runId }) {
-    const now = new Date().toISOString();
-    const resolvedRunId = this.#resolveRunId(runId);
-    const resolvedSessionId = this.#resolveSessionId(sessionId);
-    const normalizedTitle = this.#requireTitle(title);
-    const task = {
-      id: this.#generateId(),
-      title: normalizedTitle,
-      details: this.#coerceDetails(details, normalizedTitle),
-      priority: this.#normalizePriority(priority),
-      status: this.#normalizeStatus(status),
-      tags: this.#normalizeTags(tags),
-      runId: resolvedRunId,
-      sessionId: resolvedSessionId,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const task = this.#buildTask({ title, details, priority, status, tags, sessionId, runId });
     this.db.insert(this.tableName, this.schema.parse(task));
     return task;
+  }
+
+  addTasks(tasks = []) {
+    const list = Array.isArray(tasks) ? tasks : [];
+    if (list.length === 0) return [];
+    const parsed = list.map((item) => this.schema.parse(this.#buildTask(item)));
+    if (typeof this.db.insertMany === 'function') {
+      return this.db.insertMany(this.tableName, parsed);
+    }
+    return parsed.map((task) => this.db.insert(this.tableName, task));
   }
 
   listTasks({
@@ -154,6 +149,25 @@ export class TaskService extends BaseService {
       createdAt: task.createdAt || now,
       updatedAt: task.updatedAt || now,
     });
+  }
+
+  #buildTask({ title, details, priority, status, tags, sessionId, runId }) {
+    const now = new Date().toISOString();
+    const resolvedRunId = this.#resolveRunId(runId);
+    const resolvedSessionId = this.#resolveSessionId(sessionId);
+    const normalizedTitle = this.#requireTitle(title);
+    return {
+      id: this.#generateId(),
+      title: normalizedTitle,
+      details: this.#coerceDetails(details, normalizedTitle),
+      priority: this.#normalizePriority(priority),
+      status: this.#normalizeStatus(status),
+      tags: this.#normalizeTags(tags),
+      runId: resolvedRunId,
+      sessionId: resolvedSessionId,
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   #requireTitle(title) {

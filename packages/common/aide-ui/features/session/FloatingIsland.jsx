@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
+import { Button, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
 
 import {
   FLOATING_ISLAND_COLLAPSED_STORAGE_KEY,
@@ -128,6 +128,56 @@ function FloatingIsland({
   }, []);
   const openSystemTerminalOnSend =
     uiTerminalMode === 'system' ? true : uiTerminalMode === 'headless' ? false : platformPrefersSystemTerminal;
+  const shellSafetyMode = useMemo(() => {
+    const raw = typeof runtimeSettings?.shellSafetyMode === 'string' ? runtimeSettings.shellSafetyMode.trim().toLowerCase() : '';
+    return raw === 'relaxed' ? 'relaxed' : 'strict';
+  }, [runtimeSettings]);
+  const filesystemSymlinkPolicy = useMemo(() => {
+    const raw = typeof runtimeSettings?.filesystemSymlinkPolicy === 'string' ? runtimeSettings.filesystemSymlinkPolicy.trim().toLowerCase() : '';
+    return raw === 'deny' ? 'deny' : 'allow';
+  }, [runtimeSettings]);
+  const mcpToolLogLevel = useMemo(() => {
+    const raw = typeof runtimeSettings?.mcpToolLogLevel === 'string' ? runtimeSettings.mcpToolLogLevel.trim().toLowerCase() : '';
+    if (raw === 'off' || raw === 'debug') return raw;
+    return 'info';
+  }, [runtimeSettings]);
+  const uiPromptLogMode = useMemo(() => {
+    const raw = typeof runtimeSettings?.uiPromptLogMode === 'string' ? runtimeSettings.uiPromptLogMode.trim().toLowerCase() : '';
+    return raw === 'minimal' ? 'minimal' : 'full';
+  }, [runtimeSettings]);
+  const shellMaxBufferKb = useMemo(() => {
+    const value = Number(runtimeSettings?.shellMaxBufferBytes);
+    return Number.isFinite(value) ? Math.max(16, Math.round(value / 1024)) : 2048;
+  }, [runtimeSettings]);
+  const filesystemMaxFileKb = useMemo(() => {
+    const value = Number(runtimeSettings?.filesystemMaxFileBytes);
+    return Number.isFinite(value) ? Math.max(1, Math.round(value / 1024)) : 256;
+  }, [runtimeSettings]);
+  const filesystemMaxWriteKb = useMemo(() => {
+    const value = Number(runtimeSettings?.filesystemMaxWriteBytes);
+    return Number.isFinite(value) ? Math.max(1, Math.round(value / 1024)) : 5120;
+  }, [runtimeSettings]);
+  const mcpStartupConcurrency = useMemo(() => {
+    const value = Number(runtimeSettings?.mcpStartupConcurrency);
+    return Number.isFinite(value) ? Math.max(1, Math.min(20, Math.round(value))) : 4;
+  }, [runtimeSettings]);
+  const shellSafetyOptions = [
+    { label: 'Shell 严格', value: 'strict' },
+    { label: 'Shell 宽松', value: 'relaxed' },
+  ];
+  const symlinkPolicyOptions = [
+    { label: 'Symlink 允许', value: 'allow' },
+    { label: 'Symlink 禁止逃逸', value: 'deny' },
+  ];
+  const mcpLogLevelOptions = [
+    { label: 'MCP 日志: 关闭', value: 'off' },
+    { label: 'MCP 日志: 普通', value: 'info' },
+    { label: 'MCP 日志: 调试', value: 'debug' },
+  ];
+  const promptLogModeOptions = [
+    { label: 'Prompt 日志: 完整', value: 'full' },
+    { label: 'Prompt 日志: 最小', value: 'minimal' },
+  ];
 
   const runLabel = useMemo(() => {
     const value = runFilter || RUN_FILTER_ALL;
@@ -338,6 +388,105 @@ function FloatingIsland({
                     disabled={settingsSaving}
                   />
                   <Text>拉起终端</Text>
+                </Space>
+              </Space>
+
+              <Space size={10} align="center" wrap>
+                <Text type="secondary">安全/日志：</Text>
+                <Select
+                  size="middle"
+                  value={shellSafetyMode}
+                  options={shellSafetyOptions}
+                  onChange={(value) => applyRuntimeSettingsPatch({ shellSafetyMode: value })}
+                  disabled={settingsSaving}
+                  style={{ minWidth: 140 }}
+                />
+                <Select
+                  size="middle"
+                  value={filesystemSymlinkPolicy}
+                  options={symlinkPolicyOptions}
+                  onChange={(value) => applyRuntimeSettingsPatch({ filesystemSymlinkPolicy: value })}
+                  disabled={settingsSaving}
+                  style={{ minWidth: 160 }}
+                />
+                <Select
+                  size="middle"
+                  value={mcpToolLogLevel}
+                  options={mcpLogLevelOptions}
+                  onChange={(value) => applyRuntimeSettingsPatch({ mcpToolLogLevel: value })}
+                  disabled={settingsSaving}
+                  style={{ minWidth: 150 }}
+                />
+                <Select
+                  size="middle"
+                  value={uiPromptLogMode}
+                  options={promptLogModeOptions}
+                  onChange={(value) => applyRuntimeSettingsPatch({ uiPromptLogMode: value })}
+                  disabled={settingsSaving}
+                  style={{ minWidth: 150 }}
+                />
+              </Space>
+
+              <Space size={10} align="center" wrap>
+                <Text type="secondary">限制：</Text>
+                <Space size={6} align="center">
+                  <Text>Shell 输出(KB)</Text>
+                  <InputNumber
+                    min={16}
+                    max={51200}
+                    step={64}
+                    value={shellMaxBufferKb}
+                    onChange={(value) =>
+                      applyRuntimeSettingsPatch({
+                        shellMaxBufferBytes: Number.isFinite(value) ? Math.max(16, Math.round(value)) * 1024 : 16 * 1024,
+                      })
+                    }
+                    disabled={settingsSaving}
+                  />
+                </Space>
+                <Space size={6} align="center">
+                  <Text>文件读取(KB)</Text>
+                  <InputNumber
+                    min={1}
+                    max={102400}
+                    step={64}
+                    value={filesystemMaxFileKb}
+                    onChange={(value) => {
+                      const nextKb = Number.isFinite(value) ? Math.max(1, Math.round(value)) : 256;
+                      const bytes = nextKb * 1024;
+                      applyRuntimeSettingsPatch({ filesystemMaxFileBytes: bytes, filesystemMaxWriteBytes: bytes });
+                    }}
+                    disabled={settingsSaving}
+                  />
+                </Space>
+                <Space size={6} align="center">
+                  <Text>文件写入(KB)</Text>
+                  <InputNumber
+                    min={1}
+                    max={102400}
+                    step={128}
+                    value={filesystemMaxWriteKb}
+                    onChange={(value) => {
+                      const nextKb = Number.isFinite(value) ? Math.max(1, Math.round(value)) : 5120;
+                      applyRuntimeSettingsPatch({ filesystemMaxWriteBytes: nextKb * 1024 });
+                    }}
+                    disabled={settingsSaving}
+                  />
+                </Space>
+                <Space size={6} align="center">
+                  <Text>MCP 并发</Text>
+                  <InputNumber
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={mcpStartupConcurrency}
+                    onChange={(value) =>
+                      applyRuntimeSettingsPatch({
+                        mcpStartupConcurrency: Number.isFinite(value) ? Math.max(1, Math.min(20, Math.round(value))) : 4,
+                      })
+                    }
+                    disabled={settingsSaving}
+                  />
                 </Space>
               </Space>
 

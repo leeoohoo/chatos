@@ -23,7 +23,8 @@ export function createFilesystemOps({
   serverName: serverNameArg,
   fileChangeLogPath: logPathArg,
   logProgress: logProgressArg,
-  appendRunPid: appendRunPidArg
+  appendRunPid: appendRunPidArg,
+  allowSymlinkEscape = true,
 } = {}) {
   const root = path.resolve(rootArg || process.cwd());
   const serverName = typeof serverNameArg === 'string' && serverNameArg.trim() ? serverNameArg.trim() : 'project_files';
@@ -36,7 +37,7 @@ export function createFilesystemOps({
   const appendRunPid = typeof appendRunPidArg === 'function' ? appendRunPidArg : () => {};
 
   const { ensurePath, buildOutsideRootMessage, relativePath, resolvePathWithinWorkspace, isInsideWorkspace } =
-    createWorkspaceResolver({ root });
+    createWorkspaceResolver({ root, allowSymlinkEscape });
 
   function validateFriendlyPatchFormat(patchText) {
     const ops = parseFriendlyPatch(patchText);

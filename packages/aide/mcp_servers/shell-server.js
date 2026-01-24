@@ -16,7 +16,8 @@ import { createSessionManager } from './shell/session-manager.js';
 import { registerShellTools } from './shell/register-tools.js';
 import { ensureAppDbPath, resolveFileChangesPath, resolveUiPromptsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
-import { createToolResponder } from './shared/tool-helpers.js';
+import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
 
 const execAsync = promisify(exec);
 const args = parseArgs(process.argv.slice(2));
@@ -34,27 +35,34 @@ function resolveBoolFlag(value, fallback = false) {
   return fallback;
 }
 
+function normalizeShellSafetyMode(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) return '';
+  if (raw === 'relaxed' || raw === 'unsafe' || raw === 'loose') return 'relaxed';
+  if (raw === 'strict' || raw === 'safe') return 'strict';
+  return '';
+}
+
+function resolveShellSafetyMode({ explicitUnsafe, explicitMode, runtimeMode } = {}) {
+  if (explicitUnsafe) return 'relaxed';
+  if (explicitMode) return explicitMode;
+  if (runtimeMode) return runtimeMode;
+  return 'strict';
+}
+
 const root = path.resolve(args.root || process.cwd());
 const serverName = args.name || 'shell_tasks';
 // Default timeout raised to 5 minutes; can be adjusted via --timeout/--timeout-ms up to 15 minutes
 const defaultTimeout = clampNumber(args.timeout || args['timeout-ms'], 1000, 15 * 60 * 1000, 5 * 60 * 1000);
-const maxBuffer = clampNumber(args['max-buffer'], 1024 * 16, 8 * 1024 * 1024, 2 * 1024 * 1024);
+let maxBuffer = clampNumber(args['max-buffer'], 1024 * 16, 8 * 1024 * 1024, 2 * 1024 * 1024);
 const defaultShell =
   args.shell ||
   process.env.SHELL ||
   (process.platform === 'win32' ? process.env.COMSPEC || process.env.ComSpec || 'cmd.exe' : '/bin/bash');
-const allowUnsafeShell = resolveBoolFlag(
+const allowUnsafeShellFlag = resolveBoolFlag(
   args['allow-unsafe-shell'] ?? process.env.MODEL_CLI_ALLOW_UNSAFE_SHELL,
   false
 );
-const workspaceNote = [
-  `Workspace root: ${root}.`,
-  'The server checks literal path arguments to keep them inside this directory.',
-  'This is not a sandbox.',
-  allowUnsafeShell
-    ? 'Shell expansions are allowed (unsafe).'
-    : 'Shell expansions/variable substitutions are blocked by default (set MODEL_CLI_ALLOW_UNSAFE_SHELL=1 to bypass).',
-].join(' ');
 const sessionRoot = resolveSessionRoot();
 const sessions = createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot });
 const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
@@ -78,6 +86,31 @@ try {
 } catch {
   settingsDb = null;
 }
+const explicitMode = normalizeShellSafetyMode(args['shell-mode'] || process.env.MODEL_CLI_SHELL_SAFETY_MODE);
+const runtimeMode = normalizeShellSafetyMode(settingsDb?.getRuntime?.()?.shellSafetyMode);
+const runtimeMaxBuffer = clampNumber(
+  settingsDb?.getRuntime?.()?.shellMaxBufferBytes,
+  1024 * 16,
+  50 * 1024 * 1024,
+  null
+);
+if (Number.isFinite(runtimeMaxBuffer)) {
+  maxBuffer = runtimeMaxBuffer;
+}
+const shellSafetyMode = resolveShellSafetyMode({
+  explicitUnsafe: allowUnsafeShellFlag,
+  explicitMode,
+  runtimeMode,
+});
+const allowUnsafeShell = shellSafetyMode === 'relaxed';
+const workspaceNote = [
+  `Workspace root: ${root}.`,
+  'The server checks literal path arguments to keep them inside this directory.',
+  'This is not a sandbox.',
+  shellSafetyMode === 'relaxed'
+    ? 'Shell safety mode: relaxed (expansions allowed; weaker confinement).'
+    : 'Shell safety mode: strict (expansions/variable substitutions blocked by default).',
+].join(' ');
 
 ensureFileExists(promptLogPath);
 ensureFileExists(fileChangeLogPath);
@@ -88,6 +121,22 @@ const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 
 const promptFileChangeConfirm = createPromptFileChangeConfirm({
   promptLogPath,
@@ -127,6 +176,8 @@ registerShellTools({
   textResponse,
   structuredResponse,
   truncateForUi,
+  analyzeShellCommand,
+  shellSafetyMode,
 });
 
 async function main() {
@@ -506,7 +557,7 @@ function normalizeEnv(input) {
   return output;
 }
 
-function formatCommandResult({ command, cwd, stdout, stderr, exitCode, signal, timedOut }) {
+function formatCommandResult({ command, cwd, stdout, stderr, exitCode, signal, timedOut, elapsedMs, bytesReceived }) {
   const header = [`$ ${command}`, `cwd: ${cwd}`];
   if (exitCode !== null && exitCode !== undefined) {
     header.push(`exit code: ${exitCode}`);
@@ -516,6 +567,12 @@ function formatCommandResult({ command, cwd, stdout, stderr, exitCode, signal, t
   }
   if (timedOut) {
     header.push('timed out');
+  }
+  if (Number.isFinite(Number(elapsedMs))) {
+    header.push(`elapsed: ${Math.max(0, Math.round(Number(elapsedMs)))}ms`);
+  }
+  if (Number.isFinite(Number(bytesReceived)) && Number(bytesReceived) > 0) {
+    header.push(`bytes: ${Math.round(Number(bytesReceived))}`);
   }
   const divider = '-'.repeat(40);
   const stdoutBlock = stdout ? `STDOUT:\n${stdout}` : 'STDOUT: <empty>';
@@ -554,6 +611,47 @@ function looksLikeFileMutationCommand(commandText) {
   const lower = cmd.toLowerCase();
   if (lower.includes('>') || lower.includes('>>') || lower.includes('| tee ')) return true;
   return /\b(rm|mv|cp|touch|mkdir|rmdir|sed|perl|python|node|deno)\b/.test(lower);
+}
+
+function analyzeShellCommand(commandText = '') {
+  const cmd = String(commandText || '');
+  const lower = cmd.toLowerCase();
+  const warnings = [];
+  const usesPipe = /\|/.test(lower);
+  const usesRedirect = />|<|>>/.test(lower);
+  const usesBackground = /\s&\s*$/.test(lower) || /(^|\s)nohup\s/.test(lower);
+  const usesSudo = /(^|\s)sudo(\s|$)/.test(lower);
+  const dangerous =
+    /\brm\s+-rf\s+\/(\s|$)/.test(lower) ||
+    /\bmkfs(\.| )/.test(lower) ||
+    /\bdd\s+if=/.test(lower) ||
+    /:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(lower);
+  if (usesPipe) {
+    warnings.push('检测到管道符 (|)，注意输出可能被进一步处理。');
+  }
+  if (usesRedirect) {
+    warnings.push('检测到重定向符号 (> / >> / <)，注意可能覆盖文件。');
+  }
+  if (usesBackground) {
+    warnings.push('检测到后台执行 (&/nohup)，建议使用 session_run 管理长任务。');
+  }
+  if (usesSudo) {
+    warnings.push('检测到 sudo，注意权限与安全风险。');
+  }
+  if (/\b(cat|find|rg|grep)\b/.test(lower) && !/(\|\s*(head|tail)\b|-m\s*\d+)/.test(lower)) {
+    warnings.push('命令可能产生大输出，建议用 head/tail 或限制匹配条数。');
+  }
+  if (dangerous) {
+    warnings.push('检测到高风险命令模式（如 rm -rf / 或低级磁盘操作）。');
+  }
+  return {
+    usesPipe,
+    usesRedirect,
+    usesBackground,
+    usesSudo,
+    dangerous,
+    warnings,
+  };
 }
 
 function isSafeGitPreviewCommand(commandText) {
@@ -704,6 +802,7 @@ function printHelp() {
       '  --max-buffer <b>    Max STDOUT/STDERR buffer (min 16KB, default 2MB)',
       '  --shell <path>      Optional shell override',
       '  --allow-unsafe-shell  Allow shell expansions/variable substitution (weakens path checks)',
+      '  --shell-mode <strict|relaxed>  Safety mode override (default strict)',
       '  --name <id>         MCP server name',
       '  --help              Show help',
     ].join('\n')

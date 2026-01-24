@@ -54,6 +54,26 @@ export class SettingsService extends BaseService {
       if (raw === 'zh' || raw === 'en') return raw;
       return DEFAULT_RUNTIME_SETTINGS.promptLanguage;
     };
+    const normalizeShellSafetyMode = (value) => {
+      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+      if (raw === 'strict' || raw === 'relaxed') return raw;
+      return DEFAULT_RUNTIME_SETTINGS.shellSafetyMode;
+    };
+    const normalizeSymlinkPolicy = (value) => {
+      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+      if (raw === 'allow' || raw === 'deny') return raw;
+      return DEFAULT_RUNTIME_SETTINGS.filesystemSymlinkPolicy;
+    };
+    const normalizeLogLevel = (value) => {
+      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+      if (raw === 'off' || raw === 'info' || raw === 'debug') return raw;
+      return DEFAULT_RUNTIME_SETTINGS.mcpToolLogLevel;
+    };
+    const normalizePromptLogMode = (value) => {
+      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+      if (raw === 'full' || raw === 'minimal') return raw;
+      return DEFAULT_RUNTIME_SETTINGS.uiPromptLogMode;
+    };
     const toInt = (value) => {
       const num = Number(value);
       return Number.isFinite(num) ? num : undefined;
@@ -71,6 +91,17 @@ export class SettingsService extends BaseService {
       retry: toInt(base.retry),
       mcpTimeoutMs: toInt(base.mcpTimeoutMs),
       mcpMaxTimeoutMs: toInt(base.mcpMaxTimeoutMs),
+      shellSafetyMode: normalizeShellSafetyMode(base.shellSafetyMode),
+      shellMaxBufferBytes: toInt(base.shellMaxBufferBytes),
+      filesystemSymlinkPolicy: normalizeSymlinkPolicy(base.filesystemSymlinkPolicy),
+      filesystemMaxFileBytes: toInt(base.filesystemMaxFileBytes),
+      filesystemMaxWriteBytes: toInt(base.filesystemMaxWriteBytes),
+      mcpToolLogLevel: normalizeLogLevel(base.mcpToolLogLevel),
+      mcpToolLogMaxBytes: toInt(base.mcpToolLogMaxBytes),
+      mcpToolLogMaxLines: toInt(base.mcpToolLogMaxLines),
+      mcpToolLogMaxFieldChars: toInt(base.mcpToolLogMaxFieldChars),
+      mcpStartupConcurrency: toInt(base.mcpStartupConcurrency),
+      uiPromptLogMode: normalizePromptLogMode(base.uiPromptLogMode),
       injectSecretsToEnv: Boolean(base.injectSecretsToEnv),
       uiPromptWorkdir: normalizeWorkdir(base.uiPromptWorkdir),
     };

@@ -7,9 +7,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createTtyPrompt } from './tty-prompt.js';
-import { capJsonlFile } from '../shared/log-utils.js';
 import { resolveUiPromptsPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
+import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
+import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { appendUiPromptEntry, resolveUiPromptLogMode, sanitizeUiPromptEntry } from './shared/ui-prompt-log.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -18,6 +20,7 @@ if (args.help || args.h) {
 }
 
 const serverName = args.name || 'ui_prompter';
+const { structuredResponse } = createToolResponder({ serverName });
 const sessionRoot = resolveSessionRoot();
 const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
 const promptLogPath =
@@ -27,6 +30,7 @@ const MAX_WAIT_MS = 2_147_483_647; // ~24.8 days (max safe setTimeout)
 const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
 const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
 const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
+const promptLogMode = resolveUiPromptLogMode(process.env);
 const SECRET_MASK = '******';
 const secretKeysByRequest = new Map();
 
@@ -36,6 +40,22 @@ const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const toolLogPath = resolveToolLogPath(process.env);
+const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
+const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
+const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
+const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
+const toolLogger =
+  toolLogPath && toolLogLevel !== 'off'
+    ? createJsonlLogger({
+        filePath: toolLogPath,
+        maxBytes: toolLogMaxBytes,
+        maxLines: toolLogMaxLines,
+        maxFieldChars: toolLogMaxFieldChars,
+        runId,
+      })
+    : null;
+patchMcpServer(server, { serverName, logger: toolLogger });
 
 server.registerTool(
   'prompt_key_values',
@@ -474,13 +494,12 @@ main().catch((err) => {
 });
 
 function appendPromptEntry(entry) {
-  try {
-    ensureFileExists(promptLogPath);
-    capJsonlFile(promptLogPath, promptLogLimits);
-    fs.appendFileSync(promptLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
-  } catch {
-    // ignore prompt write errors
-  }
+  appendUiPromptEntry({
+    filePath: promptLogPath,
+    entry,
+    mode: promptLogMode,
+    limits: promptLogLimits,
+  });
 }
 
 function collectSecretKeys(fields) {
@@ -557,7 +576,7 @@ function scrubPromptResponseInLog(requestId, secretKeys) {
           parsed.requestId === id
         ) {
           changed = true;
-          return JSON.stringify(redactPromptEntry(parsed, secretKeys));
+          return JSON.stringify(sanitizeUiPromptEntry(redactPromptEntry(parsed, secretKeys), promptLogMode));
         }
       } catch {
         // ignore parse errors
@@ -607,14 +626,16 @@ async function waitForPromptResponse({ requestId, timeoutMs }) {
       }
       if (deadline && Date.now() >= deadline) {
         cleanup();
-        resolve({
+        const timeoutEntry = {
           ts: new Date().toISOString(),
           type: 'ui_prompt',
           action: 'response',
           requestId,
           ...(runId ? { runId } : {}),
           response: { status: 'timeout' },
-        });
+        };
+        appendPromptEntry(timeoutEntry);
+        resolve(timeoutEntry);
       }
     };
 
@@ -688,18 +709,6 @@ function findLatestPromptResponse(requestId) {
   } catch {
     return null;
   }
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function buildKvText({ status, requestId, values }) {
