@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { createToolResponder } from '../shared/tool-helpers.js';
 
 const fsp = fs.promises;
 
@@ -27,29 +28,6 @@ function formatBytes(bytes) {
     unitIndex += 1;
   }
   return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
-}
-
-function textResponse(text) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-  };
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function hashContent(content) {
@@ -334,6 +312,7 @@ const APPLY_PATCH_DESCRIPTION = [
 export function registerFilesystemTools({
   server,
   z,
+  serverName,
   workspaceNote,
   allowWrites,
   root,
@@ -346,6 +325,7 @@ export function registerFilesystemTools({
   if (!server) throw new Error('Missing MCP server');
   if (!z) throw new Error('Missing zod');
   if (!fsOps) throw new Error('Missing filesystem ops');
+  const { textResponse, structuredResponse } = createToolResponder({ serverName });
 
   const {
     applyPatch,

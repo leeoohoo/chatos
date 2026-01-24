@@ -37,6 +37,8 @@ export function useChatAgents({ models } = {}) {
 
   const openNewAgentModal = () => {
     setAgentModalInitial({
+      mode: 'custom',
+      landConfigId: '',
       name: '',
       description: '',
       prompt: '',
@@ -53,6 +55,8 @@ export function useChatAgents({ models } = {}) {
     if (!agent) return;
     setAgentModalInitial({
       id: agent.id,
+      mode: agent.mode || 'custom',
+      landConfigId: agent.landConfigId || '',
       name: agent.name || '',
       description: agent.description || '',
       prompt: agent.prompt || '',
@@ -73,6 +77,8 @@ export function useChatAgents({ models } = {}) {
   const saveAgent = async (values) => {
     const id = normalizeId(values?.id);
     const payload = {
+      mode: values?.mode,
+      landConfigId: values?.landConfigId,
       name: values?.name,
       description: values?.description,
       prompt: values?.prompt,

@@ -98,6 +98,25 @@ function appendPromptBlock(baseText, extraText) {
   return `${base}\n\n${extra}`;
 }
 
+function normalizeTraceValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function extractTraceMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const candidate =
+    meta?.chatos?.trace && typeof meta.chatos.trace === 'object'
+      ? meta.chatos.trace
+      : meta?.trace && typeof meta.trace === 'object'
+        ? meta.trace
+        : meta;
+  const traceId = normalizeTraceValue(candidate?.traceId);
+  const spanId = normalizeTraceValue(candidate?.spanId);
+  const parentSpanId = normalizeTraceValue(candidate?.parentSpanId);
+  if (!traceId && !spanId && !parentSpanId) return null;
+  return { traceId, spanId, parentSpanId };
+}
+
 const { services: adminServices, defaultPaths } = getAdminServices();
 const runtimeConfig = adminServices.settings?.getRuntimeConfig ? adminServices.settings.getRuntimeConfig() : null;
 const promptLanguage = runtimeConfig?.promptLanguage || null;
@@ -547,7 +566,8 @@ function isToolAllowed(name) {
   return true;
 }
 
-async function executeSubAgent({ task, agentId, category, skills = [], model, query, commandId }) {
+async function executeSubAgent({ task, agentId, category, skills = [], model, query, commandId, trace }) {
+  const traceMeta = extractTraceMeta(trace);
   const agentRef = await pickAgent({ agentId, category, skills, query, commandId, task });
   if (!agentRef) {
     throw new Error('No sub-agent available; install relevant plugins first.');
@@ -603,6 +623,7 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
     agent: agentRef.agent.id,
     task,
     command: commandMeta?.id || null,
+    trace: traceMeta || undefined,
   });
   const session = new ChatSession(sessionPrompt, {
     sessionId: generateSessionId(task || ''),
@@ -637,11 +658,13 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
         text,
         source: 'ui',
         target: typeof entry.target === 'string' ? entry.target : undefined,
+        trace: traceMeta || undefined,
       });
       eventLogger?.log?.('subagent_notice', {
         agent: agentRef.agent.id,
         text: '收到纠正：已中止当前请求，正在带着纠正继续执行…',
         source: 'ui',
+        trace: traceMeta || undefined,
       });
       if (activeController && !activeController.signal.aborted) {
         try {
@@ -671,16 +694,23 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
         response = await client.chat(targetModel, session, {
           stream: true, // align with main flow to reduce request size/buffered responses
           reasoning,
+          trace: traceMeta || undefined,
           signal: controller.signal,
-          onToolCall: ({ tool, args }) => {
-            eventLogger?.log?.('subagent_tool_call', { agent: agentRef.agent.id, tool, args });
+          onToolCall: ({ tool, args, trace }) => {
+            eventLogger?.log?.('subagent_tool_call', {
+              agent: agentRef.agent.id,
+              tool,
+              args,
+              trace: trace || undefined,
+            });
           },
-          onToolResult: ({ tool, result }) => {
+          onToolResult: ({ tool, result, trace }) => {
             const preview = typeof result === 'string' ? result : JSON.stringify(result || {});
             eventLogger?.log?.('subagent_tool_result', {
               agent: agentRef.agent.id,
               tool,
               result: preview,
+              trace: trace || undefined,
             });
           },
         });
@@ -715,6 +745,7 @@ async function executeSubAgent({ task, agentId, category, skills = [], model, qu
     model: targetModel,
     command: commandMeta?.id || null,
     responsePreview,
+    trace: traceMeta || undefined,
   });
 
   return {

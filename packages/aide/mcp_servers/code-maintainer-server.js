@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { registerFilesystemTools } from './filesystem/register-tools.js';
 import { resolveFileChangesPath } from '../shared/state-paths.js';
+import { createToolResponder } from './shared/tool-helpers.js';
 
 const fsp = fs.promises;
 
@@ -34,6 +35,7 @@ const server = new McpServer({
   name: serverName,
   version: '0.1.0',
 });
+const { textResponse, structuredResponse } = createToolResponder({ serverName });
 
 function logProgress(message) {
   console.error(`[${serverName}] ${message}`);
@@ -49,6 +51,7 @@ const fsOps = createFilesystemOps({
 registerFilesystemTools({
   server,
   z,
+  serverName,
   workspaceNote,
   allowWrites,
   root,
@@ -376,24 +379,6 @@ function formatBytes(bytes) {
     unitIndex += 1;
   }
   return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
-}
-
-function textResponse(text) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-  };
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    ...textResponse(text),
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function parseArgs(input) {

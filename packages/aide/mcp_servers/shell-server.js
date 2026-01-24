@@ -16,6 +16,7 @@ import { createSessionManager } from './shell/session-manager.js';
 import { registerShellTools } from './shell/register-tools.js';
 import { ensureAppDbPath, resolveFileChangesPath, resolveUiPromptsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
+import { createToolResponder } from './shared/tool-helpers.js';
 
 const execAsync = promisify(exec);
 const args = parseArgs(process.argv.slice(2));
@@ -67,6 +68,7 @@ const adminDbPath =
   process.env.MODEL_CLI_TASK_DB ||
   ensureAppDbPath(sessionRoot);
 const fsOps = createFilesystemOps({ root, serverName, fileChangeLogPath });
+const { textResponse, structuredResponse } = createToolResponder({ serverName });
 
 let settingsDb = null;
 try {
@@ -519,29 +521,6 @@ function formatCommandResult({ command, cwd, stdout, stderr, exitCode, signal, t
   const stdoutBlock = stdout ? `STDOUT:\n${stdout}` : 'STDOUT: <empty>';
   const stderrBlock = stderr ? `STDERR:\n${stderr}` : 'STDERR: <empty>';
   return `${header.join(' | ')}\n${divider}\n${stdoutBlock}\n\n${stderrBlock}`;
-}
-
-function textResponse(text) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-  };
-}
-
-function structuredResponse(text, structuredContent) {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: text || '',
-      },
-    ],
-    structuredContent: structuredContent && typeof structuredContent === 'object' ? structuredContent : undefined,
-  };
 }
 
 function ensureFileExists(filePath) {

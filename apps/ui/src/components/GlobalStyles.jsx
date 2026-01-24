@@ -11,14 +11,25 @@ const EXTRA_CSS = `
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .ds-nav-merged.ds-nav-fixed::-webkit-scrollbar {
+        display: none;
       }
       .ds-nav-merged.ds-nav-fixed .ds-seg {
         width: auto;
         min-width: 0;
+        flex: 0 0 auto;
       }
       .ds-nav-merged.ds-nav-fixed .ant-segmented-group {
         width: auto;
         min-width: 0;
+      }
+      .ds-seg .ant-segmented-item-label {
+        white-space: nowrap;
       }
       .ds-admin-page {
         width: 100%;

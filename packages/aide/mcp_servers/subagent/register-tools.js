@@ -167,7 +167,7 @@ export function registerSubagentTools(context = {}) {
         command_id: z.string().optional().describe('Optional command ID/name; will run that command if present'),
       }),
     },
-    async ({ task, agent_id: agentId, category, skills = [], model, query, command_id: commandId }) => {
+    async ({ task, agent_id: agentId, category, skills = [], model, query, command_id: commandId }, extra) => {
       try {
         const result = await executeSubAgent({
           task,
@@ -177,6 +177,7 @@ export function registerSubagentTools(context = {}) {
           model,
           query,
           commandId,
+          trace: extra?._meta,
         });
         return jsonTextResponse(buildJobResultPayload(result));
       } catch (err) {
@@ -204,8 +205,8 @@ export function registerSubagentTools(context = {}) {
         command_id: z.string().optional().describe('Optional command ID/name; will run that command if present'),
       }),
     },
-    async ({ task, agent_id: agentId, category, skills = [], model, query, command_id: commandId }) => {
-      const job = createAsyncJob({ task, agentId, category, skills, model, query, commandId });
+    async ({ task, agent_id: agentId, category, skills = [], model, query, command_id: commandId }, extra) => {
+      const job = createAsyncJob({ task, agentId, category, skills, model, query, commandId, trace: extra?._meta });
       startAsyncJob(job);
       return jsonTextResponse({
         job_id: job.id,

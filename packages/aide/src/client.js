@@ -2,9 +2,11 @@ import { createProvider } from './providers/index.js';
 import { resolveToolset } from './tools/index.js';
 import {
   createAbortError,
+  createChildTrace,
   ensureTaskAddPayload,
   formatToolResultText,
   maybeAttachSessionIdForTaskTool,
+  normalizeTraceContext,
   normalizeToolCalls,
   parseToolArguments,
   raceWithAbort,
@@ -64,6 +66,8 @@ export class ModelClient {
     let iteration = 0;
     let toolCallsSeen = false;
     const caller = typeof options?.caller === 'string' && options.caller.trim() ? options.caller.trim() : '';
+    const baseTrace = normalizeTraceContext(options.trace);
+    const chatTrace = options.trace ? createChildTrace(baseTrace) : baseTrace;
     const resolveWorkdir = ({ toolName, callId, iteration: loopIndex, model } = {}) => {
       const raw = options?.workdir;
       if (typeof raw === 'function') {
@@ -151,14 +155,17 @@ export class ModelClient {
         try {
           for (const call of toolCalls) {
             throwIfAborted(options.signal);
-            const target = toolset.find((tool) => tool.name === call.function?.name);
+            const requestedToolName = call.function?.name || 'unknown';
+            const toolTrace = createChildTrace(chatTrace, { tool: requestedToolName });
+            const target = toolset.find((tool) => tool.name === requestedToolName);
             if (!target) {
-              const errMsg = `Tool "${call.function?.name}" is not registered but was requested by the model`;
-              session.addToolResult(call.id, `[error] ${errMsg}`, call.function?.name || '');
+              const errMsg = `Tool "${requestedToolName}" is not registered but was requested by the model`;
+              session.addToolResult(call.id, `[error] ${errMsg}`, requestedToolName);
               options.onToolResult?.({
-                tool: call.function?.name || 'unknown',
+                tool: requestedToolName,
                 callId: call.id,
                 result: `[error] ${errMsg}`,
+                trace: toolTrace,
               });
               continue;
             }
@@ -173,6 +180,7 @@ export class ModelClient {
                 tool: target.name,
                 callId: call.id,
                 result: errText,
+                trace: toolTrace,
               });
               continue;
             }
@@ -182,6 +190,7 @@ export class ModelClient {
               tool: target.name,
               callId: call.id,
               args: finalArgs,
+              trace: toolTrace,
             });
             try {
               const toolWorkdir = resolveWorkdir({
@@ -197,6 +206,7 @@ export class ModelClient {
                 toolCallId: call.id,
                 ...(caller ? { caller } : {}),
                 ...(toolWorkdir ? { workdir: toolWorkdir } : {}),
+                trace: toolTrace,
               });
               const toolResultText = formatToolResultText(toolResult);
               const toolResultForSession = sanitizeToolResultForSession(toolResultText, {
@@ -207,6 +217,7 @@ export class ModelClient {
                 tool: target.name,
                 callId: call.id,
                 result: toolResultText,
+                trace: toolTrace,
               });
             } catch (err) {
               if (err?.name === 'AbortError' || options.signal?.aborted) {
@@ -218,6 +229,7 @@ export class ModelClient {
                 tool: target.name,
                 callId: call.id,
                 result: errText,
+                trace: toolTrace,
               });
             }
           }

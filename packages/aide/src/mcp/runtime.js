@@ -1401,6 +1401,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
           }
         };
       }
+      const traceMeta = extractTraceMeta(toolContext?.trace);
       const logToolError = (err) => {
         runtimeLogger?.error(
           'MCP 工具调用失败',
@@ -1409,6 +1410,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
             tool: tool.name,
             caller: toolContext?.caller || '',
             args: summarizeArgs(normalizedArgs),
+            trace: traceMeta || undefined,
           },
           err
         );
@@ -1419,6 +1421,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
           caller: toolContext?.caller || '',
           args: summarizeArgs(normalizedArgs),
           message: err?.message || String(err),
+          trace: traceMeta || undefined,
         });
       };
       const callToolOnce = async () => {
@@ -1603,6 +1606,28 @@ function applyUiAppWorkdirOverride(meta, workdir) {
   };
 }
 
+function normalizeTraceValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function extractTraceMeta(trace) {
+  if (!trace || typeof trace !== 'object') return null;
+  const traceId = normalizeTraceValue(trace.traceId);
+  const spanId = normalizeTraceValue(trace.spanId);
+  const parentSpanId = normalizeTraceValue(trace.parentSpanId);
+  if (!traceId && !spanId && !parentSpanId) return null;
+  return { traceId, spanId, parentSpanId };
+}
+
+function mergeTraceMeta(meta, traceMeta) {
+  if (!traceMeta) return meta;
+  const base = meta && typeof meta === 'object' ? { ...meta } : {};
+  const chatos = base.chatos && typeof base.chatos === 'object' ? { ...base.chatos } : {};
+  const existingTrace = chatos.trace && typeof chatos.trace === 'object' ? chatos.trace : {};
+  chatos.trace = { ...existingTrace, ...traceMeta };
+  return { ...base, chatos };
+}
+
 function buildCallMeta(serverEntry, runtimeMeta, toolContext) {
   const base = runtimeMeta && typeof runtimeMeta === 'object' ? { ...runtimeMeta } : null;
   const raw = serverEntry?.callMeta ?? serverEntry?.call_meta;
@@ -1628,6 +1653,10 @@ function buildCallMeta(serverEntry, runtimeMeta, toolContext) {
     } else if (!Object.prototype.hasOwnProperty.call(next, 'sessionId')) {
       next = { ...next, sessionId: contextSessionId };
     }
+  }
+  const traceMeta = extractTraceMeta(toolContext?.trace);
+  if (traceMeta) {
+    next = mergeTraceMeta(next, traceMeta);
   }
   return next;
 }

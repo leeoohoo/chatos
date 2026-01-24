@@ -36,6 +36,7 @@ async function loadEngineDeps() {
       mcpRuntimeMod,
       subagentRuntimeMod,
       toolsMod,
+      landConfigMod,
       summaryMod,
       clientHelpersMod,
     ] = await Promise.all([
@@ -45,6 +46,7 @@ async function loadEngineDeps() {
       import(pathToFileURL(resolveEngineModule('mcp/runtime.js')).href),
       import(pathToFileURL(resolveEngineModule('subagents/runtime.js')).href),
       import(pathToFileURL(resolveEngineModule('tools/index.js')).href),
+      import(pathToFileURL(resolveEngineModule('land-config.js')).href),
       import(pathToFileURL(resolveEngineModule('chat/summary.js')).href),
       import(pathToFileURL(resolveEngineModule('client-helpers.js')).href),
     ]);
@@ -55,6 +57,8 @@ async function loadEngineDeps() {
       initializeMcpRuntime: mcpRuntimeMod.initializeMcpRuntime,
       runWithSubAgentContext: subagentRuntimeMod.runWithSubAgentContext,
       registerTool: toolsMod.registerTool,
+      buildLandConfigSelection: landConfigMod.buildLandConfigSelection,
+      resolveLandConfig: landConfigMod.resolveLandConfig,
       createSummaryManager: summaryMod.createSummaryManager,
       summarizeSession: summaryMod.summarizeSession,
       estimateTokenCount: summaryMod.estimateTokenCount,
@@ -67,6 +71,11 @@ async function loadEngineDeps() {
 
 function normalizeId(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeAgentMode(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return raw === 'flow' ? 'flow' : 'custom';
 }
 
 function uniqueIds(list) {
@@ -109,6 +118,36 @@ function appendEventLog(eventPath, type, payload, runId) {
     );
   } catch {
     // ignore
+  }
+}
+
+function normalizeTraceValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeTraceMeta(trace) {
+  if (!trace || typeof trace !== 'object') return null;
+  const traceId = normalizeTraceValue(trace.traceId);
+  const spanId = normalizeTraceValue(trace.spanId);
+  const parentSpanId = normalizeTraceValue(trace.parentSpanId);
+  if (!traceId && !spanId && !parentSpanId) return null;
+  return { traceId, spanId, parentSpanId };
+}
+
+function truncateLogText(value, limit = 4000) {
+  const text = typeof value === 'string' ? value : value == null ? '' : String(value);
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}...`;
+}
+
+function formatLogValue(value, limit = 4000) {
+  if (value == null) return '';
+  if (typeof value === 'string') return truncateLogText(value, limit);
+  try {
+    return truncateLogText(JSON.stringify(value), limit);
+  } catch {
+    return truncateLogText(String(value), limit);
   }
 }
 
@@ -190,6 +229,14 @@ function appendSummaryText(existing, addition) {
   if (!base) return extra;
   if (!extra) return base;
   return `${base}${SUMMARY_SEPARATOR}${extra}`;
+}
+
+function appendPromptBlock(baseText, extraText) {
+  const base = typeof baseText === 'string' ? baseText.trim() : '';
+  const extra = typeof extraText === 'string' ? extraText.trim() : '';
+  if (!base) return extra;
+  if (!extra) return base;
+  return `${base}\n\n${extra}`;
 }
 
 function estimateMessageTokens(estimateTokenCount, message) {
@@ -485,6 +532,22 @@ function matchesAnyPattern(text, patterns) {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function readRegistrySnapshot(services) {
+  const db = services?.mcpServers?.db || services?.prompts?.db || null;
+  if (!db || typeof db.list !== 'function') {
+    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
+  }
+  try {
+    return {
+      mcpServers: db.list('registryMcpServers') || [],
+      prompts: db.list('registryPrompts') || [],
+      mcpGrants: db.list('mcpServerGrants') || [],
+      promptGrants: db.list('promptGrants') || [],
+    };
+  } catch {
+    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
+  }
+}
 
 function getMcpPromptNameForServer(serverName, language) {
   const base = `mcp_${normalizeMcpServerName(serverName)}`;
@@ -941,6 +1004,7 @@ export function createChatRunner({
     extraServers,
     skipServers,
     emitEvent,
+    eventLogger,
   } = {}) => {
     const notify = typeof emitEvent === 'function' ? emitEvent : sendEvent;
     const effectiveWorkspaceRoot =
@@ -994,6 +1058,7 @@ export function createChatRunner({
             skipServers,
             baseDir,
             onNotification: handleMcpNotification,
+            eventLogger: eventLogger || null,
           });
           mcpWorkspaceRoot = effectiveWorkspaceRoot;
           mcpConfigMtimeMs = useInlineServers ? null : readMcpConfigMtimeMs();
@@ -1074,6 +1139,12 @@ export function createChatRunner({
     const baseSendEvent = sendEvent;
     const sessionRecord = store.sessions.get(sid);
     const scopedSendEvent = baseSendEvent;
+    const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+    const eventLogger = eventLogPath
+      ? {
+          log: (type, payload) => appendEventLog(eventLogPath, type, payload, runId),
+        }
+      : null;
 
     const sessionWorkspaceRoot = normalizeWorkspaceRoot(sessionRecord?.workspaceRoot);
     const requestedAgentId = normalizeId(agentId);
@@ -1085,6 +1156,8 @@ export function createChatRunner({
     if (!agentRecord) {
       throw new Error('agent not found for session');
     }
+    const agentMode = normalizeAgentMode(agentRecord?.mode);
+    const agentLandConfigId = normalizeId(agentRecord?.landConfigId);
     const agentWorkspaceRoot = normalizeWorkspaceRoot(agentRecord?.workspaceRoot);
     const effectiveWorkspaceRoot =
       agentWorkspaceRoot || sessionWorkspaceRoot || normalizeWorkspaceRoot(workspaceRoot) || process.cwd();
@@ -1101,6 +1174,8 @@ export function createChatRunner({
       ModelClient,
       createAppConfigFromModels,
       runWithSubAgentContext,
+      buildLandConfigSelection,
+      resolveLandConfig,
       createSummaryManager,
       summarizeSession,
       estimateTokenCount,
@@ -1165,6 +1240,44 @@ export function createChatRunner({
         .filter((p) => p?.name)
         .map((p) => [String(p.name).trim().toLowerCase(), p])
     );
+    const isFlowMode = agentMode === 'flow';
+    let landSelection = null;
+    if (isFlowMode) {
+      const landConfigRecords = adminServices.landConfigs?.list ? adminServices.landConfigs.list() : [];
+      const selectedLandConfig = resolveLandConfig({
+        landConfigs: landConfigRecords,
+        landConfigId: agentLandConfigId,
+      });
+      if (!selectedLandConfig) {
+        throw new Error('Flow 模式需要有效的 Land Config，请在 Agent 中选择。');
+      }
+      const registrySnapshot = readRegistrySnapshot(adminServices);
+      landSelection = buildLandConfigSelection({
+        landConfig: selectedLandConfig,
+        prompts,
+        mcpServers,
+        registryMcpServers: registrySnapshot.mcpServers,
+        registryPrompts: registrySnapshot.prompts,
+        registryMcpGrants: registrySnapshot.mcpGrants,
+        registryPromptGrants: registrySnapshot.promptGrants,
+        promptLanguage,
+      });
+      if (!landSelection) {
+        throw new Error('Flow 模式无法解析 Land Config。');
+      }
+    }
+    let effectiveAgent = agentRecord;
+    let mergedPrompts = prompts;
+    let mergedMcpServers = mcpServers;
+    let systemPrompt = '';
+    let mainUserPrompt = '';
+    let subagentUserPrompt = '';
+    let subagentMcpAllowPrefixes = null;
+    let allowedMcpPrefixes = null;
+    let runtimeMcpServers = [];
+    let toolsOverride = null;
+    let restrictedManager = null;
+    if (!isFlowMode) {
     const derivedMcpServerIds = [];
     const derivedPromptIds = [];
     const derivedPromptNames = [];
@@ -1516,7 +1629,7 @@ export function createChatRunner({
       });
       return out;
     };
-    const effectiveAgent = {
+    effectiveAgent = {
       ...agentRecord,
       mcpServerIds: uniqueIds([
         ...(Array.isArray(agentRecord.mcpServerIds) ? agentRecord.mcpServerIds : []),
@@ -1528,10 +1641,10 @@ export function createChatRunner({
       ]),
     };
     const hasUiApps = Array.isArray(agentRecord?.uiApps) && agentRecord.uiApps.length > 0;
-    const mergedPrompts = Array.isArray(extraPrompts) && extraPrompts.length > 0 ? [...prompts, ...extraPrompts] : prompts;
-    const mergedMcpServers =
+    mergedPrompts = Array.isArray(extraPrompts) && extraPrompts.length > 0 ? [...prompts, ...extraPrompts] : prompts;
+    mergedMcpServers =
       Array.isArray(extraMcpServers) && extraMcpServers.length > 0 ? [...mcpServers, ...extraMcpServers] : mcpServers;
-    const systemPrompt = buildSystemPrompt({
+    systemPrompt = buildSystemPrompt({
       agent: effectiveAgent,
       prompts: mergedPrompts,
       subagents,
@@ -1542,11 +1655,7 @@ export function createChatRunner({
     });
 
     const extraRuntimeServers = Array.isArray(extraMcpRuntimeServers) ? extraMcpRuntimeServers : [];
-    const mainUserPrompt = '';
-    const subagentUserPrompt = '';
-    const subagentMcpAllowPrefixes = null;
-
-    const runtimeMcpServers = buildRuntimeMcpServers({
+    runtimeMcpServers = buildRuntimeMcpServers({
       selectedIds: effectiveAgent.mcpServerIds,
       servers: mergedMcpServers,
       extraServers: extraRuntimeServers,
@@ -1557,19 +1666,75 @@ export function createChatRunner({
         workspaceRoot: effectiveWorkspaceRoot,
         servers: runtimeMcpServers,
         emitEvent: scopedSendEvent,
+        eventLogger,
       });
     }
 
-    let toolsOverride = resolveAllowedTools({
+    toolsOverride = resolveAllowedTools({
       agent: effectiveAgent,
       mcpServers: mergedMcpServers,
     });
-    const restrictedManager = subAgentManager
+    restrictedManager = subAgentManager
       ? createRestrictedSubAgentManager(subAgentManager, {
           allowedPluginIds: effectiveAgent.subagentIds,
           allowedSkills: effectiveAgent.skills,
         })
       : null;
+    } else if (landSelection) {
+      effectiveAgent = {
+        ...agentRecord,
+        prompt: '',
+        promptIds: [],
+        mcpServerIds: [],
+        uiApps: [],
+        subagentIds: [],
+        skills: [],
+      };
+      systemPrompt = appendPromptBlock(landSelection.main.promptText, landSelection.main.mcpPromptText);
+      subagentUserPrompt = appendPromptBlock(landSelection.sub.promptText, landSelection.sub.mcpPromptText);
+      allowedMcpPrefixes = Array.from(
+        new Set((landSelection.main?.selectedServerNames || []).map((name) => `mcp_${name}_`))
+      );
+      const subPrefixes = Array.from(
+        new Set((landSelection.sub?.selectedServerNames || []).map((name) => `mcp_${name}_`))
+      );
+      subagentMcpAllowPrefixes = subPrefixes.length > 0 ? subPrefixes : ['__none__'];
+      const landSelectedIds = [];
+      const appendSelectedIds = (entries) => {
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+          if (entry?.source !== 'admin') return;
+          const id = normalizeId(entry?.server?.id);
+          if (id) landSelectedIds.push(id);
+        });
+      };
+      appendSelectedIds(landSelection.main?.selectedServers);
+      appendSelectedIds(landSelection.sub?.selectedServers);
+      runtimeMcpServers = buildRuntimeMcpServers({
+        selectedIds: landSelectedIds,
+        servers: mcpServers,
+        extraServers: landSelection.extraMcpServers,
+      });
+      const shouldInitMcp = runtimeMcpServers.length > 0;
+      if (shouldInitMcp) {
+        await ensureMcp({
+          workspaceRoot: effectiveWorkspaceRoot,
+          servers: runtimeMcpServers,
+          emitEvent: scopedSendEvent,
+          eventLogger,
+        });
+      }
+      toolsOverride = resolveAllowedTools({
+        agent: effectiveAgent,
+        mcpServers: mergedMcpServers,
+        ...(Array.isArray(allowedMcpPrefixes) ? { allowedMcpPrefixes } : null),
+      });
+      restrictedManager = subAgentManager
+        ? createRestrictedSubAgentManager(subAgentManager, {
+            allowedPluginIds: effectiveAgent.subagentIds,
+            allowedSkills: effectiveAgent.skills,
+          })
+        : null;
+    }
 
     const listSessionMessages = () => store.messages.list(sid);
     const getConversationSnapshot = () => {
@@ -1901,7 +2066,26 @@ export function createChatRunner({
       }
     };
 
-    const onToolResult = ({ tool, callId, result }) => {
+    const logToolEvent = (type, payload) => {
+      if (!eventLogPath) return;
+      appendEventLog(eventLogPath, type, payload, runId);
+    };
+    const onToolCall = ({ tool, callId, args, trace } = {}) => {
+      const toolName = typeof tool === 'string' ? tool : '';
+      const toolCallId = typeof callId === 'string' ? callId : '';
+      const argsText = formatLogValue(args, 4000);
+      const traceMeta = normalizeTraceMeta(trace);
+      logToolEvent('tool_call', {
+        tool: toolName,
+        callId: toolCallId,
+        ...(argsText ? { args: argsText } : {}),
+        sessionId: sid,
+        agentId: effectiveAgentId,
+        caller: 'main',
+        ...(traceMeta ? { trace: traceMeta } : {}),
+      });
+    };
+    const onToolResult = ({ tool, callId, result, trace }) => {
       const toolName = typeof tool === 'string' ? tool : '';
       const toolCallId = typeof callId === 'string' ? callId : '';
       const rawContent = typeof result === 'string' ? result : String(result || '');
@@ -1915,6 +2099,17 @@ export function createChatRunner({
         toolCallId,
         toolName,
         content,
+      });
+      const resultText = formatLogValue(rawContent, 6000);
+      const traceMeta = normalizeTraceMeta(trace);
+      logToolEvent('tool_result', {
+        tool: toolName,
+        callId: toolCallId,
+        ...(resultText ? { result: resultText } : {}),
+        sessionId: sid,
+        agentId: effectiveAgentId,
+        caller: 'main',
+        ...(traceMeta ? { trace: traceMeta } : {}),
       });
       scopedSendEvent({ type: 'tool_result', sessionId: sid, message: record });
     };
@@ -1932,7 +2127,7 @@ export function createChatRunner({
               subagentMcpAllowPrefixes,
               toolHistory: null,
               registerToolResult: null,
-              eventLogger: null,
+              eventLogger: eventLogger || null,
             }
           : null;
 
@@ -1949,6 +2144,7 @@ export function createChatRunner({
             onToken,
             onReasoning,
             onAssistantStep,
+            onToolCall,
             onToolResult,
           });
 

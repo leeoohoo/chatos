@@ -105,6 +105,7 @@ const { generateUnifiedDiff } = fsOps;
 registerFilesystemTools({
   server,
   z,
+  serverName,
   workspaceNote,
   allowWrites,
   root,

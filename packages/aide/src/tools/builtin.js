@@ -67,6 +67,7 @@ registerTool({
       context.eventLogger && typeof context.eventLogger.log === 'function'
         ? context.eventLogger
         : null;
+    const traceMeta = extractTraceMeta(toolContext?.trace);
     if (!client) {
       throw new Error('Sub-agent runtime missing client context.');
     }
@@ -135,9 +136,10 @@ registerTool({
         fromModel: configuredModel,
         toModel: fallbackModel,
         reason: 'model_unavailable',
+        trace: traceMeta || undefined,
       });
     }
-    eventLogger?.log?.('subagent_start', { agent: agentRef.agent.id, task });
+    eventLogger?.log?.('subagent_start', { agent: agentRef.agent.id, task, trace: traceMeta || undefined });
     const allowMcpPrefixes = Array.isArray(context.subagentMcpAllowPrefixes)
       ? context.subagentMcpAllowPrefixes
       : null;
@@ -196,11 +198,13 @@ registerTool({
                 text,
                 source: 'ui',
                 target: typeof entry.target === 'string' ? entry.target : undefined,
+                trace: traceMeta || undefined,
               });
               eventLogger?.log?.('subagent_notice', {
                 agent: agentRef.agent.id,
                 text: '收到纠正：已中止当前请求，正在带着纠正继续执行…',
                 source: 'ui',
+                trace: traceMeta || undefined,
               });
               abortActive();
             },
@@ -241,6 +245,7 @@ registerTool({
               stream: true,
               toolsOverride,
               caller: 'subagent',
+              trace: traceMeta || undefined,
               signal: controller.signal,
               onToken: (t) => {
                 responseText += t;
@@ -258,6 +263,7 @@ registerTool({
                     text: reasoning,
                     iteration,
                     tools,
+                    trace: traceMeta || undefined,
                   });
                 }
                 if (text) {
@@ -267,10 +273,11 @@ registerTool({
                     iteration,
                     stage: 'pre_tool',
                     tools,
+                    trace: traceMeta || undefined,
                   });
                 }
               },
-              onToolCall: ({ tool, args }) => {
+              onToolCall: ({ tool, args, trace }) => {
                 logs.push({ event: 'tool_call', tool, args });
                 if (registerToolResult) {
                   try {
@@ -282,9 +289,14 @@ registerTool({
                     // ignore
                   }
                 }
-                eventLogger?.log?.('subagent_tool_call', { agent: agentRef.agent.id, tool, args });
+                eventLogger?.log?.('subagent_tool_call', {
+                  agent: agentRef.agent.id,
+                  tool,
+                  args,
+                  trace: trace || undefined,
+                });
               },
-              onToolResult: ({ tool, result }) => {
+              onToolResult: ({ tool, result, trace }) => {
                 logs.push({ event: 'tool_result', tool, result });
                 if (registerToolResult) {
                   try {
@@ -293,7 +305,12 @@ registerTool({
                     // ignore logging failures
                   }
                 }
-                eventLogger?.log?.('subagent_tool_result', { agent: agentRef.agent.id, tool, result });
+                eventLogger?.log?.('subagent_tool_result', {
+                  agent: agentRef.agent.id,
+                  tool,
+                  result,
+                  trace: trace || undefined,
+                });
               },
             },
             2
@@ -331,6 +348,7 @@ registerTool({
               toModel: fallbackModel,
               reason: info.reason,
               error: info,
+              trace: traceMeta || undefined,
             });
             continue;
           }
@@ -367,6 +385,7 @@ registerTool({
       agent: agentRef.agent.id,
       model: activeModel,
       responsePreview: responseText ? responseText.slice(0, 400) : '',
+      trace: traceMeta || undefined,
     });
     summaryManager.maybeSummarize(subSession);
     const includeLogsInReturn = process.env.MODEL_CLI_SUBAGENT_RETURN_LOGS === '1';
@@ -532,6 +551,19 @@ function createAbortError() {
   const err = new Error('aborted');
   err.name = 'AbortError';
   return err;
+}
+
+function normalizeTraceValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function extractTraceMeta(trace) {
+  if (!trace || typeof trace !== 'object') return null;
+  const traceId = normalizeTraceValue(trace.traceId);
+  const spanId = normalizeTraceValue(trace.spanId);
+  const parentSpanId = normalizeTraceValue(trace.parentSpanId);
+  if (!traceId && !spanId && !parentSpanId) return null;
+  return { traceId, spanId, parentSpanId };
 }
 
 async function chatWithRetry(client, model, session, options, retries = 1) {

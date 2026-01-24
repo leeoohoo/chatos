@@ -12,6 +12,48 @@ export function createAbortError() {
   return err;
 }
 
+export function createTraceId() {
+  return `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function createSpanId() {
+  return `span_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function normalizeTraceContext(trace = null, overrides = {}) {
+  const base = trace && typeof trace === 'object' ? { ...trace } : {};
+  const traceId = typeof base.traceId === 'string' && base.traceId.trim() ? base.traceId.trim() : createTraceId();
+  const spanId = typeof base.spanId === 'string' && base.spanId.trim() ? base.spanId.trim() : createSpanId();
+  const parentSpanId =
+    typeof base.parentSpanId === 'string' && base.parentSpanId.trim() ? base.parentSpanId.trim() : '';
+  return {
+    ...base,
+    ...overrides,
+    traceId,
+    spanId,
+    parentSpanId,
+  };
+}
+
+export function createChildTrace(parent = null, overrides = {}) {
+  const base = parent && typeof parent === 'object' ? { ...parent } : {};
+  const traceId = typeof base.traceId === 'string' && base.traceId.trim() ? base.traceId.trim() : createTraceId();
+  const parentSpanId =
+    typeof base.spanId === 'string' && base.spanId.trim()
+      ? base.spanId.trim()
+      : typeof base.parentSpanId === 'string' && base.parentSpanId.trim()
+        ? base.parentSpanId.trim()
+        : '';
+  const spanId = createSpanId();
+  return {
+    ...base,
+    ...overrides,
+    traceId,
+    spanId,
+    parentSpanId,
+  };
+}
+
 export async function raceWithAbort(promise, signal) {
   if (!signal || typeof signal.addEventListener !== 'function') {
     return promise;

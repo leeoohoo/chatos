@@ -8,6 +8,11 @@ function normalizeId(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeAgentMode(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return raw === 'flow' ? 'flow' : 'custom';
+}
+
 function resolveWorkspaceRoot(value) {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!trimmed) return '';
@@ -38,11 +43,35 @@ function normalizeWorkspaceRootInput(value) {
 
 function normalizeAgentPayload(payload) {
   const next = payload && typeof payload === 'object' ? { ...payload } : {};
+  if (Object.prototype.hasOwnProperty.call(next, 'mode')) {
+    next.mode = normalizeAgentMode(next.mode);
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'landConfigId')) {
+    next.landConfigId = normalizeId(next.landConfigId);
+  }
   if (Object.prototype.hasOwnProperty.call(next, 'workspaceRoot')) {
     const root = normalizeWorkspaceRootInput(next.workspaceRoot);
     next.workspaceRoot = root ? validateWorkspaceRoot(root) : '';
   }
   return next;
+}
+
+function applyAgentModeRules(agent) {
+  const base = agent && typeof agent === 'object' ? { ...agent } : {};
+  base.mode = normalizeAgentMode(base.mode);
+  base.landConfigId = normalizeId(base.landConfigId);
+  if (base.mode === 'flow') {
+    if (!base.landConfigId) {
+      throw new Error('Flow 模式必须选择 land_config。');
+    }
+    base.prompt = '';
+    base.promptIds = [];
+    base.mcpServerIds = [];
+    base.uiApps = [];
+    base.subagentIds = [];
+    base.skills = [];
+  }
+  return base;
 }
 
 function extractMimeTypeFromDataUrl(dataUrl) {
@@ -141,12 +170,16 @@ export function registerChatApi(ipcMain, options = {}) {
   ipcMain.handle('chat:agents:list', async () => ({ ok: true, agents: store.agents.list() }));
   ipcMain.handle('chat:agents:create', async (_event, payload = {}) => ({
     ok: true,
-    agent: store.agents.create(normalizeAgentPayload(payload)),
+    agent: store.agents.create(applyAgentModeRules(normalizeAgentPayload(payload))),
   }));
   ipcMain.handle('chat:agents:update', async (_event, payload = {}) => {
     const id = normalizeId(payload?.id);
     if (!id) throw new Error('id is required');
-    const agent = store.agents.update(id, normalizeAgentPayload(payload?.data || {}));
+    const existing = store.agents.get(id);
+    if (!existing) throw new Error('agent not found');
+    const normalized = normalizeAgentPayload(payload?.data || {});
+    const next = applyAgentModeRules({ ...existing, ...normalized });
+    const agent = store.agents.update(id, next);
     if (!agent) throw new Error('agent not found');
     return { ok: true, agent };
   });

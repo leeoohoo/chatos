@@ -25,6 +25,8 @@ const imageAttachmentSchema = z
 
 export const chatAgentSchema = z.object({
   id: z.string().uuid().optional(),
+  mode: z.enum(['custom', 'flow']).optional().default('custom'),
+  landConfigId: z.string().trim().optional().default(''),
   name: z.string().trim().min(1, 'name is required'),
   description: z.string().trim().optional().default(''),
   prompt: z.string().optional().default(''),

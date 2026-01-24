@@ -112,6 +112,8 @@ export function createChatStore(db) {
       throw new Error('modelId is required for default agent');
     }
     return createAgent({
+      mode: 'custom',
+      landConfigId: '',
       name,
       description: 'UI Chat 默认 Agent',
       prompt: '',

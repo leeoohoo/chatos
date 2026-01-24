@@ -53,6 +53,7 @@ export function AgentEditorModal({
   mcpServers,
   prompts,
   uiApps,
+  landConfigs,
   promptLanguage,
   onCancel,
   onSave,
@@ -102,6 +103,17 @@ export function AgentEditorModal({
         label: `${m.name}${m.provider ? ` (${m.provider}/${m.model})` : ''}`,
       })),
     [models]
+  );
+  const landConfigOptions = useMemo(
+    () =>
+      (Array.isArray(landConfigs) ? landConfigs : [])
+        .filter((cfg) => normalizeId(cfg?.id))
+        .map((cfg) => ({
+          value: cfg.id,
+          label: cfg.name || cfg.id,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [landConfigs]
   );
   const mcpOptions = useMemo(
     () =>
@@ -448,6 +460,8 @@ export function AgentEditorModal({
     })();
     setMcpPromptLang(inferredLang);
     form.setFieldsValue({
+      mode: initialValues?.mode || 'custom',
+      landConfigId: initialValues?.landConfigId || '',
       name: initialValues?.name || '',
       description: initialValues?.description || '',
       prompt: initialValues?.prompt || '',
@@ -497,6 +511,18 @@ export function AgentEditorModal({
 
   const selectedUiApps = Form.useWatch('uiApps', form);
   const selectedUiAppsSafe = Array.isArray(selectedUiApps) ? selectedUiApps.map((ref) => normalizeUiAppRef(ref)).filter(Boolean) : [];
+  const agentMode = Form.useWatch('mode', form);
+  const isFlowMode = agentMode === 'flow';
+
+  useEffect(() => {
+    if (!open || !isFlowMode) return;
+    form.setFieldsValue({
+      prompt: '',
+      mcpServerIds: [],
+      promptIds: [],
+      uiApps: [],
+    });
+  }, [open, isFlowMode, form]);
   const filterOptionBySearch = (input, option) => {
     const needle = String(input || '').trim().toLowerCase();
     if (!needle) return true;
@@ -596,6 +622,28 @@ export function AgentEditorModal({
         <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
           <Input placeholder="例如：前端助手 / 需求分析师" />
         </Form.Item>
+        <Form.Item name="mode" label="类型">
+          <Segmented
+            options={[
+              { label: '自定义', value: 'custom' },
+              { label: 'Flow（Land Config）', value: 'flow' },
+            ]}
+          />
+        </Form.Item>
+        {isFlowMode ? (
+          <Form.Item
+            name="landConfigId"
+            label="Land Config"
+            rules={[{ required: true, message: '请选择 Land Config' }]}
+          >
+            <Select
+              options={landConfigOptions}
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择 Flow 使用的 Land Config"
+            />
+          </Form.Item>
+        ) : null}
         <Form.Item name="description" label="描述">
           <Input.TextArea
             placeholder="可选（支持 Markdown）"
@@ -603,54 +651,60 @@ export function AgentEditorModal({
             style={markdownEditorStyle}
           />
         </Form.Item>
-        <Form.Item name="prompt" label="Prompt" extra="作为系统提示，在与该 Agent 对话时自动注入（支持 Markdown）。">
-          <Input.TextArea placeholder="可选" autoSize={{ minRows: 6, maxRows: 16 }} style={markdownEditorStyle} />
-        </Form.Item>
+        {!isFlowMode ? (
+          <Form.Item name="prompt" label="Prompt" extra="作为系统提示，在与该 Agent 对话时自动注入（支持 Markdown）。">
+            <Input.TextArea placeholder="可选" autoSize={{ minRows: 6, maxRows: 16 }} style={markdownEditorStyle} />
+          </Form.Item>
+        ) : null}
         <Form.Item name="modelId" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
           <Select options={modelOptions} showSearch optionFilterProp="label" placeholder="选择模型" />
         </Form.Item>
-        <Form.Item
-          name="mcpServerIds"
-          label="启用的 MCP"
-          getValueFromEvent={(nextIds) => uniqueIds(nextIds)}
-        >
-          <Select
-            mode="multiple"
-            options={mcpOptions}
-            showSearch
-            filterOption={filterOptionBySearch}
-            optionRender={renderMcpOption}
-            maxTagCount="responsive"
-            maxTagTextLength={32}
-            placeholder="选择要启用的 MCP（可多选）"
-          />
-        </Form.Item>
-        <Form.Item label="MCP Prompt 语言">
-          <Segmented
-            value={mcpPromptLang}
-            options={[
-              { label: '中文', value: 'zh' },
-              { label: 'English', value: 'en' },
-            ]}
-            onChange={(value) => setMcpPromptLang(value === 'en' ? 'en' : 'zh')}
-          />
-        </Form.Item>
-        <Form.Item
-          name="promptIds"
-          label="启用的 Prompt"
-          getValueFromEvent={(nextIds) => uniqueIds(nextIds)}
-        >
-          <Select
-            mode="multiple"
-            options={promptOptions}
-            showSearch
-            filterOption={filterOptionBySearch}
-            optionRender={renderPromptOption}
-            maxTagCount="responsive"
-            maxTagTextLength={32}
-            placeholder="选择要启用的 Prompt（可多选）"
-          />
-        </Form.Item>
+        {!isFlowMode ? (
+          <>
+            <Form.Item
+              name="mcpServerIds"
+              label="启用的 MCP"
+              getValueFromEvent={(nextIds) => uniqueIds(nextIds)}
+            >
+              <Select
+                mode="multiple"
+                options={mcpOptions}
+                showSearch
+                filterOption={filterOptionBySearch}
+                optionRender={renderMcpOption}
+                maxTagCount="responsive"
+                maxTagTextLength={32}
+                placeholder="选择要启用的 MCP（可多选）"
+              />
+            </Form.Item>
+            <Form.Item label="MCP Prompt 语言">
+              <Segmented
+                value={mcpPromptLang}
+                options={[
+                  { label: '中文', value: 'zh' },
+                  { label: 'English', value: 'en' },
+                ]}
+                onChange={(value) => setMcpPromptLang(value === 'en' ? 'en' : 'zh')}
+              />
+            </Form.Item>
+            <Form.Item
+              name="promptIds"
+              label="启用的 Prompt"
+              getValueFromEvent={(nextIds) => uniqueIds(nextIds)}
+            >
+              <Select
+                mode="multiple"
+                options={promptOptions}
+                showSearch
+                filterOption={filterOptionBySearch}
+                optionRender={renderPromptOption}
+                maxTagCount="responsive"
+                maxTagTextLength={32}
+                placeholder="选择要启用的 Prompt（可多选）"
+              />
+            </Form.Item>
+          </>
+        ) : null}
         <Form.Item
           label="工作目录"
           extra="可选：留空则使用当前对话设置的目录；如果 Agent 自身设置了目录，将优先生效。"
@@ -664,21 +718,23 @@ export function AgentEditorModal({
             </Button>
           </Space>
         </Form.Item>
-        <Form.Item
-          name="uiApps"
-          label="应用（可选暴露 MCP / Prompt）"
-          getValueProps={(value) => ({ value: refsToKeys(value) })}
-          getValueFromEvent={(nextKeys) => keysToRefs(nextKeys, form.getFieldValue('uiApps'))}
-        >
-          <Select
-            mode="multiple"
-            options={uiAppOptions}
-            showSearch
-            optionFilterProp="label"
-            placeholder="选择一个或多个应用"
-          />
-        </Form.Item>
-        {selectedUiAppsSafe.length > 0 ? (
+        {!isFlowMode ? (
+          <Form.Item
+            name="uiApps"
+            label="应用（可选暴露 MCP / Prompt）"
+            getValueProps={(value) => ({ value: refsToKeys(value) })}
+            getValueFromEvent={(nextKeys) => keysToRefs(nextKeys, form.getFieldValue('uiApps'))}
+          >
+            <Select
+              mode="multiple"
+              options={uiAppOptions}
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择一个或多个应用"
+            />
+          </Form.Item>
+        ) : null}
+        {!isFlowMode && selectedUiAppsSafe.length > 0 ? (
           <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
             {selectedUiAppsSafe.map((ref) => {
               const key = toUiAppKey(ref.pluginId, ref.appId);
@@ -817,9 +873,15 @@ export function AgentEditorModal({
           </div>
         ) : null}
 
-        <Space direction="vertical" size={6}>
-          <Text type="secondary">提示：先选择应用，再为每个应用勾选并选择要暴露的 MCP/Prompt。</Text>
-        </Space>
+        {!isFlowMode ? (
+          <Space direction="vertical" size={6}>
+            <Text type="secondary">提示：先选择应用，再为每个应用勾选并选择要暴露的 MCP/Prompt。</Text>
+          </Space>
+        ) : (
+          <Space direction="vertical" size={6}>
+            <Text type="secondary">Flow 模式下，工具与 Prompt 由 Land Config 统一控制。</Text>
+          </Space>
+        )}
       </Form>
     </Modal>
   );

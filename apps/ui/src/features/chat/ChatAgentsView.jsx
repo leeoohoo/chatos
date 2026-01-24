@@ -26,6 +26,7 @@ export function ChatAgentsView({ admin }) {
   const models = useMemo(() => (Array.isArray(admin?.models) ? admin.models : []), [admin]);
   const mcpServers = useMemo(() => (Array.isArray(admin?.mcpServers) ? admin.mcpServers : []), [admin]);
   const prompts = useMemo(() => (Array.isArray(admin?.prompts) ? admin.prompts : []), [admin]);
+  const landConfigs = useMemo(() => (Array.isArray(admin?.landConfigs) ? admin.landConfigs : []), [admin]);
   const runtimeSettings = useMemo(
     () => (Array.isArray(admin?.settings) ? admin.settings.find((item) => item?.id === 'runtime') : null),
     [admin]
@@ -35,6 +36,10 @@ export function ChatAgentsView({ admin }) {
   const uiApps = useMemo(() => (Array.isArray(uiAppsData?.apps) ? uiAppsData.apps : []), [uiAppsData]);
 
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
+  const landConfigById = useMemo(
+    () => new Map(landConfigs.filter((cfg) => normalizeId(cfg?.id)).map((cfg) => [cfg.id, cfg])),
+    [landConfigs]
+  );
   const controller = useChatAgents({ models });
   const {
     agents,
@@ -102,6 +107,9 @@ export function ChatAgentsView({ admin }) {
               renderItem={(agent) => {
                 const modelName = normalizeId(agent?.modelId) ? modelById.get(agent.modelId)?.name || agent.modelId : '';
                 const appCount = countList(agent?.uiApps);
+                const mode = agent?.mode === 'flow' ? 'flow' : 'custom';
+                const landConfig = normalizeId(agent?.landConfigId) ? landConfigById.get(agent.landConfigId) : null;
+                const landConfigLabel = landConfig?.name || agent?.landConfigId || '';
                 return (
                   <List.Item>
                     <Card
@@ -112,6 +120,10 @@ export function ChatAgentsView({ admin }) {
                         <Space size={8} wrap>
                           <span style={{ fontWeight: 650 }}>{agent?.name || '未命名 Agent'}</span>
                           {modelName ? <Tag color="blue">{modelName}</Tag> : null}
+                          <Tag color={mode === 'flow' ? 'green' : 'default'}>
+                            {mode === 'flow' ? 'Flow' : '自定义'}
+                          </Tag>
+                          {mode === 'flow' && landConfigLabel ? <Tag color="purple">{landConfigLabel}</Tag> : null}
                         </Space>
                       }
                       extra={
@@ -149,6 +161,7 @@ export function ChatAgentsView({ admin }) {
         mcpServers={mcpServers}
         prompts={prompts}
         uiApps={uiApps}
+        landConfigs={landConfigs}
         promptLanguage={promptLanguage}
         onCancel={closeAgentModal}
         onSave={async (values) => saveAgent(values)}
