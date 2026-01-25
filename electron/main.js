@@ -39,6 +39,7 @@ import { buildAdminSeed } from '../packages/common/admin-data/legacy.js';
 import { createLspInstaller } from './lsp-installer.js';
 import { ConfigApplier } from '../packages/core/session/ConfigApplier.js';
 import { readLastLinesFromFile } from './sessions/utils.js';
+import { resolveEngineModule } from '../src/engine-loader.js';
 
 const { app, BrowserWindow, ipcMain, dialog, nativeImage } = electron;
 const APP_DISPLAY_NAME = 'chatos';
@@ -62,17 +63,8 @@ const engineRoot = resolveEngineRoot({ projectRoot });
 if (!engineRoot) {
   throw new Error('Engine sources not found (expected ./packages/aide relative to chatos).');
 }
-const resolveEngineModule = (relativePath) => {
-  const rel = typeof relativePath === 'string' ? relativePath.trim() : '';
-  if (!rel) throw new Error('Engine module path is required');
-  const srcCandidate = path.join(engineRoot, 'src', rel);
-  if (fs.existsSync(srcCandidate)) return srcCandidate;
-  const distCandidate = path.join(engineRoot, 'dist', rel);
-  if (fs.existsSync(distCandidate)) return distCandidate;
-  throw new Error(`Engine module not found: ${rel}`);
-};
 const { createSubAgentManager } = await import(
-  pathToFileURL(resolveEngineModule('subagents/index.js')).href
+  pathToFileURL(resolveEngineModule({ engineRoot, relativePath: 'subagents/index.js' })).href
 );
 
 const appIconPath = resolveAppIconPath();

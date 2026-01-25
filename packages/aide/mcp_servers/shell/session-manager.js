@@ -3,14 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { resolveSessionsDir } from '../../shared/state-paths.js';
-
-function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
+import { ensureDir } from '../shared/fs-utils.js';
 
 function safeUnlink(filePath) {
   try {

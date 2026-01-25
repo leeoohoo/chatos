@@ -2,13 +2,14 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { clampNumber, parseArgs } from './cli-utils.js';
 import { resolveAppStateDir, STATE_FILE_NAMES } from '../shared/state-paths.js';
 import { resolveSessionRoot as resolveSessionRootCore } from '../shared/session-root.js';
-import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
-import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { createToolResponder } from './shared/tool-helpers.js';
+import { createMcpServer } from './shared/server-bootstrap.js';
+import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
 import {
   createDedupeStore,
   readDedupeEntry,
@@ -54,31 +55,11 @@ const journalDedupeStore = createDedupeStore({
 });
 const enqueueJournalWrite = createWriteQueue();
 
-ensureDir(root);
+ensureDir(root, { requireDirectory: true });
 ensureFileExists(execLogPath, '');
 ensureJsonFileExists(projectInfoPath, defaultProjectInfo());
 
-const server = new McpServer({
-  name: serverName,
-  version: '0.1.0',
-});
-const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
-const toolLogPath = resolveToolLogPath(process.env);
-const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
-const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
-const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
-const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
-const toolLogger =
-  toolLogPath && toolLogLevel !== 'off'
-    ? createJsonlLogger({
-        filePath: toolLogPath,
-        maxBytes: toolLogMaxBytes,
-        maxLines: toolLogMaxLines,
-        maxFieldChars: toolLogMaxFieldChars,
-        runId,
-      })
-    : null;
-patchMcpServer(server, { serverName, logger: toolLogger });
+const { server } = createMcpServer({ serverName, version: '0.1.0' });
 
 registerTools();
 
@@ -612,7 +593,7 @@ function renderProjectInfoText(info) {
 
 function atomicWriteJson(filePath, obj) {
   const dir = path.dirname(filePath);
-  ensureDir(dir);
+  ensureDir(dir, { requireDirectory: true });
   const base = path.basename(filePath);
   const tmp = path.join(dir, `.${base}.${process.pid}.${Date.now().toString(36)}.tmp`);
   const content = `${JSON.stringify(obj, null, 2)}\n`;
@@ -634,21 +615,6 @@ function atomicWriteJson(filePath, obj) {
   }
 }
 
-function ensureFileExists(filePath, defaultContent = '') {
-  try {
-    ensureDir(path.dirname(filePath));
-  } catch {
-    // ignore
-  }
-  try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, defaultContent, 'utf8');
-    }
-  } catch {
-    // ignore
-  }
-}
-
 function ensureJsonFileExists(filePath, defaultObject) {
   try {
     if (fs.existsSync(filePath)) return;
@@ -660,18 +626,6 @@ function ensureJsonFileExists(filePath, defaultObject) {
   } catch {
     // ignore
   }
-}
-
-function ensureDir(dirPath) {
-  if (!dirPath) return;
-  if (fs.existsSync(dirPath)) {
-    const stats = fs.statSync(dirPath);
-    if (stats.isDirectory()) {
-      return;
-    }
-    throw new Error(`${dirPath} is not a directory`);
-  }
-  fs.mkdirSync(dirPath, { recursive: true });
 }
 
 function relativePath(target) {
@@ -787,41 +741,6 @@ function resolveIterationFromIds(ids) {
     if (match) return match;
   }
   return null;
-}
-
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) {
-    return Math.min(Math.max(parsed, min), max);
-  }
-  return fallback;
-}
-
-function parseArgs(input) {
-  const result = { _: [] };
-  for (let i = 0; i < input.length; i += 1) {
-    const token = input[i];
-    if (!token.startsWith('-')) {
-      result._.push(token);
-      continue;
-    }
-    const isLong = token.startsWith('--');
-    const key = isLong ? token.slice(2) : token.slice(1);
-    if (!key) continue;
-    const [name, inline] = key.split('=');
-    if (inline !== undefined) {
-      result[name] = inline;
-      continue;
-    }
-    const next = input[i + 1];
-    if (next && !next.startsWith('-')) {
-      result[name] = next;
-      i += 1;
-    } else {
-      result[name] = true;
-    }
-  }
-  return result;
 }
 
 function printHelp() {

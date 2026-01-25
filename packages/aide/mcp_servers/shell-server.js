@@ -4,7 +4,6 @@ import os from 'os';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
@@ -16,8 +15,9 @@ import { createSessionManager } from './shell/session-manager.js';
 import { registerShellTools } from './shell/register-tools.js';
 import { ensureAppDbPath, resolveFileChangesPath, resolveUiPromptsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
-import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
-import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { createToolResponder } from './shared/tool-helpers.js';
+import { createMcpServer } from './shared/server-bootstrap.js';
+import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
 
 const execAsync = promisify(exec);
 const args = parseArgs(process.argv.slice(2));
@@ -65,7 +65,6 @@ const allowUnsafeShellFlag = resolveBoolFlag(
 );
 const sessionRoot = resolveSessionRoot();
 const sessions = createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot });
-const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
@@ -114,29 +113,10 @@ const workspaceNote = [
 
 ensureFileExists(promptLogPath);
 ensureFileExists(fileChangeLogPath);
-ensureDir(root);
+ensureDir(root, { requireDirectory: true });
 sessions.registerCleanupHandlers();
 
-const server = new McpServer({
-  name: serverName,
-  version: '0.1.0',
-});
-const toolLogPath = resolveToolLogPath(process.env);
-const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
-const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
-const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
-const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
-const toolLogger =
-  toolLogPath && toolLogLevel !== 'off'
-    ? createJsonlLogger({
-        filePath: toolLogPath,
-        maxBytes: toolLogMaxBytes,
-        maxLines: toolLogMaxLines,
-        maxFieldChars: toolLogMaxFieldChars,
-        runId,
-      })
-    : null;
-patchMcpServer(server, { serverName, logger: toolLogger });
+const { server, runId } = createMcpServer({ serverName, version: '0.1.0' });
 
 const promptFileChangeConfirm = createPromptFileChangeConfirm({
   promptLogPath,
@@ -522,17 +502,6 @@ function expandHomePath(value) {
   return path.join(home, rest);
 }
 
-function ensureDir(dirPath) {
-  const stats = fs.existsSync(dirPath) ? fs.statSync(dirPath) : null;
-  if (!stats) {
-    fs.mkdirSync(dirPath, { recursive: true });
-    return;
-  }
-  if (!stats.isDirectory()) {
-    throw new Error(`${dirPath} is not a directory`);
-  }
-}
-
 async function safeStat(target) {
   try {
     return await fs.promises.stat(target);
@@ -578,21 +547,6 @@ function formatCommandResult({ command, cwd, stdout, stderr, exitCode, signal, t
   const stdoutBlock = stdout ? `STDOUT:\n${stdout}` : 'STDOUT: <empty>';
   const stderrBlock = stderr ? `STDERR:\n${stderr}` : 'STDERR: <empty>';
   return `${header.join(' | ')}\n${divider}\n${stdoutBlock}\n\n${stderrBlock}`;
-}
-
-function ensureFileExists(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  } catch {
-    // ignore
-  }
-  try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
 }
 
 function shouldConfirmFileChanges() {

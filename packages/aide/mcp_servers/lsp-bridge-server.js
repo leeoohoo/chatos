@@ -4,13 +4,14 @@ import path from 'path';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { pathToFileURL } from 'url';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { clampNumber, parseArgs } from './cli-utils.js';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { resolveAppStateDir, resolveAppStatePath, resolveFileChangesPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
-import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
-import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { createToolResponder } from './shared/tool-helpers.js';
+import { createMcpServer } from './shared/server-bootstrap.js';
+import { ensureDir } from './shared/fs-utils.js';
 
 const fsp = fs.promises;
 
@@ -27,7 +28,7 @@ const configPathRaw = typeof args.config === 'string' ? args.config : '';
 const maxFileBytes = clampNumber(args['max-bytes'], 1024, 5 * 1024 * 1024, 512 * 1024);
 const requestTimeoutMs = clampNumber(args['timeout-ms'], 1000, 5 * 60 * 1000, 30 * 1000);
 
-ensureDir(root);
+ensureDir(root, { readable: true });
 
 const sessionRoot = resolveSessionRoot();
 const fileChangeLogPath =
@@ -45,27 +46,7 @@ const { textResponse, structuredResponse } = createToolResponder({ serverName })
 
 const lspConfig = loadLspConfig({ root, configPathRaw });
 
-const server = new McpServer({
-  name: serverName,
-  version: '0.1.0',
-});
-const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
-const toolLogPath = resolveToolLogPath(process.env);
-const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
-const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
-const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
-const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
-const toolLogger =
-  toolLogPath && toolLogLevel !== 'off'
-    ? createJsonlLogger({
-        filePath: toolLogPath,
-        maxBytes: toolLogMaxBytes,
-        maxLines: toolLogMaxLines,
-        maxFieldChars: toolLogMaxFieldChars,
-        runId,
-      })
-    : null;
-patchMcpServer(server, { serverName, logger: toolLogger });
+const { server } = createMcpServer({ serverName, version: '0.1.0' });
 
 async function main() {
   const transport = new StdioServerTransport();
@@ -1292,14 +1273,6 @@ function hashContent(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) {
-    return Math.min(Math.max(parsed, min), max);
-  }
-  return fallback;
-}
-
 function booleanFromArg(value) {
   if (value === true) return true;
   const text = String(value || '').trim().toLowerCase();
@@ -1323,23 +1296,6 @@ function formatBytes(bytes) {
     unitIndex += 1;
   }
   return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
-}
-
-function ensureDir(targetDir) {
-  try {
-    fs.mkdirSync(targetDir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  try {
-    fs.accessSync(targetDir, fs.constants.R_OK);
-  } catch (err) {
-    if (err && err.code === 'ENOENT') {
-      fs.mkdirSync(targetDir, { recursive: true });
-      return;
-    }
-    throw err;
-  }
 }
 
 function renderJson(value) {
@@ -1482,33 +1438,6 @@ function defaultLspConfig() {
       },
     },
   };
-}
-
-function parseArgs(input) {
-  const result = { _: [] };
-  for (let i = 0; i < input.length; i += 1) {
-    const token = input[i];
-    if (!token.startsWith('-')) {
-      result._.push(token);
-      continue;
-    }
-    const isLong = token.startsWith('--');
-    const key = isLong ? token.slice(2) : token.slice(1);
-    if (!key) continue;
-    const [name, inline] = key.split('=');
-    if (inline !== undefined) {
-      result[name] = inline;
-      continue;
-    }
-    const next = input[i + 1];
-    if (next && !next.startsWith('-')) {
-      result[name] = next;
-      i += 1;
-    } else {
-      result[name] = true;
-    }
-  }
-  return result;
 }
 
 function expandTemplate(value, context) {

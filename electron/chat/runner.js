@@ -6,9 +6,11 @@ import { createRestrictedSubAgentManager } from './subagent-restriction.js';
 import { resolveAllowedTools } from './tool-selection.js';
 import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
+import { appendPromptBlock } from '../../packages/common/prompt-utils.js';
 import { applySecretsToProcessEnv } from '../../packages/common/secrets-env.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
 import { extractTraceMeta } from '../../packages/common/trace-utils.js';
+import { resolveEngineModule } from '../../src/engine-loader.js';
 import { resolveEngineRoot } from '../../src/engine-paths.js';
 import { getRegistryCenter } from '../backend/registry-center.js';
 
@@ -20,12 +22,8 @@ if (!ENGINE_ROOT) {
   throw new Error('Engine sources not found (expected ./packages/aide relative to chatos).');
 }
 
-function resolveEngineModule(relativePath) {
-  const rel = typeof relativePath === 'string' ? relativePath.trim() : '';
-  if (!rel) throw new Error('relativePath is required');
-  const srcPath = path.join(ENGINE_ROOT, 'src', rel);
-  if (fs.existsSync(srcPath)) return srcPath;
-  return path.join(ENGINE_ROOT, 'dist', rel);
+function resolveEngineModulePath(relativePath) {
+  return resolveEngineModule({ engineRoot: ENGINE_ROOT, relativePath, allowMissing: true });
 }
 
 let engineDepsPromise = null;
@@ -43,15 +41,15 @@ async function loadEngineDeps() {
       summaryMod,
       clientHelpersMod,
     ] = await Promise.all([
-      import(pathToFileURL(resolveEngineModule('session.js')).href),
-      import(pathToFileURL(resolveEngineModule('client.js')).href),
-      import(pathToFileURL(resolveEngineModule('config.js')).href),
-      import(pathToFileURL(resolveEngineModule('mcp/runtime.js')).href),
-      import(pathToFileURL(resolveEngineModule('subagents/runtime.js')).href),
-      import(pathToFileURL(resolveEngineModule('tools/index.js')).href),
-      import(pathToFileURL(resolveEngineModule('land-config.js')).href),
-      import(pathToFileURL(resolveEngineModule('chat/summary.js')).href),
-      import(pathToFileURL(resolveEngineModule('client-helpers.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('session.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('client.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('config.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('mcp/runtime.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('subagents/runtime.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('tools/index.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('land-config.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('chat/summary.js')).href),
+      import(pathToFileURL(resolveEngineModulePath('client-helpers.js')).href),
     ]);
     return {
       ChatSession: sessionMod.ChatSession,
@@ -213,14 +211,6 @@ function appendSummaryText(existing, addition) {
   if (!base) return extra;
   if (!extra) return base;
   return `${base}${SUMMARY_SEPARATOR}${extra}`;
-}
-
-function appendPromptBlock(baseText, extraText) {
-  const base = typeof baseText === 'string' ? baseText.trim() : '';
-  const extra = typeof extraText === 'string' ? extraText.trim() : '';
-  if (!base) return extra;
-  if (!extra) return base;
-  return `${base}\n\n${extra}`;
 }
 
 function estimateMessageTokens(estimateTokenCount, message) {

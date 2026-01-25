@@ -26,6 +26,7 @@ import { resolveSessionRoot, persistSessionRoot } from '../../packages/aide/shar
 import { applySecretsToProcessEnv } from '../../packages/aide/shared/secrets-env.js';
 import { ensureAppStateDir, resolveAppStateDir } from '../../packages/aide/shared/state-paths.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/aide/shared/host-app.js';
+import { appendPromptBlock } from '../../packages/aide/shared/prompt-utils.js';
 import { createRuntimeLogger } from '../../packages/aide/shared/runtime-log.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -258,14 +259,6 @@ function parseBoolean(value, flag) {
     return false;
   }
   throw new Error(`Option ${flag} expected a boolean value but received "${value}"`);
-}
-
-function appendPromptBlock(baseText, extraText) {
-  const base = typeof baseText === 'string' ? baseText.trim() : '';
-  const extra = typeof extraText === 'string' ? extraText.trim() : '';
-  if (!base) return extra;
-  if (!extra) return base;
-  return `${base}\n\n${extra}`;
 }
 
 function applyRuntimeSettings(config) {

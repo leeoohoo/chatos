@@ -1,7 +1,8 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
+import { normalizeMcpServerName } from '../../packages/common/mcp-utils.js';
+import { resolveEngineModule } from '../../src/engine-loader.js';
 import { resolveEngineRoot } from '../../src/engine-paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,23 +13,11 @@ if (!ENGINE_ROOT) {
   throw new Error('Engine sources not found (expected ./packages/aide relative to chatos).');
 }
 
-function resolveEngineModule(relativePath) {
-  const rel = typeof relativePath === 'string' ? relativePath.trim() : '';
-  if (!rel) throw new Error('relativePath is required');
-  const srcPath = path.join(ENGINE_ROOT, 'src', rel);
-  if (fs.existsSync(srcPath)) return srcPath;
-  return path.join(ENGINE_ROOT, 'dist', rel);
+function resolveEngineModulePath(relativePath) {
+  return resolveEngineModule({ engineRoot: ENGINE_ROOT, relativePath, allowMissing: true });
 }
 
-const { listTools } = await import(pathToFileURL(resolveEngineModule('tools/index.js')).href);
-
-function normalize(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
+const { listTools } = await import(pathToFileURL(resolveEngineModulePath('tools/index.js')).href);
 
 export function resolveAllowedTools({ agent, mcpServers = [], allowedMcpPrefixes } = {}) {
   const agentRecord = agent && typeof agent === 'object' ? agent : {};
@@ -67,7 +56,7 @@ export function resolveAllowedTools({ agent, mcpServers = [], allowedMcpPrefixes
       .filter((srv) => srv && srv.enabled !== false && serverAllowed(srv))
       .map((srv) => srv.name)
       .filter(Boolean)
-      .map((name) => normalize(name))
+      .map((name) => normalizeMcpServerName(name))
   );
 
   if (allowedMcpNames.size > 0) {

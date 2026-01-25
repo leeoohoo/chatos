@@ -3,6 +3,7 @@ import { Button, Checkbox, Form, Input, Modal, Select, Segmented, Space, Typogra
 import { FolderOpenOutlined } from '@ant-design/icons';
 
 import { api, hasApi } from '../../../lib/api.js';
+import { getMcpPromptNameForServer } from 'mcp-utils.js';
 
 const { Text } = Typography;
 
@@ -16,17 +17,11 @@ function normalizePromptLang(value, fallback = 'auto') {
   return fallback;
 }
 
-function normalizeMcpServerName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 function getMcpPromptNames(serverName) {
-  const base = `mcp_${normalizeMcpServerName(serverName)}`;
-  return { zh: base, en: `${base}__en` };
+  return {
+    zh: getMcpPromptNameForServer(serverName),
+    en: getMcpPromptNameForServer(serverName, 'en'),
+  };
 }
 
 function toUiAppKey(pluginId, appId) {

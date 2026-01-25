@@ -1,17 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { ensureDir } from './fs-utils.js';
 
 const DEFAULT_MAX_ENTRIES = 5000;
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_IDS = 20;
-
-function ensureDir(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  } catch {
-    // ignore
-  }
-}
 
 function safeTrim(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -66,7 +59,7 @@ function pruneEntries(store) {
 }
 
 function atomicWriteJson(filePath, payload) {
-  ensureDir(filePath);
+  ensureDir(path.dirname(filePath));
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   const tmp = path.join(dir, `.${base}.${process.pid}.${Date.now().toString(36)}.tmp`);

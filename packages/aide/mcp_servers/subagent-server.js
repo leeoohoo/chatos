@@ -2,13 +2,15 @@
 import fs from 'fs';
 import path from 'path';
 import { fork } from 'child_process';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { performance } from 'perf_hooks';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { importEngineModule } from '../../../src/engine-loader.js';
 import { resolveAppStateDir, resolveEventsPath, resolveTerminalsDir } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
+import { appendPromptBlock } from '../shared/prompt-utils.js';
 import { extractTraceMeta, normalizeTraceValue } from '../shared/trace-utils.js';
 import {
   filterAgents,
@@ -19,25 +21,16 @@ import {
   withSubagentGuardrails,
   withTaskTracking,
 } from './subagent/utils.js';
+import { createRunInboxListener } from './subagent/inbox.js';
 import { registerSubagentTools } from './subagent/register-tools.js';
+import { STEP_REASONING_LIMIT, STEP_TEXT_LIMIT, normalizeStepText } from './subagent/step-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ENGINE_ROOT = path.resolve(__dirname, '..');
 
-function resolveEngineModule(relativePath) {
-  const rel = typeof relativePath === 'string' ? relativePath.trim() : '';
-  if (!rel) throw new Error('relativePath is required');
-  const srcPath = path.join(ENGINE_ROOT, 'src', rel);
-  if (!fs.existsSync(srcPath)) {
-    throw new Error(`Engine source not found: ${srcPath}`);
-  }
-  return srcPath;
-}
-
 async function importEngine(relativePath) {
-  const target = resolveEngineModule(relativePath);
-  return await import(pathToFileURL(target).href);
+  return await importEngineModule({ engineRoot: ENGINE_ROOT, relativePath });
 }
 
 const [
@@ -91,14 +84,6 @@ function readRegistrySnapshot(services) {
   } catch {
     return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
   }
-}
-
-function appendPromptBlock(baseText, extraText) {
-  const base = typeof baseText === 'string' ? baseText.trim() : '';
-  const extra = typeof extraText === 'string' ? extraText.trim() : '';
-  if (!base) return extra;
-  if (!extra) return base;
-  return `${base}\n\n${extra}`;
 }
 
 function getModelAuthDebug(config, modelName) {
@@ -261,23 +246,8 @@ if (landSelection) {
 appendRunPid({ pid: process.pid, kind: isWorkerMode ? 'subagent_worker' : 'mcp', name: 'subagent_router' });
 registerProcessShutdownHooks();
 
-function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
-
 function touchFile(filePath) {
-  try {
-    ensureDir(path.dirname(filePath));
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
+  ensureFileExists(filePath);
 }
 
 function readCursor(cursorPath) {

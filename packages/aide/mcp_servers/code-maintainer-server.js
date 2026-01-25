@@ -2,16 +2,17 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { clampNumber, parseArgs } from './cli-utils.js';
 import { createDb } from '../shared/data/storage.js';
 import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { registerFilesystemTools } from './filesystem/register-tools.js';
 import { ensureAppDbPath, resolveFileChangesPath } from '../shared/state-paths.js';
-import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
-import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { createToolResponder } from './shared/tool-helpers.js';
+import { createMcpServer } from './shared/server-bootstrap.js';
+import { ensureDir } from './shared/fs-utils.js';
 
 const fsp = fs.promises;
 
@@ -29,7 +30,7 @@ let maxWriteBytes = clampNumber(args['max-write-bytes'], 1024, 100 * 1024 * 1024
 const searchLimit = clampNumber(args['max-search-results'], 1, 200, 40);
 const workspaceNote = `Workspace root: ${root}. Paths must stay inside this directory; absolute or relative paths resolving outside will be rejected.`;
 
-ensureDir(root, allowWrites);
+ensureDir(root, { readable: true, writable: allowWrites });
 
 const sessionRoot = resolveSessionRoot();
 const fileChangeLogPath =
@@ -63,27 +64,7 @@ if (Number.isFinite(runtimeMaxWriteBytes)) {
   maxWriteBytes = runtimeMaxWriteBytes;
 }
 
-const server = new McpServer({
-  name: serverName,
-  version: '0.1.0',
-});
-const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
-const toolLogPath = resolveToolLogPath(process.env);
-const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
-const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
-const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
-const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
-const toolLogger =
-  toolLogPath && toolLogLevel !== 'off'
-    ? createJsonlLogger({
-        filePath: toolLogPath,
-        maxBytes: toolLogMaxBytes,
-        maxLines: toolLogMaxLines,
-        maxFieldChars: toolLogMaxFieldChars,
-        runId,
-      })
-    : null;
-patchMcpServer(server, { serverName, logger: toolLogger });
+const { server } = createMcpServer({ serverName, version: '0.1.0' });
 const { textResponse, structuredResponse } = createToolResponder({ serverName });
 
 function logProgress(message) {
@@ -451,33 +432,6 @@ function isBinaryBuffer(buffer, sampleSize = 512) {
   return false;
 }
 
-function parseArgs(input) {
-  const result = { _: [] };
-  for (let i = 0; i < input.length; i += 1) {
-    const token = input[i];
-    if (!token.startsWith('-')) {
-      result._.push(token);
-      continue;
-    }
-    const isLong = token.startsWith('--');
-    const key = isLong ? token.slice(2) : token.slice(1);
-    if (!key) continue;
-    const [name, inline] = key.split('=');
-    if (inline !== undefined) {
-      result[name] = inline;
-      continue;
-    }
-    const next = input[i + 1];
-    if (next && !next.startsWith('-')) {
-      result[name] = next;
-      i += 1;
-    } else {
-      result[name] = true;
-    }
-  }
-  return result;
-}
-
 function booleanFromArg(value) {
   if (value === true) return true;
   const text = String(value || '').trim().toLowerCase();
@@ -493,34 +447,6 @@ function resolveBoolFlag(value, fallback = false) {
   if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
   if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
   return fallback;
-}
-
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) {
-    return Math.min(Math.max(parsed, min), max);
-  }
-  return fallback;
-}
-
-function ensureDir(targetDir, writable) {
-  try {
-    fs.mkdirSync(targetDir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  try {
-    fs.accessSync(targetDir, fs.constants.R_OK);
-    if (writable) {
-      fs.accessSync(targetDir, fs.constants.W_OK);
-    }
-  } catch (err) {
-    if (err && err.code === 'ENOENT') {
-      fs.mkdirSync(targetDir, { recursive: true });
-      return;
-    }
-    throw err;
-  }
 }
 
 function printHelp() {

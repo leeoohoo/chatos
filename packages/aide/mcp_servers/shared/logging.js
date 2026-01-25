@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { capJsonlFile } from '../../shared/log-utils.js';
+import { ensureDir } from './fs-utils.js';
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_LINES = 5000;
@@ -14,14 +15,6 @@ const SENSITIVE_KEYS = [
   'auth',
   'authorization',
 ];
-
-function ensureDir(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  } catch {
-    // ignore
-  }
-}
 
 function clampNumber(value, min, max, fallback) {
   const parsed = Number(value);
@@ -82,7 +75,7 @@ export function createJsonlLogger({
 } = {}) {
   const target = typeof filePath === 'string' ? filePath.trim() : '';
   if (!target) return null;
-  ensureDir(target);
+  ensureDir(path.dirname(target));
   const effectiveMaxBytes = clampNumber(maxBytes, 0, 200 * 1024 * 1024, DEFAULT_MAX_BYTES);
   const effectiveMaxLines = clampNumber(maxLines, 0, 200000, DEFAULT_MAX_LINES);
   const effectiveRunId = typeof runId === 'string' ? runId.trim() : '';

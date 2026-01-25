@@ -1,6 +1,6 @@
 import fs from 'fs';
-import path from 'path';
 import { capJsonlFile } from '../../shared/log-utils.js';
+import { ensureFileExists } from './fs-utils.js';
 
 const PROMPT_LOG_MODES = new Set(['full', 'minimal']);
 const DEFAULT_PROMPT_LOG_MODE = 'full';
@@ -80,17 +80,6 @@ export function sanitizeUiPromptEntry(entry, mode = DEFAULT_PROMPT_LOG_MODE) {
   if (promptMeta) next.prompt = promptMeta;
   if (responseMeta) next.response = responseMeta;
   return next;
-}
-
-function ensureFileExists(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
 }
 
 export function appendUiPromptEntry({ filePath, entry, mode = DEFAULT_PROMPT_LOG_MODE, limits } = {}) {

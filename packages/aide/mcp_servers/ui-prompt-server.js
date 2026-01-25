@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createTtyPrompt } from './tty-prompt.js';
 import { resolveUiPromptsPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
-import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
-import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { createToolResponder } from './shared/tool-helpers.js';
+import { createMcpServer } from './shared/server-bootstrap.js';
+import { ensureFileExists } from './shared/fs-utils.js';
 import { appendUiPromptEntry, resolveUiPromptLogMode, sanitizeUiPromptEntry } from './shared/ui-prompt-log.js';
 
 const args = parseArgs(process.argv.slice(2));
@@ -22,7 +21,6 @@ if (args.help || args.h) {
 const serverName = args.name || 'ui_prompter';
 const { structuredResponse } = createToolResponder({ serverName });
 const sessionRoot = resolveSessionRoot();
-const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
@@ -36,26 +34,7 @@ const secretKeysByRequest = new Map();
 
 ensureFileExists(promptLogPath);
 
-const server = new McpServer({
-  name: serverName,
-  version: '0.1.0',
-});
-const toolLogPath = resolveToolLogPath(process.env);
-const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
-const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
-const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
-const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
-const toolLogger =
-  toolLogPath && toolLogLevel !== 'off'
-    ? createJsonlLogger({
-        filePath: toolLogPath,
-        maxBytes: toolLogMaxBytes,
-        maxLines: toolLogMaxLines,
-        maxFieldChars: toolLogMaxFieldChars,
-        runId,
-      })
-    : null;
-patchMcpServer(server, { serverName, logger: toolLogger });
+const { server, runId } = createMcpServer({ serverName, version: '0.1.0' });
 
 server.registerTool(
   'prompt_key_values',
@@ -857,17 +836,6 @@ function normalizeChoiceSelection(selection, { multiple, options }) {
 
 function safeTrim(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function ensureFileExists(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
 }
 
 function printHelp() {

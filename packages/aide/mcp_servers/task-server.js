@@ -1,20 +1,35 @@
 #!/usr/bin/env node
-import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { clampNumber } from './cli-utils.js';
+import { clampNumber, parseArgs } from './cli-utils.js';
 import { createDb } from '../shared/data/storage.js';
 import { TaskService } from '../shared/data/services/task-service.js';
 import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createTtyPrompt } from './tty-prompt.js';
-import { capJsonlFile } from '../shared/log-utils.js';
 import { ensureAppDbPath, resolveUiPromptsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
-import { createToolResponder, patchMcpServer } from './shared/tool-helpers.js';
-import { createJsonlLogger, resolveToolLogPath } from './shared/logging.js';
+import { createToolResponder } from './shared/tool-helpers.js';
+import { createMcpServer } from './shared/server-bootstrap.js';
+import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
+import { createPromptLog } from './task/prompt-log.js';
+import { confirmTaskCreation } from './task/confirm.js';
+import {
+  buildTaskConfirmChanges,
+  buildTaskConfirmSummary,
+  buildTaskDedupeKey,
+  createWriteQueue,
+  dedupeTasksById,
+  formatTaskList,
+  normalizeCallerKind,
+  normalizeTags,
+  normalizeTaskPriority,
+  normalizeTaskStatus,
+  pickCallerKind,
+  renderTaskSummary,
+  safeTrim,
+} from './task/utils.js';
 import {
   createDedupeStore,
   readDedupeEntry,
@@ -36,7 +51,6 @@ const sessionRoot = resolveSessionRoot();
 const adminDbPath =
   process.env.MODEL_CLI_TASK_DB ||
   ensureAppDbPath(sessionRoot);
-const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
@@ -54,9 +68,14 @@ const taskDedupeStore = createDedupeStore({
   maxIdsPerKey: 20,
 });
 const enqueueTaskWrite = createWriteQueue();
+const { appendPromptEntry, waitForPromptResponse, normalizeResponseStatus } = createPromptLog({
+  promptLogPath,
+  promptLogLimits,
+  serverName,
+});
 
-ensureDir(root);
-ensureDir(path.dirname(adminDbPath));
+ensureDir(root, { requireDirectory: true });
+ensureDir(path.dirname(adminDbPath), { requireDirectory: true });
 ensureFileExists(promptLogPath);
 
 let taskDb = null;
@@ -71,26 +90,7 @@ try {
   process.exit(1);
 }
 
-const server = new McpServer({
-  name: serverName,
-  version: '0.1.0',
-});
-const toolLogPath = resolveToolLogPath(process.env);
-const toolLogMaxBytes = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES, 0, 200 * 1024 * 1024, 5 * 1024 * 1024);
-const toolLogMaxLines = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_LINES, 0, 200000, 5000);
-const toolLogMaxFieldChars = clampNumber(process.env.MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS, 0, 200000, 4000);
-const toolLogLevel = typeof process.env.MODEL_CLI_MCP_LOG_LEVEL === 'string' ? process.env.MODEL_CLI_MCP_LOG_LEVEL.trim().toLowerCase() : '';
-const toolLogger =
-  toolLogPath && toolLogLevel !== 'off'
-    ? createJsonlLogger({
-        filePath: toolLogPath,
-        maxBytes: toolLogMaxBytes,
-        maxLines: toolLogMaxLines,
-        maxFieldChars: toolLogMaxFieldChars,
-        runId,
-      })
-    : null;
-patchMcpServer(server, { serverName, logger: toolLogger });
+const { server, runId } = createMcpServer({ serverName, version: '0.1.0' });
 
 registerTools();
 
@@ -207,7 +207,7 @@ function registerTools() {
           ? normalizedPayload.tasks
           : [normalizedPayload];
 
-      const requestCallerKind = pickCallerKind(normalizedPayload?.caller);
+      const requestCallerKind = pickCallerKind(normalizedPayload?.caller, callerKind);
       const shouldConfirm = shouldConfirmTaskCreate(requestCallerKind);
       const draftTasks = inputs.map((item, idx) => {
         const resolvedRunId = pickRunId(item?.runId) || runDefault;
@@ -264,401 +264,30 @@ function registerTools() {
           },
         });
 
-        const tty = createTtyPrompt();
-        const normalizeTaskConfirmList = (list) =>
-          (Array.isArray(list) ? list : [])
-            .filter((t) => t && typeof t === 'object')
-            .map((t, idx) => ({
-              draftId: typeof t.draftId === 'string' ? t.draftId.trim() : '',
-              title: typeof t.title === 'string' ? t.title : '',
-              details: typeof t.details === 'string' ? t.details : '',
-              priority: typeof t.priority === 'string' ? t.priority : '',
-              status: typeof t.status === 'string' ? t.status : '',
-              tags: normalizeTags(t.tags),
-              _index: idx,
-            }))
-            .filter((t) => t.draftId && t.title.trim());
-
-        const runTtyConfirm = async ({ signal } = {}) => {
-          if (!tty) return null;
-
-          const tasks = promptTasks.map((t) => ({
-            draftId: typeof t?.draftId === 'string' && t.draftId.trim() ? t.draftId.trim() : crypto.randomUUID(),
-            title: typeof t?.title === 'string' ? t.title : '',
-            details: typeof t?.details === 'string' ? t.details : '',
-            priority: typeof t?.priority === 'string' ? t.priority : '',
-            status: typeof t?.status === 'string' ? t.status : '',
-            tags: normalizeTags(t?.tags),
-          }));
-
-          const allowedPriority = new Set(['high', 'medium', 'low']);
-          const allowedStatus = new Set(['todo', 'doing', 'blocked', 'done']);
-          const maxDetailChars = 240;
-
-          const renderTasks = () => {
-            tty.writeln('');
-            if (tasks.length === 0) {
-              tty.writeln('(当前任务列表为空)');
-              return;
-            }
-            tasks.forEach((task, index) => {
-              const title = typeof task?.title === 'string' ? task.title.trim() : '';
-              const priority = typeof task?.priority === 'string' ? task.priority.trim() : '';
-              const status = typeof task?.status === 'string' ? task.status.trim() : '';
-              const tags = normalizeTags(task?.tags);
-              const meta = [
-                priority ? `priority=${priority}` : '',
-                status ? `status=${status}` : '',
-                tags.length > 0 ? `tags=${tags.join(',')}` : '',
-              ]
-                .filter(Boolean)
-                .join(' ');
-              tty.writeln(`[${index + 1}] ${title || '<untitled>'}${meta ? ` (${meta})` : ''}`);
-              const details = typeof task?.details === 'string' ? task.details.trim() : '';
-              if (details) {
-                const compact = details.replace(/\s+/g, ' ').trim();
-                const shown = compact.length > maxDetailChars ? `${compact.slice(0, maxDetailChars)}...` : compact;
-                tty.writeln(`    ${shown}`);
-              }
-            });
-          };
-
-          const help = () => {
-            tty.writeln('');
-            tty.writeln('命令：');
-            tty.writeln('  y            确认创建');
-            tty.writeln('  n            取消');
-            tty.writeln('  e            进入编辑模式（可新增/删除/修改/排序）');
-            tty.writeln('');
-          };
-
-          const helpEdit = () => {
-            tty.writeln('');
-            tty.writeln('编辑命令：');
-            tty.writeln('  l                    列表');
-            tty.writeln('  a                    新增任务');
-            tty.writeln('  e <n>                编辑第 n 个任务');
-            tty.writeln('  d <n>                删除第 n 个任务');
-            tty.writeln('  m <from> <to>         移动/排序（把 from 移到 to）');
-            tty.writeln('  y                    确认创建');
-            tty.writeln('  n                    取消');
-            tty.writeln('  h                    帮助');
-            tty.writeln('');
-          };
-
-          const parseTagsInput = (text) =>
-            String(text || '')
-              .split(/[,，]/g)
-              .map((t) => t.trim())
-              .filter(Boolean);
-
-          const askTaskFields = async ({ existing } = {}) => {
-            const base = existing && typeof existing === 'object' ? existing : null;
-            const out = base
-              ? { ...base, tags: normalizeTags(base.tags) }
-              : {
-                  draftId: crypto.randomUUID(),
-                  title: '',
-                  details: '',
-                  priority: 'medium',
-                  status: 'todo',
-                  tags: [],
-                };
-
-            while (true) {
-              const titlePrompt = base ? `title [${out.title || ''}]: ` : 'title (必填): ';
-              const titleRaw = await tty.ask(titlePrompt, { signal });
-              if (titleRaw == null) return null;
-              const title = String(titleRaw ?? '').trim();
-              if (title) {
-                out.title = title;
-                break;
-              }
-              if (base && out.title && out.title.trim()) break;
-              tty.writeln('title 为必填。');
-            }
-
-            const detailsPrompt = base ? `details [${out.details || ''}]: ` : 'details (可选): ';
-            const detailsRaw = await tty.ask(detailsPrompt, { signal });
-            if (detailsRaw == null) return null;
-            const details = String(detailsRaw ?? '');
-            if (details.trim() || !base) {
-              out.details = details.trim();
-            }
-
-            while (true) {
-              const current = out.priority && out.priority.trim() ? out.priority.trim() : 'medium';
-              const pRaw = await tty.ask(`priority (high/medium/low) [${current}]: `, { signal });
-              if (pRaw == null) return null;
-              const p = String(pRaw ?? '').trim().toLowerCase();
-              if (!p) {
-                out.priority = current;
-                break;
-              }
-              if (allowedPriority.has(p)) {
-                out.priority = p;
-                break;
-              }
-              tty.writeln('priority 无效，请输入 high/medium/low。');
-            }
-
-            while (true) {
-              const current = out.status && out.status.trim() ? out.status.trim() : 'todo';
-              const sRaw = await tty.ask(`status (todo/doing/blocked/done) [${current}]: `, { signal });
-              if (sRaw == null) return null;
-              const s = String(sRaw ?? '').trim().toLowerCase();
-              if (!s) {
-                out.status = current;
-                break;
-              }
-              if (allowedStatus.has(s)) {
-                out.status = s;
-                break;
-              }
-              tty.writeln('status 无效，请输入 todo/doing/blocked/done。');
-            }
-
-            const tagsPrompt = base
-              ? `tags (逗号分隔) [${(out.tags || []).join(', ')}]: `
-              : 'tags (逗号分隔，可选): ';
-            const tagsRaw = await tty.ask(tagsPrompt, { signal });
-            if (tagsRaw == null) return null;
-            const tagsText = String(tagsRaw ?? '').trim();
-            if (tagsText) {
-              out.tags = parseTagsInput(tagsText);
-            } else if (!base) {
-              out.tags = [];
-            }
-
-            return out;
-          };
-
-          const confirmWithRemark = async (finalTasks) => {
-            const remarkRaw = await tty.ask('备注（可选，直接回车跳过）： ', { signal });
-            if (remarkRaw == null) return null;
-            const remark = String(remarkRaw ?? '').trim();
-            return { status: 'ok', tasks: finalTasks, remark };
-          };
-
-          tty.writeln('');
-          tty.writeln(`[${serverName}] ${promptTitle}`);
-          tty.writeln('可在 UI 或本终端确认；输入 y 确认创建，e 编辑任务列表，直接回车取消。');
-          tty.writeln(`source: ${requestCallerKind}`);
-          help();
-          renderTasks();
-
-          const first = await tty.ask('操作 (y/N/e): ', { signal });
-          if (first == null) return null;
-          const action = String(first ?? '').trim().toLowerCase();
-          if (action === 'y' || action === 'yes') {
-            return await confirmWithRemark(tasks);
-          }
-          if (action !== 'e' && action !== 'edit') {
-            return { status: 'canceled' };
-          }
-
-          helpEdit();
-          renderTasks();
-          while (true) {
-            const cmdRaw = await tty.ask('task_confirm> ', { signal });
-            if (cmdRaw == null) return null;
-            const cmd = String(cmdRaw ?? '').trim();
-            const parts = cmd.split(/\s+/g).filter(Boolean);
-            const head = (parts[0] || '').toLowerCase();
-
-            if (!head) continue;
-            if (head === 'h' || head === 'help' || head === '?') {
-              helpEdit();
-              continue;
-            }
-            if (head === 'l' || head === 'list') {
-              renderTasks();
-              continue;
-            }
-            if (head === 'y' || head === 'yes' || head === 'confirm') {
-              if (tasks.length === 0) {
-                tty.writeln('任务列表为空，请至少保留 1 个任务。');
-                continue;
-              }
-              const confirmed = await confirmWithRemark(tasks);
-              return confirmed;
-            }
-            if (head === 'n' || head === 'no' || head === 'cancel') {
-              return { status: 'canceled' };
-            }
-            if (head === 'a' || head === 'add') {
-              const created = await askTaskFields();
-              if (!created) return null;
-              tasks.push(created);
-              renderTasks();
-              continue;
-            }
-            if (head === 'e' || head === 'edit') {
-              const index = Number(parts[1]);
-              if (!Number.isFinite(index) || index < 1 || index > tasks.length) {
-                tty.writeln('用法: e <n>（n 为任务序号）');
-                continue;
-              }
-              const updated = await askTaskFields({ existing: tasks[index - 1] });
-              if (!updated) return null;
-              tasks[index - 1] = updated;
-              renderTasks();
-              continue;
-            }
-            if (head === 'd' || head === 'del' || head === 'delete') {
-              const index = Number(parts[1]);
-              if (!Number.isFinite(index) || index < 1 || index > tasks.length) {
-                tty.writeln('用法: d <n>（n 为任务序号）');
-                continue;
-              }
-              tasks.splice(index - 1, 1);
-              renderTasks();
-              continue;
-            }
-            if (head === 'm' || head === 'move') {
-              const from = Number(parts[1]);
-              const to = Number(parts[2]);
-              if (
-                !Number.isFinite(from) ||
-                !Number.isFinite(to) ||
-                from < 1 ||
-                from > tasks.length ||
-                to < 1 ||
-                to > tasks.length
-              ) {
-                tty.writeln('用法: m <from> <to>（序号从 1 开始）');
-                continue;
-              }
-              const [item] = tasks.splice(from - 1, 1);
-              tasks.splice(to - 1, 0, item);
-              renderTasks();
-              continue;
-            }
-
-            tty.writeln('未知命令，输入 h 查看帮助。');
-          }
-        };
-
-        const applyConfirmResponse = (responseEntry) => {
-          const status = normalizeResponseStatus(responseEntry?.response?.status);
-          if (status !== 'ok') {
-            return {
-              ok: false,
-              status,
-              tasks: [],
-              remark: typeof responseEntry?.response?.remark === 'string' ? responseEntry.response.remark : '',
-            };
-          }
-          const tasksFromUser = Array.isArray(responseEntry?.response?.tasks) ? responseEntry.response.tasks : [];
-          const tasks = normalizeTaskConfirmList(tasksFromUser);
-          const remark = typeof responseEntry?.response?.remark === 'string' ? responseEntry.response.remark : '';
-          return { ok: tasks.length > 0, status: 'ok', tasks, remark };
-        };
-
-        if (tty && tty.backend === 'tty') {
-          try {
-            const terminalResult = await runTtyConfirm();
-            appendPromptEntry({
-              ts: new Date().toISOString(),
-              type: 'ui_prompt',
-              action: 'response',
-              requestId,
-              ...(promptRunId ? { runId: promptRunId } : {}),
-              response: terminalResult || { status: 'canceled' },
-            });
-
-            const parsed = applyConfirmResponse({ response: terminalResult || { status: 'canceled' } });
-            if (!parsed.ok) {
-              return structuredResponse(`[${serverName}] 用户取消创建任务 (requestId=${requestId})`, {
-                status: parsed.status,
-                request_id: requestId,
-                caller: requestCallerKind,
-                remark: parsed.remark,
-              });
-            }
-            confirmed = { status: 'ok', tasks: parsed.tasks, remark: parsed.remark };
-          } finally {
-            tty.close();
-          }
-        } else if (tty && tty.backend === 'auto') {
-          const abort = new AbortController();
-          try {
-            const uiWait = waitForPromptResponse({ requestId }).then((entry) => ({ kind: 'ui', entry }));
-            const ttyWait = runTtyConfirm({ signal: abort.signal }).then((res) => ({ kind: 'tty', res }));
-            const first = await Promise.race([uiWait, ttyWait]);
-            if (first.kind === 'ui') {
-              abort.abort();
-              const parsed = applyConfirmResponse(first.entry);
-              if (!parsed.ok) {
-                return structuredResponse(`[${serverName}] 用户取消创建任务 (requestId=${requestId})`, {
-                  status: parsed.status,
-                  request_id: requestId,
-                  caller: requestCallerKind,
-                  remark: parsed.remark,
-                });
-              }
-              confirmed = { status: 'ok', tasks: parsed.tasks, remark: parsed.remark };
-            } else {
-              const terminalResult = first.res;
-              if (!terminalResult) {
-                const ui = await uiWait;
-                const parsed = applyConfirmResponse(ui.entry);
-                if (!parsed.ok) {
-                  return structuredResponse(`[${serverName}] 用户取消创建任务 (requestId=${requestId})`, {
-                    status: parsed.status,
-                    request_id: requestId,
-                    caller: requestCallerKind,
-                    remark: parsed.remark,
-                  });
-                }
-                confirmed = { status: 'ok', tasks: parsed.tasks, remark: parsed.remark };
-              } else {
-                appendPromptEntry({
-                  ts: new Date().toISOString(),
-                  type: 'ui_prompt',
-                  action: 'response',
-                  requestId,
-                  ...(promptRunId ? { runId: promptRunId } : {}),
-                  response: terminalResult,
-                });
-                const parsed = applyConfirmResponse({ response: terminalResult });
-                if (!parsed.ok) {
-                  return structuredResponse(`[${serverName}] 用户取消创建任务 (requestId=${requestId})`, {
-                    status: parsed.status,
-                    request_id: requestId,
-                    caller: requestCallerKind,
-                    remark: parsed.remark,
-                  });
-                }
-                confirmed = { status: 'ok', tasks: parsed.tasks, remark: parsed.remark };
-              }
-            }
-          } finally {
-            abort.abort();
-            tty.close();
-          }
-        } else {
-          const response = await waitForPromptResponse({ requestId });
-          const parsed = applyConfirmResponse(response);
-          if (!parsed.ok) {
-            const status = parsed.status;
-            if (status === 'ok') {
-              return structuredResponse(`[${serverName}] 用户提交了空任务列表，已取消创建。`, {
-                status: 'canceled',
-                request_id: requestId,
-                caller: requestCallerKind,
-                remark: parsed.remark,
-              });
-            }
-            return structuredResponse(`[${serverName}] 用户取消创建任务 (requestId=${requestId})`, {
-              status,
+        const confirmResult = await confirmTaskCreation({
+          createTtyPrompt,
+          promptTasks,
+          promptTitle,
+          requestCallerKind,
+          serverName,
+          requestId,
+          promptRunId,
+          appendPromptEntry,
+          waitForPromptResponse,
+          normalizeResponseStatus,
+        });
+        if (!confirmResult?.ok) {
+          return structuredResponse(
+            confirmResult?.message || `[${serverName}] 用户取消创建任务 (requestId=${requestId})`,
+            {
+              status: confirmResult?.status || 'canceled',
               request_id: requestId,
               caller: requestCallerKind,
-              remark: parsed.remark,
-            });
-          }
-          confirmed = { status: 'ok', tasks: parsed.tasks, remark: parsed.remark };
+              remark: confirmResult?.remark || '',
+            }
+          );
         }
+        confirmed = { status: 'ok', tasks: confirmResult.tasks, remark: confirmResult.remark };
       }
 
       const draftById = new Map(draftTasks.map((t) => [t.draftId, t]));
@@ -888,45 +517,6 @@ function registerTools() {
   );
 }
 
-function formatTaskList(tasks) {
-  if (!tasks || tasks.length === 0) {
-    return 'Task list is empty.';
-  }
-  const lines = tasks.map((task) => renderTaskLine(task));
-  return lines.join('\n');
-}
-
-function renderTaskLine(task) {
-  const tagText = task.tags && task.tags.length > 0 ? ` #${task.tags.join(' #')}` : '';
-  const sessionText = task.sessionId ? `, session=${task.sessionId}` : '';
-  return `[${task.status}/${task.priority}] ${task.title} (id=${task.id}${sessionText})${tagText}`;
-}
-
-function renderTaskSummary(task, prefix = '') {
-  const header = prefix ? `${prefix}\n` : '';
-  const body = [
-    renderTaskLine(task),
-    task.details ? `Details: ${task.details}` : 'Details: <empty, use update_task to add context/acceptance>',
-    `Session: ${task.sessionId || '<unspecified>'}`,
-    `Created: ${task.createdAt}`,
-    `Updated: ${task.updatedAt}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
-  return `${header}${body}`;
-}
-
-function ensureDir(dirPath) {
-  if (fs.existsSync(dirPath)) {
-    const stats = fs.statSync(dirPath);
-    if (stats.isDirectory()) {
-      return;
-    }
-    throw new Error(`${dirPath} is not a directory`);
-  }
-  fs.mkdirSync(dirPath, { recursive: true });
-}
-
 function relativePath(target) {
   const rel = path.relative(root, target);
   if (!rel || rel.startsWith('..')) {
@@ -949,67 +539,6 @@ function pickRunId(candidate) {
   return fromEnv || '';
 }
 
-function parseArgs(input) {
-  const result = { _: [] };
-  for (let i = 0; i < input.length; i += 1) {
-    const token = input[i];
-    if (!token.startsWith('-')) {
-      result._.push(token);
-      continue;
-    }
-    const isLong = token.startsWith('--');
-    const key = isLong ? token.slice(2) : token.slice(1);
-    if (!key) continue;
-    const [name, inline] = key.split('=');
-    if (inline !== undefined) {
-      result[name] = inline;
-      continue;
-    }
-    const next = input[i + 1];
-    if (next && !next.startsWith('-')) {
-      result[name] = next;
-      i += 1;
-    } else {
-      result[name] = true;
-    }
-  }
-  return result;
-}
-
-function ensureFileExists(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  } catch {
-    // ignore
-  }
-  try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function normalizeCallerKind(value) {
-  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (normalized === 'sub' || normalized === 'subagent' || normalized === 'worker') return 'subagent';
-  return 'main';
-}
-
-function normalizeCallerOverride(value) {
-  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!normalized) return '';
-  if (normalized === 'main') return 'main';
-  if (normalized === 'sub' || normalized === 'subagent' || normalized === 'worker') return 'subagent';
-  return '';
-}
-
-function pickCallerKind(candidate) {
-  const override = normalizeCallerOverride(candidate);
-  return override || callerKind;
-}
-
 function shouldConfirmTaskCreate(requestCallerKind = callerKind) {
   try {
     const runtime = settingsDb?.getRuntime?.();
@@ -1019,156 +548,6 @@ function shouldConfirmTaskCreate(requestCallerKind = callerKind) {
   } catch {
     return false;
   }
-}
-
-function appendPromptEntry(entry) {
-  try {
-    ensureFileExists(promptLogPath);
-    capJsonlFile(promptLogPath, promptLogLimits);
-    fs.appendFileSync(promptLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
-  } catch {
-    // ignore
-  }
-}
-
-async function waitForPromptResponse({ requestId }) {
-  let watcher = null;
-  let poll = null;
-  const cleanup = () => {
-    if (watcher) {
-      try {
-        watcher.close();
-      } catch {
-        // ignore
-      }
-      watcher = null;
-    }
-    if (poll) {
-      clearInterval(poll);
-      poll = null;
-    }
-  };
-
-  return await new Promise((resolve) => {
-    const tryRead = () => {
-      const found = findLatestPromptResponse(requestId);
-      if (found) {
-        cleanup();
-        resolve(found);
-      }
-    };
-    try {
-      watcher = fs.watch(promptLogPath, { persistent: false }, () => tryRead());
-      if (watcher && typeof watcher.on === 'function') {
-        watcher.on('error', (err) => {
-          try {
-            console.error(`[${serverName}] prompt log watcher error: ${err?.message || err}`);
-          } catch {
-            // ignore
-          }
-          try {
-            watcher?.close?.();
-          } catch {
-            // ignore
-          }
-          watcher = null;
-        });
-      }
-    } catch {
-      watcher = null;
-    }
-    poll = setInterval(tryRead, 800);
-    if (poll && typeof poll.unref === 'function') {
-      poll.unref();
-    }
-    tryRead();
-  });
-}
-
-function findLatestPromptResponse(requestId) {
-  try {
-    if (!fs.existsSync(promptLogPath)) {
-      return null;
-    }
-    const raw = fs.readFileSync(promptLogPath, 'utf8');
-    const lines = raw.split('\n').filter((line) => line && line.trim().length > 0);
-    let match = null;
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line);
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          parsed.type === 'ui_prompt' &&
-          parsed.action === 'response' &&
-          parsed.requestId === requestId
-        ) {
-          match = parsed;
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
-    return match;
-  } catch {
-    return null;
-  }
-}
-
-function normalizeResponseStatus(status) {
-  const value = typeof status === 'string' ? status.trim().toLowerCase() : '';
-  if (value === 'ok' || value === 'canceled' || value === 'timeout') {
-    return value;
-  }
-  if (!value) return 'canceled';
-  return 'canceled';
-}
-
-function safeTrim(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeTaskPriority(value) {
-  const v = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (v === 'high' || v === 'medium' || v === 'low') return v;
-  return undefined;
-}
-
-function normalizeTaskStatus(value) {
-  const v = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (v === 'todo' || v === 'doing' || v === 'blocked' || v === 'done') return v;
-  return undefined;
-}
-
-function normalizeTags(value) {
-  const list = Array.isArray(value) ? value : [];
-  const out = [];
-  list.forEach((tag) => {
-    const t = safeTrim(tag);
-    if (t) out.push(t);
-  });
-  return out;
-}
-
-function createWriteQueue() {
-  let chain = Promise.resolve();
-  return (fn) => {
-    const run = chain.then(fn, fn);
-    chain = run.catch(() => {});
-    return run;
-  };
-}
-
-function buildTaskDedupeKey(rawKey, { runId, sessionId } = {}) {
-  const key = safeTrim(rawKey);
-  if (!key) return '';
-  const scopeParts = [];
-  const normalizedRunId = safeTrim(runId);
-  const normalizedSessionId = safeTrim(sessionId);
-  if (normalizedRunId) scopeParts.push(`run=${normalizedRunId}`);
-  if (normalizedSessionId) scopeParts.push(`session=${normalizedSessionId}`);
-  const scope = scopeParts.join('|');
-  return scope ? `${scope}::${key}` : key;
 }
 
 function createTasksWithDedupe(payloads = []) {
@@ -1222,71 +601,6 @@ function createTasksWithDedupe(payloads = []) {
 
   created.push(...createdTasks);
   return { created, deduped };
-}
-
-function dedupeTasksById(tasks) {
-  const list = Array.isArray(tasks) ? tasks : [];
-  const seen = new Set();
-  const out = [];
-  list.forEach((task) => {
-    const id = safeTrim(task?.id);
-    if (!id || seen.has(id)) return;
-    seen.add(id);
-    out.push(task);
-  });
-  return out;
-}
-
-function buildTaskConfirmChanges({ before, after }) {
-  const original = Array.isArray(before) ? before : [];
-  const final = Array.isArray(after) ? after : [];
-  const originalById = new Map(original.map((t) => [t.draftId, t]));
-  const finalById = new Map(final.map((t) => [t.draftId, t]));
-  const added = final.filter((t) => t && typeof t === 'object' && t.draftId && !originalById.has(t.draftId));
-  const removed = original.filter((t) => t && typeof t === 'object' && t.draftId && !finalById.has(t.draftId));
-  const modified = [];
-  final.forEach((t) => {
-    if (!t || typeof t !== 'object') return;
-    if (!t.draftId || !originalById.has(t.draftId)) return;
-    const prev = originalById.get(t.draftId);
-    if (!prev) return;
-    const changed =
-      safeTrim(prev.title) !== safeTrim(t.title) ||
-      safeTrim(prev.details) !== safeTrim(t.details) ||
-      safeTrim(prev.priority) !== safeTrim(t.priority) ||
-      safeTrim(prev.status) !== safeTrim(t.status) ||
-      normalizeTags(prev.tags).join(',') !== normalizeTags(t.tags).join(',');
-    if (changed) {
-      modified.push({ before: prev, after: t });
-    }
-  });
-  return {
-    added: added.map((t) => ({ title: safeTrim(t.title) })),
-    removed: removed.map((t) => ({ title: safeTrim(t.title) })),
-    modified: modified.map((pair) => ({
-      before: { title: safeTrim(pair.before?.title) },
-      after: { title: safeTrim(pair.after?.title) },
-    })),
-  };
-}
-
-function buildTaskConfirmSummary({ before, after, remark }) {
-  const changes = buildTaskConfirmChanges({ before, after });
-  const lines = [];
-  if (changes.added.length > 0) {
-    lines.push(`用户新增任务：${changes.added.map((t) => t.title).filter(Boolean).join('；')}`);
-  }
-  if (changes.removed.length > 0) {
-    lines.push(`用户删除任务：${changes.removed.map((t) => t.title).filter(Boolean).join('；')}`);
-  }
-  if (changes.modified.length > 0) {
-    lines.push(`用户变更任务：${changes.modified.map((t) => t.after.title).filter(Boolean).join('；')}`);
-  }
-  const remarkText = safeTrim(remark);
-  if (remarkText) {
-    lines.push(`用户备注：${remarkText}`);
-  }
-  return lines.join('\n');
 }
 
 function printHelp() {

@@ -11,6 +11,7 @@ import { describeModelError, resolveSubagentInvocationModel, shouldFallbackToCur
 import { filterSubagentTools, withSubagentGuardrails } from '../subagents/tooling.js';
 import { buildUserPromptMessages } from '../prompts.js';
 import { appendRunPid } from '../chat/terminal.js';
+import { estimateTokenCount } from '../chat/token-utils.js';
 
 registerTool({
   name: 'get_current_time',
@@ -642,17 +643,6 @@ function createSummaryManagerForSubagent() {
       summarizeSession(session);
     },
   };
-}
-
-function estimateTokenCount(messages) {
-  if (!Array.isArray(messages)) return 0;
-  return messages.reduce((sum, msg) => {
-    if (!msg || !msg.content) return sum;
-    const text = Array.isArray(msg.content)
-      ? msg.content.map((e) => (typeof e === 'string' ? e : e?.text || '')).join(' ')
-      : String(msg.content);
-    return sum + Math.ceil(Buffer.byteLength(text, 'utf8') / 3);
-  }, 0);
 }
 
 function summarizeSession(session) {
