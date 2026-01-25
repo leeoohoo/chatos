@@ -100,14 +100,53 @@ export function parseToolArguments(toolName, argsRaw, toolParameters) {
             return JSON.parse(repairedFallback);
           } catch (err3) {
             logToolArgumentParseFailure('repaired-fallback', toolName, repairedFallback, err3);
-            throw new Error(`Failed to parse arguments for tool ${toolName}: ${err3.message}`);
+            throw buildToolArgumentParseError(toolName, repairedFallback, err3, 'repaired-fallback');
           }
         }
-        throw new Error(`Failed to parse arguments for tool ${toolName}: ${err2.message}`);
+        throw buildToolArgumentParseError(toolName, repaired, err2, 'repaired');
       }
     }
-    throw new Error(`Failed to parse arguments for tool ${toolName}: ${err.message}`);
+    throw buildToolArgumentParseError(toolName, argsRaw, err, 'raw');
   }
+}
+
+function buildToolArgumentParseError(toolName, source, error, stage) {
+  const message = error?.message || String(error);
+  const context = buildParseErrorContext(source, message, stage);
+  return new Error(`Failed to parse arguments for tool ${toolName}: ${message}${context}`);
+}
+
+function buildParseErrorContext(source, errorMessage, stage) {
+  const input = typeof source === 'string' ? source : source == null ? '' : String(source);
+  const position = extractJsonParseErrorPosition(errorMessage);
+  const stageLabel = stage ? `stage=${stage} ` : '';
+  if (!Number.isFinite(position) || input.length === 0) {
+    return stage ? `\nContext (${stageLabel}len=${input.length}): <unavailable>` : '';
+  }
+  const radius = 120;
+  const safePosition = Math.min(Math.max(position, 0), Math.max(input.length - 1, 0));
+  const start = Math.max(0, safePosition - radius);
+  const end = Math.min(input.length, safePosition + radius);
+  const snippet = input.slice(start, end);
+  const offset = safePosition - start;
+  const marked = `${snippet.slice(0, offset)}<<<ERROR_POSITION>>>${snippet.slice(offset)}`;
+  const sanitized = sanitizeLogSnippet(marked);
+  return `\nContext (${stageLabel}pos=${position} len=${input.length}): ${sanitized}`;
+}
+
+function extractJsonParseErrorPosition(message) {
+  const text = typeof message === 'string' ? message : message == null ? '' : String(message);
+  const match = text.match(/position\s+(\d+)/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function sanitizeLogSnippet(value) {
+  return String(value)
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t');
 }
 
 export function repairJsonString(input, options = {}) {
@@ -176,6 +215,52 @@ export function repairJsonString(input, options = {}) {
       output += char;
       continue;
     }
+    if (char === "'") {
+      const token = readSingleQuotedStringToken(input, i);
+      if (token) {
+        const depth = contextStack.length;
+        const top = depth > 0 ? contextStack[depth - 1] : null;
+        const expectingKey = isExpectingKey(contextStack);
+        const colonIdx = findNextNonWhitespaceIndex(input, token.endIndex + 1);
+        const hasColon = colonIdx !== -1 && input[colonIdx] === ':';
+        if (top && top.type === 'object' && !expectingKey && hasColon) {
+          if (!allowedKeys || depth !== 1 || allowedKeys.has(token.value)) {
+            output += ',';
+            updateObjectKeyState(contextStack, true);
+          }
+        }
+        if (top && top.type === 'object' && expectingKey) {
+          top.lastKey = token.value;
+        }
+        updateObjectKeyState(contextStack, false);
+        output += `"${escapeJsonString(token.value)}"`;
+        i = token.endIndex;
+        continue;
+      }
+    }
+    {
+      const depth = contextStack.length;
+      const top = depth > 0 ? contextStack[depth - 1] : null;
+      if (top && top.type === 'object' && char !== '"' && !isWhitespace(char) && char !== '}' && char !== ',') {
+        const keyToken = readUnquotedKeyToken(input, i);
+        if (keyToken) {
+          const colonIdx = findNextNonWhitespaceIndex(input, keyToken.endIndex + 1);
+          const hasColon = colonIdx !== -1 && input[colonIdx] === ':';
+          const allowed = !allowedKeys || depth !== 1 || allowedKeys.has(keyToken.value);
+          if (hasColon && allowed) {
+            if (!top.expectingKey) {
+              output += ',';
+              updateObjectKeyState(contextStack, true);
+            }
+            top.lastKey = keyToken.value;
+            updateObjectKeyState(contextStack, false);
+            output += `"${escapeJsonString(keyToken.value)}"`;
+            i = keyToken.endIndex;
+            continue;
+          }
+        }
+      }
+    }
     if (char === '"') {
       if (shouldInsertCommaBeforeKey(input, i, contextStack, allowedKeys)) {
         output += ',';
@@ -228,7 +313,17 @@ export function repairJsonString(input, options = {}) {
     output += '\\\\';
   }
   if (inString) {
+    inString = false;
+    stringIsKey = false;
+    updateObjectKeyState(contextStack, false);
     output += '"';
+  }
+  if (contextStack.length > 0) {
+    while (contextStack.length > 0) {
+      output = stripTrailingComma(output);
+      const top = contextStack.pop();
+      output += top.type === 'array' ? ']' : '}';
+    }
   }
   return output;
 }
@@ -389,6 +484,17 @@ function shouldTerminateValueString(source, index, containerType, parentType, de
 
   if (containerType === 'object') {
     if (afterComma === '}' || afterComma === ']') {
+      const afterCloseIdx = findNextNonWhitespaceIndex(source, afterCommaIdx + 1);
+      if (afterCloseIdx !== -1 && source[afterCloseIdx] === '"') {
+        const afterQuoteIdx = findNextNonWhitespaceIndex(source, afterCloseIdx + 1);
+        if (afterQuoteIdx === -1) {
+          return false;
+        }
+        const afterQuote = source[afterQuoteIdx];
+        if (afterQuote === ',' || afterQuote === '}' || afterQuote === ']') {
+          return false;
+        }
+      }
       return true;
     }
     if (afterComma !== '"') {
@@ -453,6 +559,72 @@ function readJsonStringToken(source, startIndex) {
   return null;
 }
 
+function readSingleQuotedStringToken(source, startIndex) {
+  const str = typeof source === 'string' ? source : '';
+  if (startIndex < 0 || startIndex >= str.length) return null;
+  if (str[startIndex] !== "'") return null;
+
+  let value = '';
+  let escaping = false;
+  for (let i = startIndex + 1; i < str.length; i += 1) {
+    const char = str[i];
+    if (escaping) {
+      escaping = false;
+      if (char === 'u') {
+        const seq = str.slice(i + 1, i + 5);
+        if (seq.length === 4 && /^[0-9a-fA-F]{4}$/.test(seq)) {
+          try {
+            value += String.fromCharCode(parseInt(seq, 16));
+          } catch {
+            value += `u${seq}`;
+          }
+          i += 4;
+          continue;
+        }
+      }
+      if (char === 'n') {
+        value += '\n';
+        continue;
+      }
+      if (char === 'r') {
+        value += '\r';
+        continue;
+      }
+      if (char === 't') {
+        value += '\t';
+        continue;
+      }
+      value += char;
+      continue;
+    }
+    if (char === '\\') {
+      escaping = true;
+      continue;
+    }
+    if (char === "'") {
+      return { value, endIndex: i };
+    }
+    value += char;
+  }
+  return null;
+}
+
+function readUnquotedKeyToken(source, startIndex) {
+  const str = typeof source === 'string' ? source : '';
+  if (startIndex < 0 || startIndex >= str.length) return null;
+  if (!isKeyStartChar(str[startIndex])) return null;
+  let value = '';
+  for (let i = startIndex; i < str.length; i += 1) {
+    const char = str[i];
+    if (!isKeyChar(char)) {
+      if (i === startIndex) return null;
+      return { value, endIndex: i - 1 };
+    }
+    value += char;
+  }
+  return value ? { value, endIndex: str.length - 1 } : null;
+}
+
 function findNextNonWhitespaceIndex(source, startIndex) {
   const str = typeof source === 'string' ? source : '';
   for (let i = startIndex; i < str.length; i += 1) {
@@ -484,8 +656,20 @@ function isWhitespace(char) {
   return char === ' ' || char === '\t' || char === '\n' || char === '\r';
 }
 
+function isKeyStartChar(char) {
+  return /[A-Za-z_$]/.test(char) || isDigit(char);
+}
+
+function isKeyChar(char) {
+  return /[A-Za-z0-9_$-]/.test(char);
+}
+
 function isDigit(char) {
   return char >= '0' && char <= '9';
+}
+
+function escapeJsonString(value) {
+  return JSON.stringify(value).slice(1, -1);
 }
 
 function logToolArgumentParseFailure(stage, toolName, argsRaw, error) {

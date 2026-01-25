@@ -111,6 +111,19 @@ export function SubagentProcessPanel({ steps = [] }) {
       );
       const summary =
         summaryText && summaryText.length > 140 ? `${summaryText.slice(0, 140)}...` : summaryText;
+      const stepType = step?.type || 'notice';
+      const hasError = Boolean(step?.is_error);
+      const isTruncated = Boolean(
+        step?.text_truncated || step?.reasoning_truncated || step?.args_truncated || step?.result_truncated
+      );
+      const itemClassName = [
+        'ds-subagent-step',
+        `ds-subagent-step-${stepType}`,
+        hasError ? 'is-error' : '',
+        isTruncated ? 'is-truncated' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
       const children = (
         <div className="ds-subagent-step-body">
           {step?.type === 'assistant' ? (
@@ -137,7 +150,12 @@ export function SubagentProcessPanel({ steps = [] }) {
         key: step?.ts || `${step?.type || 'step'}-${index}`,
         label: buildHeader(step, index),
         children,
-        extra: summary ? <span className="ds-subagent-step-summary">{formatSummaryValue(summary, 140)}</span> : null,
+        className: itemClassName,
+        extra: summary ? (
+          <span className="ds-subagent-step-summary" title={summaryText}>
+            {formatSummaryValue(summary, 140)}
+          </span>
+        ) : null,
       };
     });
   }, [steps]);

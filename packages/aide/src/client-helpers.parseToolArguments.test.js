@@ -46,3 +46,37 @@ test('parseToolArguments keeps nested JSON-like snippets inside content', () => 
   );
 });
 
+test('parseToolArguments repairs single-quoted strings and unquoted keys', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      folder: { type: 'string' },
+      title: { type: 'string' },
+      content: { type: 'string' },
+      tags: { type: 'array', items: { type: 'string' } },
+    },
+  };
+
+  const raw = `{folder:'x' title:'y',content:'{"a": "b"}',tags:['t']}`;
+  const parsed = parseToolArguments('mcp_com_leeoohoo_notepad_manager_create_note', raw, schema);
+  assert.equal(parsed.folder, 'x');
+  assert.equal(parsed.title, 'y');
+  assert.equal(parsed.content, '{"a": "b"}');
+  assert.deepEqual(parsed.tags, ['t']);
+});
+
+test('parseToolArguments closes truncated JSON objects', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      path: { type: 'string' },
+      contents: { type: 'string' },
+    },
+  };
+
+  const raw = `{"path":"x","contents":"hello"`;
+  const parsed = parseToolArguments('mcp_code_maintainer_write_file', raw, schema);
+  assert.equal(parsed.path, 'x');
+  assert.equal(parsed.contents, 'hello');
+});
+

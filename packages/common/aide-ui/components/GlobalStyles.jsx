@@ -890,11 +890,35 @@ export function GlobalStyles({ extraCss = '' } = {}) {
         flex-direction: column;
         gap: 6px;
       }
+      .ds-subagent-process {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
       .ds-subagent-process .ant-collapse-item {
-        border-bottom: 1px solid var(--ds-panel-border);
+        border: 1px solid var(--ds-panel-border);
+        border-radius: 12px;
+        background: var(--ds-subtle-bg);
+        overflow: hidden;
+      }
+      .ds-subagent-process .ant-collapse-item.is-error {
+        border-color: rgba(239, 68, 68, 0.45);
+        background: var(--ds-change-bg-error);
+      }
+      .ds-subagent-process .ant-collapse-item.is-truncated {
+        border-color: rgba(245, 158, 11, 0.45);
+        background: var(--ds-change-bg-warning);
       }
       .ds-subagent-process .ant-collapse-header {
-        padding-inline: 0 !important;
+        padding: 8px 10px !important;
+        align-items: center;
+      }
+      .ds-subagent-process .ant-collapse-content {
+        border-top: 1px solid var(--ds-panel-border);
+        background: transparent;
+      }
+      .ds-subagent-process .ant-collapse-content > .ant-collapse-content-box {
+        padding: 8px 10px 12px;
       }
       .ds-subagent-step-header {
         font-size: 12px;
@@ -919,7 +943,7 @@ export function GlobalStyles({ extraCss = '' } = {}) {
       .ds-subagent-step-summary {
         font-size: 11px;
         color: rgba(71, 85, 105, 0.75);
-        max-width: 260px;
+        max-width: 320px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
