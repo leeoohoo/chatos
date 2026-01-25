@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 import fs from 'fs';
 import path from 'path';
-import { fork } from 'child_process';
 import { fileURLToPath } from 'url';
 import { performance } from 'perf_hooks';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { importEngineModule } from '../../../src/engine-loader.js';
-import { resolveAppStateDir, resolveEventsPath, resolveTerminalsDir } from '../shared/state-paths.js';
+import { resolveAppStateDir, resolveEventsPath } from '../shared/state-paths.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
-import { appendPromptBlock } from '../shared/prompt-utils.js';
-import { extractTraceMeta, normalizeTraceValue } from '../shared/trace-utils.js';
+import { extractTraceMeta } from '../shared/trace-utils.js';
 import {
   filterAgents,
   jsonTextResponse,
@@ -21,8 +19,16 @@ import {
   withSubagentGuardrails,
   withTaskTracking,
 } from './subagent/utils.js';
-import { createRunInboxListener } from './subagent/inbox.js';
+import { createAsyncJobManager } from './subagent/async-jobs.js';
+import { createCorrectionManager } from './subagent/corrections.js';
+import { resolveSubagentLandSelection } from './subagent/land-selection.js';
+import { appendRunPid, registerProcessShutdownHooks } from './subagent/process-utils.js';
 import { registerSubagentTools } from './subagent/register-tools.js';
+import { createRuntimeConfigManager } from './subagent/runtime-config.js';
+import { handleSubagentModelError } from './subagent/model-error.js';
+import { resolveSubagentModels } from './subagent/model-selection.js';
+import { resolveSubagentPrompt } from './subagent/prompt-selection.js';
+import { createSubagentStepTracker } from './subagent/step-tracker.js';
 import { STEP_REASONING_LIMIT, STEP_TEXT_LIMIT, normalizeStepText } from './subagent/step-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,23 +75,6 @@ const server = new McpServer({
 });
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 
-function readRegistrySnapshot(services) {
-  const db = services?.mcpServers?.db || services?.prompts?.db || null;
-  if (!db || typeof db.list !== 'function') {
-    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
-  }
-  try {
-    return {
-      mcpServers: db.list('registryMcpServers') || [],
-      prompts: db.list('registryPrompts') || [],
-      mcpGrants: db.list('mcpServerGrants') || [],
-      promptGrants: db.list('promptGrants') || [],
-    };
-  } catch {
-    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
-  }
-}
-
 function getModelAuthDebug(config, modelName) {
   if (!config || typeof config.getModel !== 'function') return null;
   try {
@@ -106,116 +95,33 @@ function getModelAuthDebug(config, modelName) {
   }
 }
 
-function normalizeMetaValue(meta, keys = []) {
-  if (!meta || typeof meta !== 'object') return '';
-  for (const key of keys) {
-    if (!key) continue;
-    const value = normalizeTraceValue(meta[key]);
-    if (value) return value;
-  }
-  return '';
-}
-
-const STEP_TEXT_LIMIT = 8000;
-const STEP_REASONING_LIMIT = 6000;
-
-function safeStringify(value) {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function normalizeStepText(value, limit = STEP_TEXT_LIMIT) {
-  const raw = safeStringify(value);
-  if (!raw) {
-    return { text: '', truncated: false, length: 0 };
-  }
-  if (raw.length <= limit) {
-    return { text: raw, truncated: false, length: raw.length };
-  }
-  const clipped = raw.slice(0, limit);
-  return {
-    text: `${clipped}\n...[truncated ${raw.length - limit} chars]`,
-    truncated: true,
-    length: raw.length,
-  };
-}
-
-function buildConfigSignature(models = [], secrets = []) {
-  const modelParts = (Array.isArray(models) ? models : [])
-    .filter((m) => m && typeof m === 'object')
-    .map((m) => {
-      const id = String(m.id || '').trim();
-      const name = String(m.name || '').trim();
-      const updatedAt = String(m.updatedAt || '').trim();
-      const provider = String(m.provider || '').trim();
-      const modelId = String(m.model || '').trim();
-      const keyEnv = String(m.apiKeyEnv || m.api_key_env || '').trim();
-      return `m:${id}:${name}:${provider}:${modelId}:${keyEnv}:${updatedAt}`;
-    })
-    .sort();
-  const secretParts = (Array.isArray(secrets) ? secrets : [])
-    .filter((s) => s && typeof s === 'object')
-    .map((s) => {
-      const id = String(s.id || '').trim();
-      const name = String(s.name || '').trim();
-      const updatedAt = String(s.updatedAt || '').trim();
-      return `s:${id}:${name}:${updatedAt}`;
-    })
-    .sort();
-  return `${modelParts.join('|')}#${secretParts.join('|')}`;
-}
-
 const { services: adminServices, defaultPaths } = getAdminServices();
-const runtimeConfig = adminServices.settings?.getRuntimeConfig ? adminServices.settings.getRuntimeConfig() : null;
-const promptLanguage = runtimeConfig?.promptLanguage || null;
-const landConfigId = typeof runtimeConfig?.landConfigId === 'string' ? runtimeConfig.landConfigId.trim() : '';
-const landConfigRecords = adminServices.landConfigs?.list ? adminServices.landConfigs.list() : [];
-const selectedLandConfig = resolveLandConfig({ landConfigs: landConfigRecords, landConfigId });
-const registrySnapshot = readRegistrySnapshot(adminServices);
-const promptRecords = adminServices.prompts.list();
-const mcpServerRecords = adminServices.mcpServers.list();
-const landSelection = selectedLandConfig
-  ? buildLandConfigSelection({
-      landConfig: selectedLandConfig,
-      prompts: promptRecords,
-      mcpServers: mcpServerRecords,
-      registryMcpServers: registrySnapshot.mcpServers,
-      registryPrompts: registrySnapshot.prompts,
-      registryMcpGrants: registrySnapshot.mcpGrants,
-      registryPromptGrants: registrySnapshot.promptGrants,
-      promptLanguage,
-    })
-  : null;
-const combinedSubagentPrompt = landSelection
-  ? appendPromptBlock(landSelection.sub.promptText, landSelection.sub.mcpPromptText)
-  : '';
+const {
+  landSelection,
+  combinedSubagentPrompt,
+  missingMcpPromptNames,
+  missingAppServers,
+} = resolveSubagentLandSelection({
+  adminServices,
+  buildLandConfigSelection,
+  resolveLandConfig,
+});
 const manager = createSubAgentManager({
   internalSystemPrompt: '',
 });
 const userPromptMessages = buildUserPromptMessages(combinedSubagentPrompt, 'subagent_user_prompt');
 if (landSelection) {
-  if ((landSelection.sub?.missingMcpPromptNames || []).length > 0) {
+  if (missingMcpPromptNames.length > 0) {
     console.error(
-      `[prompts] Missing MCP prompt(s) for subagent_router subagent sessions: ${landSelection.sub.missingMcpPromptNames.join(
-        ', '
-      )}`
+      `[prompts] Missing MCP prompt(s) for subagent_router subagent sessions: ${missingMcpPromptNames.join(', ')}`
     );
   }
-  if ((landSelection.sub?.missingAppServers || []).length > 0) {
+  if (missingAppServers.length > 0) {
     console.error(
-      `[land_config] Missing app MCP servers (subagent_router): ${landSelection.sub.missingAppServers.join(', ')}`
+      `[land_config] Missing app MCP servers (subagent_router): ${missingAppServers.join(', ')}`
     );
   }
 }
-let cachedConfig = null;
-let cachedClient = null;
-let mcpRuntimePromise = null;
-let cachedConfigSignature = '';
 const mcpConfigPath =
   process.env.SUBAGENT_CONFIG_PATH ||
   args.config ||
@@ -235,6 +141,44 @@ const eventLogger = createEventLogger(eventLogPath);
 const HEARTBEAT_INTERVAL_MS = 10000;
 const HEARTBEAT_STALE_MS = 120000;
 const DEFAULT_MODEL_NAME = 'deepseek_chat';
+const jobManager = createAsyncJobManager({
+  performance,
+  eventLogger,
+  mcpConfigPath,
+  sessionRoot: SESSION_ROOT,
+  workspaceRoot: WORKSPACE_ROOT,
+  eventLogPath,
+  currentFile: CURRENT_FILE,
+  runId: RUN_ID,
+  heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+  heartbeatStaleMs: HEARTBEAT_STALE_MS,
+  executeSubAgent,
+});
+const {
+  jobStore,
+  buildJobResultPayload,
+  createAsyncJob,
+  startAsyncJob,
+  formatJobStatus,
+  hydrateStaleStatus,
+  runWorkerJob,
+} = jobManager;
+const runtimeConfigManager = createRuntimeConfigManager({
+  adminServices,
+  createAppConfigFromModels,
+  ModelClient,
+  initializeMcpRuntime,
+  listTools,
+  mcpConfigPath,
+  sessionRoot: SESSION_ROOT,
+  workspaceRoot: WORKSPACE_ROOT,
+  eventLogger,
+  landSelection,
+  serverName: 'subagent_router',
+  getToolAllowPrefixes: () => TOOL_ALLOW_PREFIXES,
+  toolDenyPrefixes: TOOL_DENY_PREFIXES,
+});
+const { loadAppConfig, getClient } = runtimeConfigManager;
 
 if (landSelection) {
   const prefixes = Array.from(
@@ -243,137 +187,14 @@ if (landSelection) {
   TOOL_ALLOW_PREFIXES = prefixes.length > 0 ? prefixes : ['__none__'];
 }
 
-appendRunPid({ pid: process.pid, kind: isWorkerMode ? 'subagent_worker' : 'mcp', name: 'subagent_router' });
-registerProcessShutdownHooks();
-
-function touchFile(filePath) {
-  ensureFileExists(filePath);
-}
-
-function readCursor(cursorPath) {
-  try {
-    if (!fs.existsSync(cursorPath)) return 0;
-    const raw = fs.readFileSync(cursorPath, 'utf8');
-    const num = Number(String(raw || '').trim());
-    return Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function persistCursor(cursorPath, cursor) {
-  const num = Number(cursor);
-  if (!Number.isFinite(num) || num < 0) return;
-  try {
-    fs.writeFileSync(cursorPath, String(Math.floor(num)), 'utf8');
-  } catch {
-    // ignore
-  }
-}
-
-function createRunInboxListener({ runId, sessionRoot, consumerId, onEntry, skipExisting } = {}) {
-  const rid = typeof runId === 'string' ? runId.trim() : '';
-  const root = typeof sessionRoot === 'string' ? sessionRoot.trim() : '';
-  if (!rid || !root) return null;
-  const cb = typeof onEntry === 'function' ? onEntry : null;
-  if (!cb) return null;
-  const consumer = typeof consumerId === 'string' && consumerId.trim() ? consumerId.trim() : String(process.pid);
-  const dir = resolveTerminalsDir(root);
-  const inboxPath = path.join(dir, `${rid}.inbox.jsonl`);
-  const cursorPath = path.join(dir, `${rid}.inbox.${consumer}.cursor`);
-  ensureDir(dir);
-  touchFile(inboxPath);
-
-  let cursor = readCursor(cursorPath);
-  if (skipExisting === true && !fs.existsSync(cursorPath)) {
-    try {
-      cursor = fs.statSync(inboxPath).size;
-      persistCursor(cursorPath, cursor);
-    } catch {
-      // ignore
-    }
-  }
-  let partial = '';
-  let watcher = null;
-  let poll = null;
-  let draining = false;
-
-  const drain = () => {
-    if (draining) return;
-    draining = true;
-    try {
-      const buf = fs.readFileSync(inboxPath);
-      const total = buf.length;
-      if (cursor > total) {
-        cursor = 0;
-      }
-      if (total <= cursor) {
-        return;
-      }
-      const chunk = buf.slice(cursor);
-      cursor = total;
-      persistCursor(cursorPath, cursor);
-      partial += chunk.toString('utf8');
-      const lines = partial.split('\n');
-      partial = lines.pop() || '';
-      lines.forEach((line) => {
-        const trimmed = String(line || '').trim();
-        if (!trimmed) return;
-        try {
-          const parsed = JSON.parse(trimmed);
-          cb(parsed);
-        } catch {
-          // ignore parse failures
-        }
-      });
-    } catch {
-      // ignore read failures
-    } finally {
-      draining = false;
-    }
-  };
-
-  try {
-    watcher = fs.watch(inboxPath, { persistent: false }, () => drain());
-    if (watcher && typeof watcher.on === 'function') {
-      watcher.on('error', (err) => {
-        try {
-          console.error(`[subagent_router] inbox watcher error: ${err?.message || err}`);
-        } catch {
-          // ignore
-        }
-        try {
-          watcher?.close?.();
-        } catch {
-          // ignore
-        }
-        watcher = null;
-      });
-    }
-  } catch {
-    watcher = null;
-  }
-  poll = setInterval(drain, 650);
-  if (poll && typeof poll.unref === 'function') poll.unref();
-  drain();
-
-  const close = () => {
-    if (watcher) {
-      try {
-        watcher.close();
-      } catch {
-        // ignore
-      }
-      watcher = null;
-    }
-    if (poll) {
-      clearInterval(poll);
-      poll = null;
-    }
-  };
-
-  return { close };
-}
+appendRunPid({
+  pid: process.pid,
+  kind: isWorkerMode ? 'subagent_worker' : 'mcp',
+  name: 'subagent_router',
+  runId: RUN_ID,
+  sessionRoot: SESSION_ROOT,
+});
+registerProcessShutdownHooks({ isWorkerMode, getJobStore: () => jobStore });
 
 async function main() {
   const transport = new StdioServerTransport();
@@ -481,134 +302,6 @@ function hasCommand(agentOrRef, commandId) {
   return false;
 }
 
-function resolveCommand(plugin, commandId) {
-  if (!plugin || !commandId) return null;
-  const needle = String(commandId).toLowerCase().trim();
-  if (plugin.commandMap && plugin.commandMap.size > 0) {
-    for (const [id, cmd] of plugin.commandMap.entries()) {
-      const name = cmd?.name || '';
-      if (id.toLowerCase() === needle || name.toLowerCase() === needle) {
-        return { plugin, command: cmd };
-      }
-    }
-  }
-  if (Array.isArray(plugin.commands)) {
-    const hit = plugin.commands.find((cmd) => {
-      const id = String(cmd?.id || '').toLowerCase();
-      const name = String(cmd?.name || '').toLowerCase();
-      return id === needle || name === needle;
-    });
-    if (hit) {
-      return { plugin, command: hit };
-    }
-  }
-  return null;
-}
-
-async function loadAppConfig(options = {}) {
-  const force = options?.force === true;
-  const models = adminServices.models.list();
-  const secrets = adminServices.secrets?.list ? adminServices.secrets.list() : [];
-  const signature = buildConfigSignature(models, secrets);
-  if (!force && cachedConfig && cachedConfigSignature === signature) {
-    return cachedConfig;
-  }
-  cachedConfigSignature = signature;
-  cachedConfig = createAppConfigFromModels(models, secrets);
-  cachedClient = null;
-  const runtime = await ensureMcpRuntime();
-  if (runtime) {
-    runtime.applyToConfig(cachedConfig);
-  }
-  applyToolWhitelist(cachedConfig);
-  return cachedConfig;
-}
-
-function getClient(config) {
-  if (cachedClient) {
-    return cachedClient;
-  }
-  cachedClient = new ModelClient(config);
-  return cachedClient;
-}
-
-async function ensureMcpRuntime() {
-  if (mcpRuntimePromise) {
-    return mcpRuntimePromise;
-  }
-  mcpRuntimePromise = (async () => {
-    try {
-      const skip = new Set(['subagent_router']); // Prevent recursive self-connection.
-      try {
-        const servers = adminServices?.mcpServers?.list?.() || [];
-        if (landSelection) {
-          const allowed = new Set(
-            (landSelection.sub?.selectedServers || [])
-              .map((entry) => String(entry?.server?.name || '').toLowerCase())
-              .filter(Boolean)
-          );
-          servers.forEach((srv) => {
-            if (!srv?.name) return;
-            if (!allowed.has(String(srv.name || '').toLowerCase())) {
-              skip.add(srv.name);
-            }
-          });
-        }
-      } catch {
-        // ignore admin snapshot errors
-      }
-      return await initializeMcpRuntime(mcpConfigPath, SESSION_ROOT, WORKSPACE_ROOT, {
-        caller: 'subagent',
-        skipServers: Array.from(skip),
-        extraServers: landSelection?.extraMcpServers || [],
-        eventLogger,
-      });
-    } catch (err) {
-      console.error('[subagent_router] MCP init failed:', err.message);
-      return null;
-    }
-  })();
-  return mcpRuntimePromise;
-}
-
-function applyToolWhitelist(config) {
-  if (!config || !config.models) return;
-  const registered = new Set(listTools());
-  Object.values(config.models).forEach((settings) => {
-    if (!settings) return;
-    const normalized = new Set();
-    const addIfAllowed = (name) => {
-      if (!name) return;
-      if (!isToolAllowed(name)) return;
-      if (!registered.has(name)) return;
-      normalized.add(name);
-    };
-    (Array.isArray(settings.tools) ? settings.tools : []).forEach(addIfAllowed);
-    settings.tools = Array.from(normalized);
-  });
-}
-
-function isToolAllowed(name) {
-  if (!name) return false;
-  const value = String(name || '').trim();
-  // Prevent nested sub-agent calls from inside sub-agent sessions.
-  if (value === 'invoke_sub_agent') {
-    return false;
-  }
-  // Explicit deny list to prevent sub-agents from calling the subagent router tools.
-  if (TOOL_DENY_PREFIXES.some((prefix) => value.startsWith(prefix))) {
-    return false;
-  }
-  const allowMcpPrefixes = Array.isArray(TOOL_ALLOW_PREFIXES) ? TOOL_ALLOW_PREFIXES : null;
-  if (value.startsWith('mcp_') && allowMcpPrefixes && allowMcpPrefixes.length > 0) {
-    if (!allowMcpPrefixes.some((prefix) => value.startsWith(prefix))) {
-      return false;
-    }
-  }
-  // Otherwise allow all registered tools (including shell/code writer/etc.).
-  return true;
-}
-
 async function executeSubAgent({
   task,
   agentId,
@@ -623,82 +316,53 @@ async function executeSubAgent({
 }) {
   const traceMeta = extractTraceMeta(trace);
   const startedAt = Date.now();
-  const steps = [];
-  const toolTimings = new Map();
-  const emitProgress = typeof progress === 'function' ? progress : null;
-  const pushStep = (entry) => {
-    if (!entry || typeof entry !== 'object') return;
-    const step = { ts: new Date().toISOString(), index: steps.length, ...entry };
-    steps.push(step);
-    if (emitProgress) {
-      try {
-        emitProgress({ step, index: step.index, stage: 'step' });
-      } catch {
-        // ignore progress failures
-      }
-    }
-  };
   const agentRef = await pickAgent({ agentId, category, skills, query, commandId, task });
   if (!agentRef) {
     throw new Error('No sub-agent available; install relevant plugins first.');
   }
+  const stepTracker = createSubagentStepTracker({
+    eventLogger,
+    agentId: agentRef.agent.id,
+    progress,
+    normalizeStepText,
+    stepTextLimit: STEP_TEXT_LIMIT,
+    stepReasoningLimit: STEP_REASONING_LIMIT,
+  });
+  const { steps, onAssistantStep, onToolCall, onToolResult, getStats, emitProgress } = stepTracker;
   const normalizedSkills = normalizeSkills(skills);
-  let systemPrompt = '';
-  let internalPrompt = '';
-  let usedSkills = [];
-  let reasoning = true;
-  let commandMeta = null;
-  let commandModel = null;
-
-  const commands = Array.isArray(agentRef.plugin?.commands) ? agentRef.plugin.commands : [];
-  const effectiveCommandId =
-    commandId ||
-    agentRef.agent.defaultCommand ||
-    (commands.length === 1 ? commands[0]?.id || commands[0]?.name || null : null);
-
-  if (effectiveCommandId) {
-    const commandRef = resolveCommand(agentRef.plugin, effectiveCommandId);
-    if (!commandRef) {
-      throw new Error(`Sub-agent ${agentRef.agent.id} does not contain command ${effectiveCommandId}`);
-    }
-    const promptInfo = manager.buildCommandPrompt(commandRef, task);
-    systemPrompt = promptInfo.systemPrompt;
-    internalPrompt = promptInfo.internalPrompt || '';
-    reasoning = promptInfo.extra?.reasoning !== false;
-    commandModel = commandRef.command.model || null;
-    commandMeta = {
-      id: commandRef.command.id || commandRef.command.name || effectiveCommandId,
-      name: commandRef.command.name || commandRef.command.id || effectiveCommandId,
-    };
-  } else {
-    const promptInfo = manager.buildSystemPrompt(agentRef, normalizedSkills);
-    systemPrompt = promptInfo.systemPrompt;
-    internalPrompt = promptInfo.internalPrompt || '';
-    usedSkills = promptInfo.usedSkills || normalizedSkills;
-    reasoning = promptInfo.extra?.reasoning !== false;
-  }
+  const {
+    systemPrompt,
+    internalPrompt,
+    usedSkills,
+    reasoning,
+    commandMeta,
+    commandModel,
+  } = resolveSubagentPrompt({
+    manager,
+    agentRef,
+    task,
+    normalizedSkills,
+    commandId,
+  });
 
   let config = await loadAppConfig();
   let client = getClient(config);
-  const normalizedCallerModel = typeof callerModel === 'string' ? callerModel.trim() : '';
-  const configuredModel =
-    model || // explicit override from request
-    commandModel || // model declared on the command, if any
-    agentRef.agent.model || // per-agent model from plugin manifest
-    null;
-  const defaultModel =
-    typeof config.getModel === 'function' ? config.getModel(null).name : null;
-  let targetModel = resolveSubagentInvocationModel({
+  const {
     configuredModel,
-    currentModel: normalizedCallerModel,
+    normalizedCallerModel,
+    defaultModel,
+    targetModel,
+    fallbackModel,
+  } = resolveSubagentModels({
+    modelOverride: model,
+    commandModel,
+    agentModel: agentRef.agent.model || null,
+    callerModel,
+    config,
     client,
-    defaultModel: defaultModel || DEFAULT_MODEL_NAME,
+    resolveSubagentInvocationModel,
+    defaultModelName: DEFAULT_MODEL_NAME,
   });
-  if (!targetModel) {
-    throw new Error('Target model could not be resolved; check configuration.');
-  }
-  const fallbackModel =
-    normalizedCallerModel && normalizedCallerModel !== targetModel ? normalizedCallerModel : '';
   let usedFallbackModel = false;
   const sessionPrompt = withSubagentGuardrails(withTaskTracking(systemPrompt, internalPrompt));
   eventLogger?.log?.('subagent_start', {
@@ -715,65 +379,24 @@ async function executeSubAgent({
   });
   session.addUser(task);
 
-  const pendingCorrections = [];
-  let activeController = null;
-  const shouldAcceptTarget = (target) => {
-    const value = typeof target === 'string' ? target.trim() : '';
-    if (!value || value === 'all') return true;
-    if (value === 'subagent_worker') return isWorkerMode;
-    if (value === 'subagent_router') return !isWorkerMode;
-    return false;
-  };
-  const inboxListener = createRunInboxListener({
+  const corrections = createCorrectionManager({
     runId: RUN_ID,
     sessionRoot: SESSION_ROOT,
-    consumerId: `subagent_${isWorkerMode ? 'worker' : 'router'}_${process.pid}`,
-    skipExisting: true,
-    onEntry: (entry) => {
-      if (!entry || typeof entry !== 'object') return;
-      if (String(entry.type || '') !== 'correction') return;
-      if (!shouldAcceptTarget(entry.target)) return;
-      const text = typeof entry.text === 'string' ? entry.text.trim() : '';
-      if (!text) return;
-      pendingCorrections.push(text);
-      eventLogger?.log?.('subagent_user', {
-        agent: agentRef.agent.id,
-        text,
-        source: 'ui',
-        target: typeof entry.target === 'string' ? entry.target : undefined,
-        trace: traceMeta || undefined,
-      });
-      eventLogger?.log?.('subagent_notice', {
-        agent: agentRef.agent.id,
-        text: '收到纠正：已中止当前请求，正在带着纠正继续执行…',
-        source: 'ui',
-        trace: traceMeta || undefined,
-      });
-      if (activeController && !activeController.signal.aborted) {
-        try {
-          activeController.abort();
-        } catch {
-          // ignore
-        }
-      }
-    },
+    isWorkerMode,
+    eventLogger,
+    agentId: agentRef.agent.id,
+    traceMeta,
+    session,
   });
-
-  const applyCorrections = () => {
-    if (pendingCorrections.length === 0) return;
-    const merged = pendingCorrections.splice(0, pendingCorrections.length);
-    const combined = merged.join('\n');
-    session.addUser(`【用户纠正】\n${combined}`);
-  };
 
   let response;
   let refreshedConfig = false;
   let loggedAuthDebug = false;
   try {
     for (let attempt = 0; attempt < 40; attempt += 1) {
-      applyCorrections();
+      corrections.applyCorrections();
       const controller = new AbortController();
-      activeController = controller;
+      corrections.setActiveController(controller);
       try {
         // eslint-disable-next-line no-await-in-loop
         response = await client.chat(targetModel, session, {
@@ -781,156 +404,62 @@ async function executeSubAgent({
           reasoning,
           trace: traceMeta || undefined,
           signal: controller.signal,
-          onAssistantStep: ({ text, reasoning: stepReasoning, toolCalls, iteration, model: stepModel }) => {
-            const textInfo = normalizeStepText(text, STEP_TEXT_LIMIT);
-            const reasoningInfo = normalizeStepText(stepReasoning, STEP_REASONING_LIMIT);
-            const calls = (Array.isArray(toolCalls) ? toolCalls : [])
-              .map((call) => ({
-                tool: call?.function?.name || call?.name || 'tool',
-                call_id: call?.id || '',
-              }))
-              .filter((call) => call.tool);
-            if (!textInfo.text && !reasoningInfo.text && calls.length === 0) {
-              return;
-            }
-            pushStep({
-              type: 'assistant',
-              text: textInfo.text,
-              text_truncated: textInfo.truncated,
-              text_length: textInfo.length,
-              reasoning: reasoningInfo.text,
-              reasoning_truncated: reasoningInfo.truncated,
-              reasoning_length: reasoningInfo.length,
-              tool_calls: calls,
-              iteration,
-              model: stepModel,
-            });
-          },
-          onToolCall: ({ tool, callId, args, trace }) => {
-            const argsInfo = normalizeStepText(args, STEP_TEXT_LIMIT);
-            if (callId) {
-              toolTimings.set(callId, Date.now());
-            }
-            pushStep({
-              type: 'tool_call',
-              tool,
-              call_id: callId || '',
-              args: argsInfo.text,
-              args_truncated: argsInfo.truncated,
-              args_length: argsInfo.length,
-            });
-            eventLogger?.log?.('subagent_tool_call', {
-              agent: agentRef.agent.id,
-              tool,
-              callId,
-              args,
-              trace: trace || undefined,
-            });
-          },
-          onToolResult: ({ tool, callId, result, trace, isError }) => {
-            const preview = typeof result === 'string' ? result : JSON.stringify(result || {});
-            const resultInfo = normalizeStepText(result, STEP_TEXT_LIMIT);
-            const started = callId ? toolTimings.get(callId) : null;
-            const elapsedMs = started ? Date.now() - started : null;
-            if (callId) {
-              toolTimings.delete(callId);
-            }
-            pushStep({
-              type: 'tool_result',
-              tool,
-              call_id: callId || '',
-              result: resultInfo.text,
-              result_truncated: resultInfo.truncated,
-              result_length: resultInfo.length,
-              is_error: Boolean(isError),
-              ...(Number.isFinite(elapsedMs) ? { elapsed_ms: elapsedMs } : {}),
-            });
-            eventLogger?.log?.('subagent_tool_result', {
-              agent: agentRef.agent.id,
-              tool,
-              callId,
-              result: preview,
-              isError,
-              trace: trace || undefined,
-            });
-          },
+          onAssistantStep,
+          onToolCall,
+          onToolResult,
         });
         break;
       } catch (err) {
         if (err?.name === 'AbortError') {
-          if (pendingCorrections.length > 0) {
+          if (corrections.hasPending()) {
             continue;
           }
         }
-        const info = describeModelError(err);
-        if (!loggedAuthDebug && (info.reason === 'auth_error' || info.reason === 'config_error')) {
-          loggedAuthDebug = true;
-          const debugInfo = getModelAuthDebug(config, targetModel);
-          const authDebugPayload = {
-            model: targetModel,
-            configuredModel,
-            callerModel: normalizedCallerModel || null,
-            dbPath: adminServices?.dbPath || null,
-            sessionRoot: SESSION_ROOT,
-            mcpConfigPath,
-            modelInfo: debugInfo,
-            error: info,
-          };
-          eventLogger?.log?.('subagent_auth_debug', authDebugPayload);
-          console.error('[subagent_router] auth_debug', authDebugPayload);
+        const errorResult = await handleSubagentModelError({
+          err,
+          state: { loggedAuthDebug, refreshedConfig, usedFallbackModel },
+          config,
+          targetModel,
+          fallbackModel,
+          configuredModel,
+          normalizedCallerModel,
+          defaultModel: defaultModel || DEFAULT_MODEL_NAME,
+          adminServices,
+          sessionRoot: SESSION_ROOT,
+          mcpConfigPath,
+          eventLogger,
+          loadAppConfig,
+          getClient,
+          resolveSubagentInvocationModel,
+          describeModelError,
+          getModelAuthDebug,
+          shouldFallbackToCurrentModelOnError,
+          agentId: agentRef.agent.id,
+          traceMeta,
+          serverName: 'subagent_router',
+        });
+        loggedAuthDebug = errorResult.state.loggedAuthDebug;
+        refreshedConfig = errorResult.state.refreshedConfig;
+        usedFallbackModel = errorResult.state.usedFallbackModel;
+        if (errorResult.config) {
+          config = errorResult.config;
         }
-        if (!refreshedConfig && (info.reason === 'auth_error' || info.reason === 'config_error')) {
-          refreshedConfig = true;
-          config = await loadAppConfig({ force: true });
-          client = getClient(config);
-          targetModel = resolveSubagentInvocationModel({
-            configuredModel,
-            currentModel: normalizedCallerModel,
-            client,
-            defaultModel: defaultModel || DEFAULT_MODEL_NAME,
-          });
-          if (targetModel) {
-            continue;
-          }
+        if (errorResult.client) {
+          client = errorResult.client;
         }
-        if (!usedFallbackModel && fallbackModel && shouldFallbackToCurrentModelOnError(err)) {
-          const failedModel = targetModel;
-          const detail = [info.reason, info.status ? `HTTP ${info.status}` : null, info.message]
-            .filter(Boolean)
-            .join(' - ');
-          const notice = `子流程模型 "${failedModel}" 调用失败（${detail || info.name}），本轮回退到主流程模型 "${fallbackModel}"。`;
-          usedFallbackModel = true;
-          targetModel = fallbackModel;
-          try {
-            eventLogger?.log?.('subagent_notice', {
-              agent: agentRef.agent.id,
-              text: notice,
-              source: 'system',
-              kind: 'agent',
-              fromModel: failedModel,
-              toModel: fallbackModel,
-              reason: info.reason,
-              error: info,
-              trace: traceMeta || undefined,
-            });
-          } catch {
-            // ignore
-          }
+        if (errorResult.targetModel) {
+          targetModel = errorResult.targetModel;
+        }
+        if (errorResult.action === 'retry') {
           continue;
         }
         throw err;
       } finally {
-        if (activeController === controller) {
-          activeController = null;
-        }
+        corrections.clearActiveController(controller);
       }
     }
   } finally {
-    try {
-      inboxListener?.close?.();
-    } catch {
-      // ignore
-    }
+    corrections.close();
   }
 
   if (response === undefined) {
@@ -947,9 +476,7 @@ async function executeSubAgent({
     trace: traceMeta || undefined,
   });
 
-  const elapsedMs = Date.now() - startedAt;
-  const toolCallCount = steps.filter((step) => step?.type === 'tool_call').length;
-  const toolResultCount = steps.filter((step) => step?.type === 'tool_result').length;
+  const { elapsedMs, toolCallCount, toolResultCount, stepsCount } = getStats(startedAt);
 
   if (emitProgress) {
     try {
@@ -958,7 +485,7 @@ async function executeSubAgent({
         done: true,
         stats: {
           elapsed_ms: elapsedMs,
-          steps: steps.length,
+          steps: stepsCount,
           tool_calls: toolCallCount,
           tool_results: toolResultCount,
         },
@@ -978,375 +505,11 @@ async function executeSubAgent({
     trace: traceMeta || null,
     stats: {
       elapsed_ms: elapsedMs,
-      steps: steps.length,
+      steps: stepsCount,
       tool_calls: toolCallCount,
       tool_results: toolResultCount,
     },
   };
-}
-
-function buildJobResultPayload(result) {
-  if (!result || !result.agentRef || !result.agentRef.agent || !result.agentRef.plugin) {
-    return null;
-  }
-  return {
-    agent_id: result.agentRef.agent.id,
-    agent_name: result.agentRef.agent.name,
-    plugin: result.agentRef.plugin.id,
-    model: result.targetModel,
-    skills: result.usedSkills,
-    command: result.commandMeta,
-    response: result.response,
-    steps: Array.isArray(result.steps) ? result.steps : [],
-    stats: result.stats || null,
-    trace: result.trace || null,
-  };
-}
-
-const jobStore = new Map();
-
-function createAsyncJob(params) {
-  const id = `job_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
-  const now = new Date().toISOString();
-  const nowMono = performance.now();
-  const job = {
-    id,
-    status: 'pending',
-    params: { ...params },
-    createdAt: now,
-    updatedAt: now,
-    updatedAtMono: nowMono,
-    result: null,
-    error: null,
-    heartbeatStale: false,
-  };
-  jobStore.set(id, job);
-  return job;
-}
-
-function formatJobStatus(job) {
-  const heartbeatAgeMs =
-    job && Number.isFinite(job.updatedAtMono)
-      ? Math.max(0, performance.now() - job.updatedAtMono)
-      : null;
-  return {
-    job_id: job.id,
-    status: job.status,
-    created_at: job.createdAt,
-    updated_at: job.updatedAt,
-    heartbeat_age_ms: heartbeatAgeMs,
-    heartbeat_stale: Boolean(job.heartbeatStale),
-    result: job.status === 'done' ? job.result : null,
-    error: job.error,
-  };
-}
-
-function startAsyncJob(job) {
-  const current = jobStore.get(job.id);
-  if (!current) return;
-  current.status = 'running';
-  current.updatedAt = new Date().toISOString();
-  current.updatedAtMono = performance.now();
-  current.heartbeatStale = false;
-  const progressEmitter = typeof current.progress === 'function' ? current.progress : null;
-  const progressMeta = current.progressMeta && typeof current.progressMeta === 'object' ? current.progressMeta : null;
-  const progressSessionId = normalizeMetaValue(progressMeta, ['sessionId', 'session_id']);
-  const progressToolCallId = normalizeMetaValue(progressMeta, ['toolCallId', 'tool_call_id', 'callId', 'call_id']);
-  eventLogger?.log?.('subagent_async_start', {
-    job_id: job.id,
-    session_id: progressSessionId || null,
-    tool_call_id: progressToolCallId || null,
-  });
-
-  let child;
-  try {
-    const env = {
-      ...process.env,
-      SUBAGENT_JOB_DATA: JSON.stringify(current.params || {}),
-      SUBAGENT_CONFIG_PATH: mcpConfigPath,
-      SUBAGENT_WORKER: '1',
-      MODEL_CLI_SESSION_ROOT: SESSION_ROOT,
-      MODEL_CLI_WORKSPACE_ROOT: WORKSPACE_ROOT,
-      MODEL_CLI_EVENT_LOG: eventLogPath,
-    };
-    child = fork(CURRENT_FILE, ['--worker'], {
-      env,
-      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    });
-  } catch (err) {
-    current.status = 'error';
-    current.updatedAt = new Date().toISOString();
-    current.error = `Failed to start sub-agent worker: ${err?.message || err}`;
-    return;
-  }
-
-  current.workerPid = Number.isFinite(child.pid) ? child.pid : null;
-  current.worker = child;
-  appendRunPid({ pid: child.pid, kind: 'subagent_worker', name: current.id });
-
-  if (child.stdout) {
-    child.stdout.on('data', (chunk) => {
-      const text = chunk?.toString?.() || '';
-      if (text.trim().length > 0) {
-        console.error(`[subagent_router worker] ${text.trimEnd()}`);
-      }
-    });
-  }
-  if (child.stderr) {
-    child.stderr.on('data', (chunk) => {
-      const text = chunk?.toString?.() || '';
-      if (text.trim().length > 0) {
-        console.error(`[subagent_router worker] ${text.trimEnd()}`);
-      }
-    });
-  }
-
-  const finalize = (updater, { force } = {}) => {
-    const j = jobStore.get(job.id);
-    if (!j) return;
-    if (!force && (j.status === 'done' || j.status === 'error')) return;
-    updater(j);
-    j.updatedAt = new Date().toISOString();
-    j.updatedAtMono = performance.now();
-    j.heartbeatStale = false;
-  };
-
-  child.on('message', (msg) => {
-    if (!msg || typeof msg !== 'object') return;
-    if (msg.type === 'heartbeat') {
-      const j = jobStore.get(job.id);
-      if (!j || j.status !== 'running') {
-        return;
-      }
-      j.updatedAt = new Date().toISOString();
-      j.updatedAtMono = performance.now();
-      j.heartbeatStale = false;
-      return;
-    }
-    if (msg.type === 'progress') {
-      const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : null;
-      const payloadWithJob =
-        payload && typeof payload === 'object'
-          ? { ...payload, job_id: job.id, jobId: job.id }
-          : null;
-      if (payloadWithJob && progressEmitter) {
-        try {
-          progressEmitter(payloadWithJob);
-        } catch {
-          // ignore progress relay failures
-        }
-      }
-      const j = jobStore.get(job.id);
-      if (j && j.status === 'running') {
-        j.updatedAt = new Date().toISOString();
-        j.updatedAtMono = performance.now();
-        j.heartbeatStale = false;
-      }
-      if (payloadWithJob || payload) {
-        const stepSource = payloadWithJob || payload;
-        const step = stepSource.step && typeof stepSource.step === 'object' ? stepSource.step : null;
-        eventLogger?.log?.('subagent_async_progress', {
-          job_id: job.id,
-          stage: stepSource.stage || null,
-          done: stepSource.done === true,
-          step_index: typeof step?.index === 'number' ? step.index : null,
-          step_type: step?.type || null,
-          tool: step?.tool || null,
-          call_id: step?.call_id || null,
-          meta: progressMeta || null,
-        });
-      }
-      return;
-    }
-    if (msg.type === 'result') {
-      finalize((j) => {
-        j.status = 'done';
-        j.result = msg.result || null;
-        j.error = null;
-      }, { force: true });
-    } else if (msg.type === 'error') {
-      finalize((j) => {
-        j.status = 'error';
-        j.error = msg.error || 'Sub-agent worker error';
-      }, { force: true });
-    }
-  });
-
-  child.on('error', (err) => {
-    finalize(
-      (j) => {
-        j.status = 'error';
-        j.error = `Sub-agent worker process error: ${err?.message || err}`;
-      },
-      { force: true }
-    );
-  });
-
-  child.on('exit', (code, signal) => {
-    const entry = jobStore.get(job.id);
-    if (entry && entry.worker === child) {
-      entry.worker = null;
-    }
-    const status = jobStore.get(job.id);
-    if (!status || status.status === 'done' || status.status === 'error') {
-      return;
-    }
-    finalize((j) => {
-      j.status = 'error';
-      const parts = [];
-      if (signal) {
-        parts.push(`signal ${signal}`);
-      }
-      if (Number.isFinite(code)) {
-        parts.push(`exit code ${code}`);
-      }
-      const reason = parts.length > 0 ? ` (${parts.join(', ')})` : '';
-      j.error = `Sub-agent worker exited unexpectedly${reason}`;
-    });
-  });
-}
-
-async function runWorkerJob() {
-  appendRunPid({ pid: process.pid, kind: 'subagent_worker', name: 'worker' });
-  const raw = process.env.SUBAGENT_JOB_DATA;
-  if (!raw) {
-    console.error('[subagent_router worker] missing SUBAGENT_JOB_DATA');
-    process.exit(1);
-    return;
-  }
-  let params;
-  try {
-    params = JSON.parse(raw);
-  } catch (err) {
-    console.error('[subagent_router worker] invalid job payload:', err?.message || err);
-    process.exit(1);
-    return;
-  }
-  let heartbeat;
-  try {
-    heartbeat = setInterval(() => {
-      try {
-        if (process.send) {
-          process.send({ type: 'heartbeat', ts: Date.now() });
-        }
-      } catch {
-        // ignore transport errors
-      }
-    }, HEARTBEAT_INTERVAL_MS);
-    const progress = (payload) => {
-      try {
-        if (process.send) {
-          process.send({ type: 'progress', payload });
-        }
-      } catch {
-        // ignore transport errors
-      }
-    };
-    const result = await executeSubAgent({ ...params, progress });
-    const payload = buildJobResultPayload(result);
-    if (payload && process.send) {
-      process.send({ type: 'result', result: payload });
-    } else if (!payload) {
-      throw new Error('Sub-agent worker missing result payload');
-    }
-  } catch (err) {
-    if (process.send) {
-      process.send({ type: 'error', error: err?.message || String(err) });
-    }
-    console.error('[subagent_router worker] failed to execute job:', err?.message || err);
-    if (heartbeat) {
-      clearInterval(heartbeat);
-    }
-    process.exit(1);
-    return;
-  }
-  if (heartbeat) {
-    clearInterval(heartbeat);
-  }
-  process.exit(0);
-}
-
-function hydrateStaleStatus(job) {
-  if (job.status !== 'running') return;
-  const last = Number.isFinite(job.updatedAtMono) ? job.updatedAtMono : NaN;
-  if (!Number.isFinite(last)) {
-    job.heartbeatStale = false;
-    return;
-  }
-  const ageMs = performance.now() - last;
-  job.heartbeatStale = ageMs > HEARTBEAT_STALE_MS;
-}
-
-function appendRunPid({ pid, kind, name } = {}) {
-  if (!RUN_ID) return;
-  const root = typeof SESSION_ROOT === 'string' && SESSION_ROOT.trim() ? SESSION_ROOT.trim() : '';
-  const num = Number(pid);
-  if (!root || !Number.isFinite(num) || num <= 0) return;
-  const dir = resolveTerminalsDir(root);
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  const pidsPath = path.join(dir, `${RUN_ID}.pids.jsonl`);
-  const payload = {
-    ts: new Date().toISOString(),
-    runId: RUN_ID,
-    pid: num,
-    kind: typeof kind === 'string' && kind.trim() ? kind.trim() : 'process',
-    name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
-  };
-  try {
-    fs.appendFileSync(pidsPath, `${JSON.stringify(payload)}\n`, 'utf8');
-  } catch {
-    // ignore
-  }
-}
-
-function killAllWorkers({ signal = 'SIGKILL' } = {}) {
-  const sig = typeof signal === 'string' && signal ? signal : 'SIGKILL';
-  jobStore.forEach((job) => {
-    const child = job?.worker;
-    if (!child || typeof child.kill !== 'function') return;
-    if (child.killed) return;
-    try {
-      child.kill(sig);
-    } catch {
-      // ignore
-    }
-  });
-}
-
-function registerProcessShutdownHooks() {
-  if (process.env.SUBAGENT_WORKER === '1' || isWorkerMode) {
-    return;
-  }
-  const stop = (signal) => {
-    try {
-      killAllWorkers({ signal: 'SIGTERM' });
-    } catch {
-      // ignore
-    }
-    try {
-      killAllWorkers({ signal: 'SIGKILL' });
-    } catch {
-      // ignore
-    }
-    try {
-      process.exit(signal === 'SIGINT' ? 130 : 143);
-    } catch {
-      // ignore
-    }
-  };
-  process.once('SIGINT', () => stop('SIGINT'));
-  process.once('SIGTERM', () => stop('SIGTERM'));
-  process.once('exit', () => {
-    try {
-      killAllWorkers({ signal: 'SIGKILL' });
-    } catch {
-      // ignore
-    }
-  });
 }
 
 async function suggestAgentWithAI(agents, task, hints = {}) {
