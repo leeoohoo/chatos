@@ -1,3 +1,5 @@
+import { getModelAuthDebug } from './auth-debug.js';
+
 export async function handleSubagentModelError({
   err,
   state,
@@ -15,7 +17,6 @@ export async function handleSubagentModelError({
   getClient,
   resolveSubagentInvocationModel,
   describeModelError,
-  getModelAuthDebug,
   shouldFallbackToCurrentModelOnError,
   agentId,
   traceMeta,
