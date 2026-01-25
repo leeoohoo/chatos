@@ -4,8 +4,11 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 import { createRestrictedSubAgentManager } from './subagent-restriction.js';
 import { resolveAllowedTools } from './tool-selection.js';
+import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
+import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { applySecretsToProcessEnv } from '../../packages/common/secrets-env.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
+import { extractTraceMeta } from '../../packages/common/trace-utils.js';
 import { resolveEngineRoot } from '../../src/engine-paths.js';
 import { getRegistryCenter } from '../backend/registry-center.js';
 
@@ -96,12 +99,6 @@ function normalizeWorkspaceRoot(value) {
   return path.resolve(trimmed);
 }
 
-function normalizePromptLanguage(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (raw === 'zh' || raw === 'en') return raw;
-  return '';
-}
-
 function applyRuntimeSettingsToEnv(runtimeConfig) {
   if (!runtimeConfig || typeof runtimeConfig !== 'object') return;
   const pickNumber = (value) => {
@@ -175,19 +172,6 @@ function appendEventLog(eventPath, type, payload, runId) {
   }
 }
 
-function normalizeTraceValue(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeTraceMeta(trace) {
-  if (!trace || typeof trace !== 'object') return null;
-  const traceId = normalizeTraceValue(trace.traceId);
-  const spanId = normalizeTraceValue(trace.spanId);
-  const parentSpanId = normalizeTraceValue(trace.parentSpanId);
-  if (!traceId && !spanId && !parentSpanId) return null;
-  return { traceId, spanId, parentSpanId };
-}
-
 function truncateLogText(value, limit = 4000) {
   const text = typeof value === 'string' ? value : value == null ? '' : String(value);
   if (!text) return '';
@@ -203,60 +187,6 @@ function formatLogValue(value, limit = 4000) {
   } catch {
     return truncateLogText(String(value), limit);
   }
-}
-
-function normalizeMcpServerName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-function normalizeImageDataUrl(value) {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return '';
-  if (!raw.startsWith('data:image/')) return '';
-  return raw;
-}
-
-function normalizeImageAttachments(value) {
-  const list = Array.isArray(value) ? value : [];
-  const out = [];
-  const seen = new Set();
-  for (const entry of list) {
-    if (!entry || typeof entry !== 'object') continue;
-    const id = normalizeId(entry.id);
-    const dataUrl = normalizeImageDataUrl(entry.dataUrl || entry.url);
-    if (!dataUrl) continue;
-    const dedupeKey = id || dataUrl;
-    if (dedupeKey && seen.has(dedupeKey)) continue;
-    if (dedupeKey) seen.add(dedupeKey);
-    out.push({
-      id,
-      type: 'image',
-      name: typeof entry.name === 'string' ? entry.name.trim() : '',
-      mimeType: typeof entry.mimeType === 'string' ? entry.mimeType.trim() : '',
-      dataUrl,
-    });
-  }
-  return out;
-}
-
-function buildUserMessageContent({ text, attachments, allowVisionInput } = {}) {
-  const trimmedText = typeof text === 'string' ? text.trim() : '';
-  const images = allowVisionInput ? normalizeImageAttachments(attachments) : [];
-  const parts = [];
-  if (trimmedText) {
-    parts.push({ type: 'text', text: trimmedText });
-  }
-  images.forEach((img) => {
-    if (!img?.dataUrl) return;
-    parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
-  });
-  if (parts.length === 0) return null;
-  if (parts.length === 1 && parts[0].type === 'text') return parts[0].text;
-  return parts;
 }
 
 const SUMMARY_MESSAGE_NAME = 'conversation_summary';
@@ -601,13 +531,6 @@ function readRegistrySnapshot(services) {
   } catch {
     return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
   }
-}
-
-function getMcpPromptNameForServer(serverName, language) {
-  const base = `mcp_${normalizeMcpServerName(serverName)}`;
-  const lang = normalizePromptLanguage(language);
-  if (lang === 'en') return `${base}__en`;
-  return base;
 }
 
 function buildSystemPrompt({ agent, prompts, subagents, mcpServers, language, extraPromptNames, autoMcpPrompts = true } = {}) {
@@ -2194,7 +2117,7 @@ export function createChatRunner({
       const toolName = typeof tool === 'string' ? tool : '';
       const toolCallId = typeof callId === 'string' ? callId : '';
       const argsText = formatLogValue(args, 4000);
-      const traceMeta = normalizeTraceMeta(trace);
+      const traceMeta = extractTraceMeta(trace);
       logToolEvent('tool_call', {
         tool: toolName,
         callId: toolCallId,
@@ -2230,7 +2153,7 @@ export function createChatRunner({
         ...(toolIsError ? { toolIsError } : {}),
       });
       const resultText = formatLogValue(rawContent, 6000);
-      const traceMeta = normalizeTraceMeta(trace);
+      const traceMeta = extractTraceMeta(trace);
       logToolEvent('tool_result', {
         tool: toolName,
         callId: toolCallId,

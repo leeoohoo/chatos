@@ -10,6 +10,7 @@ import { performance } from 'perf_hooks';
 import { adjustCommandArgs, parseMcpEndpoint } from './runtime/endpoints.js';
 import { mapAllSettledWithConcurrency, resolveConcurrency } from './runtime/concurrency.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../shared/host-app.js';
+import { extractTraceMeta } from '../../shared/trace-utils.js';
 import {
   ensureAppDbPath,
   resolveAppStateDir,
@@ -1620,19 +1621,6 @@ function applyUiAppWorkdirOverride(meta, workdir) {
       },
     },
   };
-}
-
-function normalizeTraceValue(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function extractTraceMeta(trace) {
-  if (!trace || typeof trace !== 'object') return null;
-  const traceId = normalizeTraceValue(trace.traceId);
-  const spanId = normalizeTraceValue(trace.spanId);
-  const parentSpanId = normalizeTraceValue(trace.parentSpanId);
-  if (!traceId && !spanId && !parentSpanId) return null;
-  return { traceId, spanId, parentSpanId };
 }
 
 function mergeTraceMeta(meta, traceMeta) {

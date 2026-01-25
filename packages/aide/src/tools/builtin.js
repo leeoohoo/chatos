@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveTerminalsDir } from '../../shared/state-paths.js';
+import { extractTraceMeta } from '../../shared/trace-utils.js';
 
 import { registerTool, listTools } from './registry.js';
 import { ChatSession, generateSessionId } from '../session.js';
@@ -551,19 +552,6 @@ function createAbortError() {
   const err = new Error('aborted');
   err.name = 'AbortError';
   return err;
-}
-
-function normalizeTraceValue(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function extractTraceMeta(trace) {
-  if (!trace || typeof trace !== 'object') return null;
-  const traceId = normalizeTraceValue(trace.traceId);
-  const spanId = normalizeTraceValue(trace.spanId);
-  const parentSpanId = normalizeTraceValue(trace.parentSpanId);
-  if (!traceId && !spanId && !parentSpanId) return null;
-  return { traceId, spanId, parentSpanId };
 }
 
 async function chatWithRetry(client, model, session, options, retries = 1) {

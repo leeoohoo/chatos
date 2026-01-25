@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { getMcpPromptNameForServer } from '../../packages/common/mcp-utils.js';
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -128,14 +129,10 @@ export function resolveUiAppsAi(pluginDir, pluginIdRaw, app, errors, context = {
     sessionRoot: context?.sessionRoot,
     projectRoot: context?.projectRoot,
   });
-  const normalizeMcpServerName = (value) =>
-    String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-  const promptBase = `mcp_${normalizeMcpServerName(serverName)}`;
-  const promptNames = { zh: promptBase, en: `${promptBase}__en` };
+  const promptNames = {
+    zh: getMcpPromptNameForServer(serverName),
+    en: getMcpPromptNameForServer(serverName, 'en'),
+  };
 
   const buildPromptSource = (src, fallbackLabel) => {
     if (!src) return null;

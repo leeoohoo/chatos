@@ -1,5 +1,7 @@
 import path from 'path';
 
+import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
+import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
 
 export function normalizeId(value) {
@@ -12,72 +14,9 @@ export function normalizeWorkspaceRoot(value) {
   return path.resolve(trimmed);
 }
 
-export function normalizePromptLanguage(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (raw === 'zh' || raw === 'en') return raw;
-  return '';
-}
-
-export function normalizeMcpServerName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-function normalizeImageDataUrl(value) {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return '';
-  if (!raw.startsWith('data:image/')) return '';
-  return raw;
-}
-
-function normalizeImageAttachments(value) {
-  const list = Array.isArray(value) ? value : [];
-  const out = [];
-  const seen = new Set();
-  for (const entry of list) {
-    if (!entry || typeof entry !== 'object') continue;
-    const id = normalizeId(entry.id);
-    const dataUrl = normalizeImageDataUrl(entry.dataUrl || entry.url);
-    if (!dataUrl) continue;
-    const dedupeKey = id || dataUrl;
-    if (dedupeKey && seen.has(dedupeKey)) continue;
-    if (dedupeKey) seen.add(dedupeKey);
-    out.push({
-      id,
-      type: 'image',
-      name: typeof entry.name === 'string' ? entry.name.trim() : '',
-      mimeType: typeof entry.mimeType === 'string' ? entry.mimeType.trim() : '',
-      dataUrl,
-    });
-  }
-  return out;
-}
-
-export function buildUserMessageContent({ text, attachments, allowVisionInput } = {}) {
-  const trimmedText = typeof text === 'string' ? text.trim() : '';
-  const images = allowVisionInput ? normalizeImageAttachments(attachments) : [];
-  const parts = [];
-  if (trimmedText) {
-    parts.push({ type: 'text', text: trimmedText });
-  }
-  images.forEach((img) => {
-    if (!img?.dataUrl) return;
-    parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
-  });
-  if (parts.length === 0) return null;
-  if (parts.length === 1 && parts[0].type === 'text') return parts[0].text;
-  return parts;
-}
-
-export function getMcpPromptNameForServer(serverName, language) {
-  const base = `mcp_${normalizeMcpServerName(serverName)}`;
-  const lang = normalizePromptLanguage(language);
-  if (lang === 'en') return `${base}__en`;
-  return base;
-}
+export { buildUserMessageContent };
+export { getMcpPromptNameForServer, normalizePromptLanguage };
+export { normalizeMcpServerName } from '../../packages/common/mcp-utils.js';
 
 export function buildSystemPrompt({
   agent,

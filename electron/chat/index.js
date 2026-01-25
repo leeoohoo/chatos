@@ -3,6 +3,7 @@ import path from 'path';
 
 import { createChatRunner } from './runner.js';
 import { createChatStore } from './store.js';
+import { normalizeImageAttachments } from '../../packages/common/chat-utils.js';
 
 function normalizeId(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -74,46 +75,14 @@ function applyAgentModeRules(agent) {
   return base;
 }
 
-function extractMimeTypeFromDataUrl(dataUrl) {
-  const raw = typeof dataUrl === 'string' ? dataUrl : '';
-  const match = raw.match(/^data:([^;]+);base64,/i);
-  if (match && match[1]) {
-    return match[1].trim();
-  }
-  return '';
-}
-
-function normalizeImageAttachments(input) {
-  const list = Array.isArray(input) ? input : [];
-  const out = [];
-  const MAX_IMAGES = 4;
-  for (const entry of list) {
-    if (out.length >= MAX_IMAGES) break;
-    let dataUrl = '';
-    let id = '';
-    let name = '';
-    let mimeType = '';
-    if (typeof entry === 'string') {
-      dataUrl = entry.trim();
-    } else if (entry && typeof entry === 'object') {
-      id = normalizeId(entry.id);
-      name = typeof entry.name === 'string' ? entry.name.trim() : '';
-      mimeType = typeof entry.mimeType === 'string' ? entry.mimeType.trim() : '';
-      dataUrl = typeof entry.dataUrl === 'string' ? entry.dataUrl.trim() : typeof entry.url === 'string' ? entry.url.trim() : '';
-    }
-    if (!dataUrl || !dataUrl.startsWith('data:image/')) continue;
-    if (!mimeType) {
-      mimeType = extractMimeTypeFromDataUrl(dataUrl);
-    }
-    out.push({
-      id: id || `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-      type: 'image',
-      name,
-      mimeType,
-      dataUrl,
-    });
-  }
-  return out;
+function normalizeImageAttachmentsInput(input) {
+  return normalizeImageAttachments(input, {
+    maxImages: 4,
+    allowStrings: true,
+    dedupe: false,
+    generateId: true,
+    fillMimeType: true,
+  });
 }
 
 export function registerChatApi(ipcMain, options = {}) {
@@ -282,7 +251,7 @@ export function registerChatApi(ipcMain, options = {}) {
       : Array.isArray(payload?.images)
         ? payload.images
         : [];
-    const attachments = normalizeImageAttachments(attachmentPayload);
+    const attachments = normalizeImageAttachmentsInput(attachmentPayload);
     if (!sessionId) throw new Error('sessionId is required');
     if (!text.trim() && attachments.length === 0) {
       throw new Error('text is required');

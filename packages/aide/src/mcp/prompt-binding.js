@@ -1,30 +1,10 @@
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../shared/host-app.js';
-
-function normalizeMcpServerName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-function normalizePromptLanguage(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (raw === 'zh' || raw === 'en') return raw;
-  return '';
-}
-
-function getMcpPromptNameForServer(serverName, language) {
-  const base = `mcp_${normalizeMcpServerName(serverName)}`;
-  const lang = normalizePromptLanguage(language);
-  if (lang === 'en') return `${base}__en`;
-  return base;
-}
-
-function isMcpPromptName(name) {
-  const normalized = String(name || '').trim().toLowerCase();
-  return normalized.startsWith('mcp_');
-}
+import {
+  getMcpPromptNameForServer,
+  isMcpPromptName,
+  normalizeMcpServerName,
+  normalizePromptLanguage,
+} from '../../shared/mcp-utils.js';
 
 export function buildMcpPromptBundles({ prompts = [], mcpServers = [], language } = {}) {
   const lang = normalizePromptLanguage(language);

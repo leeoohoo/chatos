@@ -14,6 +14,7 @@ import {
 } from '../shared/data/legacy.js';
 import { syncAdminToFiles } from '../shared/data/sync.js';
 import { getHostApp } from '../shared/host-app.js';
+import { getMcpPromptNamesForServer } from '../shared/mcp-utils.js';
 import {
   ensureAppStateDir,
   resolveStateDirFile,
@@ -105,16 +106,6 @@ function maybePurgeUiAppsSyncedAdminData({ stateDir, services } = {}) {
     const tags = Array.isArray(record?.tags) ? record.tags : [];
     return tags.map(normalizeTag).filter(Boolean).some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
   };
-  const normalizeMcpServerName = (value) =>
-    String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-  const getPromptNamesForServer = (serverName) => {
-    const base = `mcp_${normalizeMcpServerName(serverName)}`;
-    return [base, `${base}__en`];
-  };
 
   const collectPromptNamesForServer = (record, promptNames) => {
     const keys = new Set();
@@ -136,7 +127,7 @@ function maybePurgeUiAppsSyncedAdminData({ stateDir, services } = {}) {
       }
     });
     keys.forEach((key) => {
-      getPromptNamesForServer(key).forEach((name) => promptNames.add(String(name || '').trim().toLowerCase()));
+      getMcpPromptNamesForServer(key).forEach((name) => promptNames.add(String(name || '').trim().toLowerCase()));
     });
   };
 

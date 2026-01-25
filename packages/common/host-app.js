@@ -14,13 +14,7 @@ export function isChatosHost() {
   return getHostApp() === 'chatos';
 }
 
-export function normalizeMcpServerName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
+export { normalizeMcpServerName } from './mcp-utils.js';
 
 export function isExternalOnlyMcpServerName(name) {
   return false;

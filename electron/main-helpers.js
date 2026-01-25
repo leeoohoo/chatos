@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { getMcpPromptNamesForServer } from '../packages/common/mcp-utils.js';
 
 export function ensureAllSubagentsInstalled({ installedSubagentsPath, pluginsDirList, enableAllSubagents = false }) {
   if (!installedSubagentsPath) return;
@@ -107,16 +108,6 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
     const tags = Array.isArray(record?.tags) ? record.tags : [];
     return tags.map(normalizeTag).filter(Boolean).some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
   };
-  const normalizeMcpServerName = (value) =>
-    String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-  const getPromptNamesForServer = (serverName) => {
-    const base = `mcp_${normalizeMcpServerName(serverName)}`;
-    return [base, `${base}__en`];
-  };
 
   const collectPromptNamesForServer = (record, promptNames) => {
     const keys = new Set();
@@ -138,7 +129,7 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
       }
     });
     keys.forEach((key) => {
-      getPromptNamesForServer(key).forEach((name) => promptNames.add(String(name || '').trim().toLowerCase()));
+      getMcpPromptNamesForServer(key).forEach((name) => promptNames.add(String(name || '').trim().toLowerCase()));
     });
   };
 
