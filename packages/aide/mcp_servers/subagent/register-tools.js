@@ -272,6 +272,7 @@ export function registerSubagentTools(context = {}) {
       },
       extra
     ) => {
+      const progress = createSubagentProgressEmitter(server, extra?._meta);
       const job = createAsyncJob({
         task,
         agentId,
@@ -283,6 +284,10 @@ export function registerSubagentTools(context = {}) {
         commandId,
         trace: extra?._meta,
       });
+      if (progress) {
+        job.progress = progress;
+        job.progressMeta = extra?._meta || null;
+      }
       startAsyncJob(job);
       return jsonTextResponse({
         job_id: job.id,

@@ -139,6 +139,16 @@ function extractTraceMeta(meta) {
   return { traceId, spanId, parentSpanId };
 }
 
+function normalizeMetaValue(meta, keys = []) {
+  if (!meta || typeof meta !== 'object') return '';
+  for (const key of keys) {
+    if (!key) continue;
+    const value = normalizeTraceValue(meta[key]);
+    if (value) return value;
+  }
+  return '';
+}
+
 const STEP_TEXT_LIMIT = 8000;
 const STEP_REASONING_LIMIT = 6000;
 
@@ -1086,6 +1096,15 @@ function startAsyncJob(job) {
   current.updatedAt = new Date().toISOString();
   current.updatedAtMono = performance.now();
   current.heartbeatStale = false;
+  const progressEmitter = typeof current.progress === 'function' ? current.progress : null;
+  const progressMeta = current.progressMeta && typeof current.progressMeta === 'object' ? current.progressMeta : null;
+  const progressSessionId = normalizeMetaValue(progressMeta, ['sessionId', 'session_id']);
+  const progressToolCallId = normalizeMetaValue(progressMeta, ['toolCallId', 'tool_call_id', 'callId', 'call_id']);
+  eventLogger?.log?.('subagent_async_start', {
+    job_id: job.id,
+    session_id: progressSessionId || null,
+    tool_call_id: progressToolCallId || null,
+  });
 
   let child;
   try {
@@ -1150,6 +1169,36 @@ function startAsyncJob(job) {
       j.updatedAt = new Date().toISOString();
       j.updatedAtMono = performance.now();
       j.heartbeatStale = false;
+      return;
+    }
+    if (msg.type === 'progress') {
+      const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : null;
+      if (payload && progressEmitter) {
+        try {
+          progressEmitter(payload);
+        } catch {
+          // ignore progress relay failures
+        }
+      }
+      const j = jobStore.get(job.id);
+      if (j && j.status === 'running') {
+        j.updatedAt = new Date().toISOString();
+        j.updatedAtMono = performance.now();
+        j.heartbeatStale = false;
+      }
+      if (payload) {
+        const step = payload.step && typeof payload.step === 'object' ? payload.step : null;
+        eventLogger?.log?.('subagent_async_progress', {
+          job_id: job.id,
+          stage: payload.stage || null,
+          done: payload.done === true,
+          step_index: typeof step?.index === 'number' ? step.index : null,
+          step_type: step?.type || null,
+          tool: step?.tool || null,
+          call_id: step?.call_id || null,
+          meta: progressMeta || null,
+        });
+      }
       return;
     }
     if (msg.type === 'result') {
@@ -1227,7 +1276,16 @@ async function runWorkerJob() {
         // ignore transport errors
       }
     }, HEARTBEAT_INTERVAL_MS);
-    const result = await executeSubAgent(params);
+    const progress = (payload) => {
+      try {
+        if (process.send) {
+          process.send({ type: 'progress', payload });
+        }
+      } catch {
+        // ignore transport errors
+      }
+    };
+    const result = await executeSubAgent({ ...params, progress });
     const payload = buildJobResultPayload(result);
     if (payload && process.send) {
       process.send({ type: 'result', result: payload });

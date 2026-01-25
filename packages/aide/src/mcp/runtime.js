@@ -1207,6 +1207,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
       parameters,
       handler: async (args = {}, toolContext = {}) => {
         const signal = toolContext?.signal;
+        const callMeta = buildCallMeta(serverEntry, runtimeMeta, toolContext);
         const callerModel =
           typeof toolContext?.model === 'string' ? toolContext.model.trim() : '';
         const mergedArgs = {
@@ -1223,7 +1224,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
             requestOptions,
             'start_sub_agent_async',
             mergedArgs,
-            { signal }
+            { signal, meta: callMeta }
           );
           jobId = start?.job_id;
           if (!jobId) {
@@ -1255,7 +1256,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
             try {
               status = await callSubagentTool(client, requestOptions, 'get_sub_agent_status', {
                 job_id: jobId,
-              }, { signal });
+              }, { signal, meta: callMeta });
               consecutiveErrors = 0;
             } catch (err) {
               if (err?.name === 'AbortError') {
@@ -1308,7 +1309,7 @@ function registerRemoteTool(client, serverEntry, tool, runtimeMeta, runtimeLogge
                   maxTotalTimeout: cancelTimeoutMs,
                   resetTimeoutOnProgress: false,
                 };
-                callSubagentTool(client, cancelOptions, 'cancel_sub_agent_job', { job_id: jobId }).catch(() => {});
+                callSubagentTool(client, cancelOptions, 'cancel_sub_agent_job', { job_id: jobId }, { meta: callMeta }).catch(() => {});
               } catch {
                 // ignore cancellation failures
               }
@@ -1718,8 +1719,9 @@ async function callSubagentTool(client, requestOptions, name, args, options = {}
     options?.signal && typeof options.signal === 'object'
       ? { ...requestOptions, signal: options.signal }
       : requestOptions;
+  const meta = options?.meta && typeof options.meta === 'object' ? options.meta : null;
   const response = await client.callTool(
-    { name, arguments: args },
+    { name, arguments: args, ...(meta ? { _meta: meta } : {}) },
     undefined,
     effectiveOptions
   );

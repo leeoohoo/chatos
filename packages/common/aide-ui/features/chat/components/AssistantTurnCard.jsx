@@ -188,7 +188,7 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
     });
 
     return out;
-  }, [list]);
+  }, [list, subagentStreams]);
 
   const hasBlocks = blocks.length > 0;
   const isStreaming = Boolean(
