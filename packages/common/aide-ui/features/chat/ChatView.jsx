@@ -34,6 +34,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     composerAttachments,
     streamState,
     mcpStreamState,
+    subagentStreamState,
     currentSession,
     sessionStatusById,
     setComposerText,
@@ -292,6 +293,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                 <ChatMessages
                   messages={messages}
                   streaming={streamState}
+                  subagentStreams={subagentStreamState}
                   hasMore={messagesHasMore}
                   loadingMore={loadingMore}
                   onLoadMore={loadMoreMessages}

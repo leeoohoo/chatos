@@ -3,10 +3,8 @@ import { Button, Collapse, Space, Tag, Typography, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
-import { PopoverTag } from './PopoverTag.jsx';
 import { copyPlainText } from '../../../lib/clipboard.js';
-import { formatBytes, truncateText } from '../../../lib/format.js';
-import { parseJsonSafe } from '../../../lib/parse.js';
+import { ToolInvocationTag } from './tooling/ToolInvocationTag.jsx';
 
 const { Text } = Typography;
 
@@ -44,331 +42,6 @@ function getToolResultText(results = []) {
   return parts.join('\n\n');
 }
 
-function parseToolArgsText(argsText) {
-  const raw = typeof argsText === 'string' ? argsText.trim() : argsText === undefined || argsText === null ? '' : String(argsText);
-  if (!raw) return { raw: '', parsed: null };
-  return { raw, parsed: parseJsonSafe(raw, null) };
-}
-
-function inferToolKind(toolName) {
-  const raw = typeof toolName === 'string' ? toolName.trim().toLowerCase() : '';
-  if (!raw) return 'default';
-  if (raw.includes('run_shell_command') || raw.includes('session_') || raw.includes('shell')) return 'shell';
-  if (
-    raw.includes('read_file') ||
-    raw.includes('write_file') ||
-    raw.includes('edit_file') ||
-    raw.includes('apply_patch') ||
-    raw.includes('delete_path') ||
-    raw.includes('list_directory') ||
-    raw.includes('list_workspace_files') ||
-    raw.includes('search_text')
-  ) {
-    return 'filesystem';
-  }
-  if (raw.includes('lsp')) return 'lsp';
-  if (raw.includes('task')) return 'task';
-  if (raw.includes('subagent') || raw.includes('sub_agent')) return 'subagent';
-  if (raw.includes('prompt')) return 'prompt';
-  if (raw.includes('journal')) return 'journal';
-  if (raw.includes('chrome') || raw.includes('browser') || raw.includes('devtools')) return 'browser';
-  return 'default';
-}
-
-function parseShellHeader(line) {
-  const header = {};
-  const raw = typeof line === 'string' ? line : String(line ?? '');
-  const parts = raw.split(' | ').map((part) => part.trim()).filter(Boolean);
-  parts.forEach((part) => {
-    if (part.startsWith('$ ')) {
-      header.command = part.slice(2).trim();
-      return;
-    }
-    if (part.startsWith('cwd: ')) {
-      header.cwd = part.slice(5).trim();
-      return;
-    }
-    if (part.startsWith('exit code: ')) {
-      const value = Number(part.slice(11).trim());
-      header.exitCode = Number.isFinite(value) ? value : part.slice(11).trim();
-      return;
-    }
-    if (part.startsWith('signal: ')) {
-      header.signal = part.slice(8).trim();
-      return;
-    }
-    if (part === 'timed out') {
-      header.timedOut = true;
-      return;
-    }
-    if (part.startsWith('elapsed: ')) {
-      header.elapsed = part.slice(9).trim();
-      return;
-    }
-    if (part.startsWith('bytes: ')) {
-      const value = Number(part.slice(7).trim());
-      header.bytes = Number.isFinite(value) ? value : part.slice(7).trim();
-    }
-  });
-  return header;
-}
-
-function parseShellResult(text) {
-  const raw = typeof text === 'string' ? text.trim() : String(text ?? '').trim();
-  if (!raw) return null;
-
-  const warningMatch = raw.match(/\n\n\[Warnings\]\n([\s\S]*)$/);
-  const warnings = warningMatch ? warningMatch[1].trim() : '';
-  const body = warningMatch ? raw.slice(0, warningMatch.index) : raw;
-
-  if (!body.includes('STDOUT:') && !body.includes('STDERR:')) {
-    return null;
-  }
-
-  const headerLine = body.split('\n')[0] || '';
-  const header = parseShellHeader(headerLine);
-  const stdoutMatch = body.match(/STDOUT:\n?([\s\S]*?)(?:\n\nSTDERR:|\nSTDERR:|$)/);
-  const stderrMatch = body.match(/STDERR:\n?([\s\S]*)$/);
-  const stdoutRaw = stdoutMatch ? stdoutMatch[1] : '';
-  const stderrRaw = stderrMatch ? stderrMatch[1] : '';
-  const stdout = stdoutRaw.trim() === '<empty>' ? '' : stdoutRaw.trimEnd();
-  const stderr = stderrRaw.trim() === '<empty>' ? '' : stderrRaw.trimEnd();
-
-  return { header, stdout, stderr, warnings };
-}
-
-function formatSummaryValue(value, maxLen = 160) {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return truncateText(value, maxLen);
-  try {
-    return truncateText(JSON.stringify(value), maxLen);
-  } catch {
-    return truncateText(String(value), maxLen);
-  }
-}
-
-function inferToolStatus(resultText, shellResult) {
-  if (!resultText) return 'pending';
-  if (shellResult?.header?.timedOut) return 'timeout';
-  if (typeof shellResult?.header?.exitCode === 'number' && shellResult.header.exitCode !== 0) return 'error';
-  const lowered = String(resultText || '').toLowerCase();
-  if (lowered.includes('[error]') || lowered.includes(' error ') || lowered.includes('failed')) return 'error';
-  if (lowered.includes('canceled') || lowered.includes('cancelled') || lowered.includes('取消')) return 'canceled';
-  if (lowered.includes('timeout') || lowered.includes('timed out') || lowered.includes('超时')) return 'timeout';
-  if (lowered.includes('partial')) return 'partial';
-  return 'ok';
-}
-
-function pickStatusColor(status) {
-  switch (status) {
-    case 'error':
-    case 'timeout':
-      return 'red';
-    case 'canceled':
-      return 'orange';
-    case 'pending':
-      return 'gold';
-    case 'partial':
-      return 'geekblue';
-    case 'ok':
-    default:
-      return 'purple';
-  }
-}
-
-function buildToolSubtitle(toolName, argsParsed) {
-  if (!argsParsed || typeof argsParsed !== 'object') return '';
-  const rawName = typeof toolName === 'string' ? toolName.toLowerCase() : '';
-  if (typeof argsParsed.command === 'string' && argsParsed.command.trim()) {
-    return truncateText(argsParsed.command.trim(), 90);
-  }
-  if (typeof argsParsed.path === 'string' && argsParsed.path.trim()) {
-    return truncateText(argsParsed.path.trim(), 90);
-  }
-  if (Array.isArray(argsParsed.paths) && argsParsed.paths.length > 0) {
-    return truncateText(String(argsParsed.paths[0]), 90);
-  }
-  if (typeof argsParsed.query === 'string' && argsParsed.query.trim()) {
-    return `search: ${truncateText(argsParsed.query.trim(), 80)}`;
-  }
-  if (typeof argsParsed.session === 'string' && argsParsed.session.trim()) {
-    return rawName.includes('session') ? `session: ${truncateText(argsParsed.session.trim(), 80)}` : argsParsed.session.trim();
-  }
-  return '';
-}
-
-function ToolSection({ title, children }) {
-  return (
-    <div className="ds-tool-section">
-      <div className="ds-tool-section-title">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function ToolSummary({ items = [] }) {
-  const list = (Array.isArray(items) ? items : []).filter((item) => item && item.value !== '');
-  if (list.length === 0) return null;
-  return (
-    <div className="ds-tool-summary">
-      {list.map((item, idx) => (
-        <div key={`${item.label}-${idx}`} className="ds-tool-summary-item" data-tone={item.tone || undefined}>
-          <div className="ds-tool-summary-label">{item.label}</div>
-          <div className="ds-tool-summary-value">{item.value}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ToolBlock({ text, tone }) {
-  if (!text) return <Text type="secondary">（空）</Text>;
-  return (
-    <pre className="ds-tool-block" data-tone={tone || undefined}>
-      {text}
-    </pre>
-  );
-}
-
-function renderShellDetails({ argsRaw, argsParsed, resultText, shellResult }) {
-  const summaryItems = [];
-  const header = shellResult?.header || {};
-  const command = typeof argsParsed?.command === 'string' ? argsParsed.command : header.command;
-  const cwd = typeof argsParsed?.cwd === 'string' ? argsParsed.cwd : header.cwd;
-  const session = typeof argsParsed?.session === 'string' ? argsParsed.session : '';
-  const lines = argsParsed?.lines;
-  const signal = typeof argsParsed?.signal === 'string' ? argsParsed.signal : header.signal;
-  const enter = typeof argsParsed?.enter === 'boolean' ? argsParsed.enter : null;
-
-  if (command) summaryItems.push({ label: 'command', value: formatSummaryValue(command, 120) });
-  if (cwd) summaryItems.push({ label: 'cwd', value: formatSummaryValue(cwd, 120) });
-  if (session) summaryItems.push({ label: 'session', value: formatSummaryValue(session, 80) });
-  if (lines !== undefined) summaryItems.push({ label: 'lines', value: formatSummaryValue(lines, 80) });
-  if (signal) summaryItems.push({ label: 'signal', value: formatSummaryValue(signal, 80) });
-  if (enter !== null) summaryItems.push({ label: 'enter', value: enter ? 'true' : 'false' });
-
-  if (header.exitCode !== undefined) {
-    const tone = typeof header.exitCode === 'number' && header.exitCode !== 0 ? 'error' : 'ok';
-    summaryItems.push({ label: 'exit', value: formatSummaryValue(header.exitCode, 80), tone });
-  }
-  if (header.elapsed) summaryItems.push({ label: 'elapsed', value: formatSummaryValue(header.elapsed, 80) });
-  if (header.bytes !== undefined) {
-    const bytesValue = typeof header.bytes === 'number' ? formatBytes(header.bytes) : header.bytes;
-    summaryItems.push({ label: 'bytes', value: formatSummaryValue(bytesValue, 80) });
-  }
-
-  return (
-    <>
-      {summaryItems.length > 0 ? (
-        <ToolSection title="摘要">
-          <ToolSummary items={summaryItems} />
-        </ToolSection>
-      ) : null}
-      {argsRaw ? (
-        <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
-        </ToolSection>
-      ) : null}
-      <ToolSection title="输出">
-        {shellResult ? (
-          <div className="ds-tool-output-grid">
-            <div className="ds-tool-output-panel" data-tone="stdout">
-              <div className="ds-tool-output-title">STDOUT</div>
-              {shellResult.stdout ? <ToolBlock text={shellResult.stdout} /> : <Text type="secondary">（空）</Text>}
-            </div>
-            <div className="ds-tool-output-panel" data-tone="stderr">
-              <div className="ds-tool-output-title">STDERR</div>
-              {shellResult.stderr ? (
-                <ToolBlock text={shellResult.stderr} tone="stderr" />
-              ) : (
-                <Text type="secondary">（空）</Text>
-              )}
-            </div>
-          </div>
-        ) : resultText ? (
-          <ToolBlock text={resultText} />
-        ) : (
-          <Text type="secondary">（暂无结果）</Text>
-        )}
-      </ToolSection>
-      {shellResult?.warnings ? (
-        <ToolSection title="警告">
-          <ToolBlock text={shellResult.warnings} tone="warn" />
-        </ToolSection>
-      ) : null}
-    </>
-  );
-}
-
-function renderFilesystemDetails({ argsRaw, argsParsed, resultText }) {
-  const summaryItems = [];
-  if (typeof argsParsed?.path === 'string') {
-    summaryItems.push({ label: 'path', value: formatSummaryValue(argsParsed.path, 120) });
-  }
-  if (Array.isArray(argsParsed?.paths) && argsParsed.paths.length > 0) {
-    summaryItems.push({ label: 'paths', value: formatSummaryValue(argsParsed.paths.join(', '), 160) });
-  }
-  if (typeof argsParsed?.mode === 'string') {
-    summaryItems.push({ label: 'mode', value: formatSummaryValue(argsParsed.mode, 80) });
-  }
-  if (argsParsed?.depth !== undefined) {
-    summaryItems.push({ label: 'depth', value: formatSummaryValue(argsParsed.depth, 80) });
-  }
-  if (typeof argsParsed?.query === 'string') {
-    summaryItems.push({ label: 'query', value: formatSummaryValue(argsParsed.query, 120) });
-  }
-  if (argsParsed?.includeHidden !== undefined) {
-    summaryItems.push({ label: 'hidden', value: argsParsed.includeHidden ? 'true' : 'false' });
-  }
-
-  return (
-    <>
-      {summaryItems.length > 0 ? (
-        <ToolSection title="摘要">
-          <ToolSummary items={summaryItems} />
-        </ToolSection>
-      ) : null}
-      {argsRaw ? (
-        <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
-        </ToolSection>
-      ) : null}
-      <ToolSection title="结果">
-        {resultText ? <ToolBlock text={resultText} /> : <Text type="secondary">（暂无结果）</Text>}
-      </ToolSection>
-    </>
-  );
-}
-
-function renderDefaultToolDetails({ argsRaw, resultText }) {
-  return (
-    <>
-      {argsRaw ? (
-        <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
-        </ToolSection>
-      ) : null}
-      <ToolSection title="结果">
-        {resultText ? (
-          <MarkdownBlock text={resultText} maxHeight={320} container={false} copyable />
-        ) : (
-          <Text type="secondary">（暂无结果）</Text>
-        )}
-      </ToolSection>
-    </>
-  );
-}
-
-function renderToolDetails({ toolKind, argsRaw, argsParsed, resultText, shellResult }) {
-  if (toolKind === 'shell') {
-    return renderShellDetails({ argsRaw, argsParsed, resultText, shellResult });
-  }
-  if (toolKind === 'filesystem') {
-    return renderFilesystemDetails({ argsRaw, argsParsed, resultText });
-  }
-  return renderDefaultToolDetails({ argsRaw, resultText });
-}
-
 function extractThinkContent(text) {
   const raw = typeof text === 'string' ? text : String(text ?? '');
   if (!raw) return { content: '', reasoning: '' };
@@ -401,7 +74,7 @@ function extractThinkContent(text) {
   return { content: cleaned, reasoning };
 }
 
-export function AssistantTurnCard({ messages, streaming }) {
+export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
   const list = useMemo(() => (Array.isArray(messages) ? messages.filter(Boolean) : []), [messages]);
   const [copying, setCopying] = useState(false);
   const createdAt = useMemo(() => {
@@ -474,11 +147,17 @@ export function AssistantTurnCard({ messages, streaming }) {
                 : '';
             const name = nameFromCall || nameFromResult || 'tool';
 
+            const liveSteps =
+              callId && subagentStreams && typeof subagentStreams === 'object'
+                ? subagentStreams[callId]?.steps || []
+                : [];
             return {
               callId,
               name,
               args: getToolArgs(call),
               resultText: getToolResultText(results),
+              results,
+              liveSteps,
               key: callId || `${normalizeId(msg?.id) || `assistant_${msgIdx}`}_${name}_${idx}`,
             };
           });
@@ -608,33 +287,18 @@ export function AssistantTurnCard({ messages, streaming }) {
                         typeof invocation?.resultText === 'string'
                           ? invocation.resultText
                           : String(invocation?.resultText || '');
-                      const argsInfo = parseToolArgsText(args);
-                      const toolKind = inferToolKind(name);
-                      const shellResult = toolKind === 'shell' ? parseShellResult(resultText) : null;
-                      const status = inferToolStatus(resultText, shellResult);
-                      const subtitle = buildToolSubtitle(name, argsInfo.parsed);
-                      const color = pickStatusColor(status);
                       const key = invocation?.key || callId || `${block.assistantId || block.key}_${name}_${idx}`;
-                      const title = `${name}${callId ? ` · ${callId}` : ''}`;
 
                       return (
-                        <PopoverTag
+                        <ToolInvocationTag
                           key={key}
-                          color={color}
-                          text={name}
-                          title={title}
-                          subtitle={subtitle}
-                          status={status}
-                          kind={toolKind}
-                        >
-                          {renderToolDetails({
-                            toolKind,
-                            argsRaw: argsInfo.raw,
-                            argsParsed: argsInfo.parsed,
-                            resultText,
-                            shellResult,
-                          })}
-                        </PopoverTag>
+                          name={name}
+                          callId={callId}
+                          argsText={args}
+                          resultText={resultText}
+                          results={invocation?.results || []}
+                          liveSteps={invocation?.liveSteps}
+                        />
                       );
                     })}
                   </Space>
@@ -648,30 +312,18 @@ export function AssistantTurnCard({ messages, streaming }) {
                       const name = typeof result?.toolName === 'string' ? result.toolName.trim() : '';
                       const callId = normalizeId(result?.toolCallId);
                       const content = typeof result?.content === 'string' ? result.content : String(result?.content || '');
-                      const toolKind = inferToolKind(name);
-                      const shellResult = toolKind === 'shell' ? parseShellResult(content) : null;
-                      const status = inferToolStatus(content, shellResult);
-                      const color = pickStatusColor(status);
                       const key = normalizeId(result?.id) || `${name || 'tool'}_${callId || ''}_${idx}`;
-                      const title = `${name || 'tool'}${callId ? ` · ${callId}` : ''}`;
 
                       return (
-                        <PopoverTag
+                        <ToolInvocationTag
                           key={key}
-                          color={color}
-                          text={name || 'tool'}
-                          title={title}
-                          status={status}
-                          kind={toolKind}
-                        >
-                          {renderToolDetails({
-                            toolKind,
-                            argsRaw: '',
-                            argsParsed: null,
-                            resultText: content,
-                            shellResult,
-                          })}
-                        </PopoverTag>
+                          name={name || 'tool'}
+                          callId={callId}
+                          argsText=""
+                          resultText={content}
+                          structuredContent={result?.toolStructuredContent ?? result?.structuredContent ?? null}
+                          toolIsError={result?.toolIsError === true}
+                        />
                       );
                     })}
                   </Space>

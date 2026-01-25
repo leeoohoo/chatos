@@ -1,3 +1,5 @@
+import { createSubagentProgressEmitter } from './progress.js';
+
 export function registerSubagentTools(context = {}) {
   const {
     server,
@@ -181,6 +183,7 @@ export function registerSubagentTools(context = {}) {
       },
       extra
     ) => {
+      const progress = createSubagentProgressEmitter(server, extra?._meta);
       try {
         const result = await executeSubAgent({
           task,
@@ -192,13 +195,49 @@ export function registerSubagentTools(context = {}) {
           query,
           commandId,
           trace: extra?._meta,
+          progress,
         });
-        return jsonTextResponse(buildJobResultPayload(result));
+        const payload = buildJobResultPayload(result);
+        const structuredContent =
+          payload && typeof payload === 'object'
+            ? {
+                ...payload,
+                chatos: {
+                  status: 'ok',
+                  server: 'subagent_router',
+                  tool: 'run_sub_agent',
+                  ...(payload.trace ? { trace: payload.trace } : {}),
+                },
+              }
+            : null;
+        return jsonTextResponse(payload, { structuredContent });
       } catch (err) {
-        return jsonTextResponse({
+        if (progress) {
+          try {
+            progress({
+              stage: 'error',
+              done: true,
+              status: 'failed',
+              text: `子代理执行失败: ${err?.message || String(err)}`,
+            });
+          } catch {
+            // ignore progress failures
+          }
+        }
+        const errorPayload = {
           agent_id: agentId || null,
           error: err?.message || String(err),
           hint: 'Ensure agent_id/command exists, model is configured, or list agents via /sub agents.',
+        };
+        return jsonTextResponse(errorPayload, {
+          structuredContent: {
+            ...errorPayload,
+            chatos: {
+              status: 'error',
+              server: 'subagent_router',
+              tool: 'run_sub_agent',
+            },
+          },
         });
       }
     }

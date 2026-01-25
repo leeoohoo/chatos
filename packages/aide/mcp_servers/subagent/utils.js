@@ -216,7 +216,11 @@ function parseArgs(input) {
   return result;
 }
 
-function jsonTextResponse(payload) {
+function jsonTextResponse(payload, options = {}) {
+  const structuredContent =
+    options && typeof options === 'object' && options.structuredContent && typeof options.structuredContent === 'object'
+      ? options.structuredContent
+      : null;
   return {
     content: [
       {
@@ -224,6 +228,7 @@ function jsonTextResponse(payload) {
         text: JSON.stringify(payload, null, 2),
       },
     ],
+    ...(structuredContent ? { structuredContent } : {}),
   };
 }
 

@@ -2140,7 +2140,7 @@ export function createChatRunner({
         ...(traceMeta ? { trace: traceMeta } : {}),
       });
     };
-    const onToolResult = ({ tool, callId, result, trace }) => {
+    const onToolResult = ({ tool, callId, result, trace, structuredContent, isError } = {}) => {
       const toolName = typeof tool === 'string' ? tool : '';
       const toolCallId = typeof callId === 'string' ? callId : '';
       const rawContent = typeof result === 'string' ? result : String(result || '');
@@ -2148,12 +2148,21 @@ export function createChatRunner({
         typeof sanitizeToolResultForSession === 'function'
           ? sanitizeToolResultForSession(rawContent, { tool: toolName })
           : rawContent;
+      const toolStructuredContent =
+        structuredContent && typeof structuredContent === 'object' ? structuredContent : null;
+      const hasStructuredContent =
+        toolStructuredContent && typeof toolStructuredContent === 'object'
+          ? Object.keys(toolStructuredContent).length > 0
+          : false;
+      const toolIsError = isError === true;
       const record = store.messages.create({
         sessionId: sid,
         role: 'tool',
         toolCallId,
         toolName,
         content,
+        ...(hasStructuredContent ? { toolStructuredContent } : {}),
+        ...(toolIsError ? { toolIsError } : {}),
       });
       const resultText = formatLogValue(rawContent, 6000);
       const traceMeta = normalizeTraceMeta(trace);

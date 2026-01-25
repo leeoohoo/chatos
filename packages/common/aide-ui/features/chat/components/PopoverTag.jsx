@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Popover } from 'antd';
 import {
   ApiOutlined,
+  BuildOutlined,
   CheckCircleOutlined,
   CodeOutlined,
   FileTextOutlined,
@@ -21,6 +22,7 @@ const TOOL_KIND_META = {
   prompt: { label: 'Prompt', icon: FormOutlined },
   journal: { label: '日志', icon: FileTextOutlined },
   browser: { label: '浏览器', icon: ThunderboltOutlined },
+  code_maintainer: { label: '维护', icon: BuildOutlined },
   default: { label: '工具', icon: ToolOutlined },
 };
 
@@ -87,17 +89,21 @@ function splitTitle(rawTitle) {
 }
 
 export function PopoverTag({
+  open: openProp,
+  onOpenChange,
   color,
   text,
   title,
   subtitle,
+  badgeSubtitle,
   status,
   kind,
+  actions,
   children,
   maxWidth = 720,
   maxHeight = 360,
 }) {
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
   const safeText = normalizeToken(text) || 'tool';
   const requestedKind = normalizeLower(kind);
   const derivedKind = TOOL_KIND_META[requestedKind] ? requestedKind : inferToolKind(safeText);
@@ -116,11 +122,22 @@ export function PopoverTag({
     .filter(Boolean)
     .join(' ');
 
+  const handleOpenChange = (next) => {
+    if (openProp === undefined) {
+      setInnerOpen(next);
+    }
+    if (typeof onOpenChange === 'function') {
+      onOpenChange(next);
+    }
+  };
+  const open = openProp === undefined ? innerOpen : openProp;
+  const badgeSubtitleText = useMemo(() => normalizeToken(badgeSubtitle), [badgeSubtitle]);
+
   return (
     <Popover
       trigger="click"
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={handleOpenChange}
       classNames={{ root: popoverClassName }}
       title={
         <div className="ds-tool-popover-header">
@@ -134,14 +151,17 @@ export function PopoverTag({
             </div>
           </div>
           <div className="ds-tool-popover-meta">
-            <span className="ds-tool-chip" data-kind={derivedKind}>
-              {kindMeta.label}
-            </span>
-            {statusMeta ? (
-              <span className="ds-tool-chip" data-status={normalizedStatus}>
-                {statusMeta.label}
+            <div className="ds-tool-popover-chips">
+              <span className="ds-tool-chip" data-kind={derivedKind}>
+                {kindMeta.label}
               </span>
-            ) : null}
+              {statusMeta ? (
+                <span className="ds-tool-chip" data-status={normalizedStatus}>
+                  {statusMeta.label}
+                </span>
+              ) : null}
+            </div>
+            {actions ? <div className="ds-tool-popover-actions">{actions}</div> : null}
           </div>
         </div>
       }
@@ -162,7 +182,10 @@ export function PopoverTag({
         <span className="ds-tool-icon">
           <Icon />
         </span>
-        <span className="ds-tool-badge-label">{safeText}</span>
+        <span className="ds-tool-badge-text">
+          <span className="ds-tool-badge-label">{safeText}</span>
+          {badgeSubtitleText ? <span className="ds-tool-badge-subtitle">{badgeSubtitleText}</span> : null}
+        </span>
       </button>
     </Popover>
   );

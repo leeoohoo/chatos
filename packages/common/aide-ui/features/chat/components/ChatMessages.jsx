@@ -31,7 +31,7 @@ function shouldAutoScroll(el) {
   return distance < 80;
 }
 
-export function ChatMessages({ messages, streaming, hasMore, loadingMore, onLoadMore }) {
+export function ChatMessages({ messages, streaming, subagentStreams, hasMore, loadingMore, onLoadMore }) {
   const allMessages = useMemo(() => (Array.isArray(messages) ? messages.filter(Boolean) : []), [messages]);
   const summaryMessage = useMemo(() => pickLatestSummary(allMessages), [allMessages]);
   const summaryId = normalizeId(summaryMessage?.id);
@@ -106,7 +106,14 @@ export function ChatMessages({ messages, streaming, hasMore, loadingMore, onLoad
           if (turn.type === 'user') {
             return <UserMessageCard key={turn.key} message={turn.message} />;
           }
-          return <AssistantTurnCard key={turn.key} messages={turn.messages} streaming={streaming} />;
+          return (
+            <AssistantTurnCard
+              key={turn.key}
+              messages={turn.messages}
+              streaming={streaming}
+              subagentStreams={subagentStreams}
+            />
+          );
         })}
         {summaryContent ? <SystemMessageCard message={summaryMessage} /> : null}
       </Space>

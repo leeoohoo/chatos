@@ -139,6 +139,35 @@ function extractTraceMeta(meta) {
   return { traceId, spanId, parentSpanId };
 }
 
+const STEP_TEXT_LIMIT = 8000;
+const STEP_REASONING_LIMIT = 6000;
+
+function safeStringify(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeStepText(value, limit = STEP_TEXT_LIMIT) {
+  const raw = safeStringify(value);
+  if (!raw) {
+    return { text: '', truncated: false, length: 0 };
+  }
+  if (raw.length <= limit) {
+    return { text: raw, truncated: false, length: raw.length };
+  }
+  const clipped = raw.slice(0, limit);
+  return {
+    text: `${clipped}\n...[truncated ${raw.length - limit} chars]`,
+    truncated: true,
+    length: raw.length,
+  };
+}
+
 function buildConfigSignature(models = [], secrets = []) {
   const modelParts = (Array.isArray(models) ? models : [])
     .filter((m) => m && typeof m === 'object')
@@ -628,8 +657,25 @@ async function executeSubAgent({
   query,
   commandId,
   trace,
+  progress,
 }) {
   const traceMeta = extractTraceMeta(trace);
+  const startedAt = Date.now();
+  const steps = [];
+  const toolTimings = new Map();
+  const emitProgress = typeof progress === 'function' ? progress : null;
+  const pushStep = (entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    const step = { ts: new Date().toISOString(), index: steps.length, ...entry };
+    steps.push(step);
+    if (emitProgress) {
+      try {
+        emitProgress({ step, index: step.index, stage: 'step' });
+      } catch {
+        // ignore progress failures
+      }
+    }
+  };
   const agentRef = await pickAgent({ agentId, category, skills, query, commandId, task });
   if (!agentRef) {
     throw new Error('No sub-agent available; install relevant plugins first.');
@@ -773,20 +819,76 @@ async function executeSubAgent({
           reasoning,
           trace: traceMeta || undefined,
           signal: controller.signal,
-          onToolCall: ({ tool, args, trace }) => {
+          onAssistantStep: ({ text, reasoning: stepReasoning, toolCalls, iteration, model: stepModel }) => {
+            const textInfo = normalizeStepText(text, STEP_TEXT_LIMIT);
+            const reasoningInfo = normalizeStepText(stepReasoning, STEP_REASONING_LIMIT);
+            const calls = (Array.isArray(toolCalls) ? toolCalls : [])
+              .map((call) => ({
+                tool: call?.function?.name || call?.name || 'tool',
+                call_id: call?.id || '',
+              }))
+              .filter((call) => call.tool);
+            if (!textInfo.text && !reasoningInfo.text && calls.length === 0) {
+              return;
+            }
+            pushStep({
+              type: 'assistant',
+              text: textInfo.text,
+              text_truncated: textInfo.truncated,
+              text_length: textInfo.length,
+              reasoning: reasoningInfo.text,
+              reasoning_truncated: reasoningInfo.truncated,
+              reasoning_length: reasoningInfo.length,
+              tool_calls: calls,
+              iteration,
+              model: stepModel,
+            });
+          },
+          onToolCall: ({ tool, callId, args, trace }) => {
+            const argsInfo = normalizeStepText(args, STEP_TEXT_LIMIT);
+            if (callId) {
+              toolTimings.set(callId, Date.now());
+            }
+            pushStep({
+              type: 'tool_call',
+              tool,
+              call_id: callId || '',
+              args: argsInfo.text,
+              args_truncated: argsInfo.truncated,
+              args_length: argsInfo.length,
+            });
             eventLogger?.log?.('subagent_tool_call', {
               agent: agentRef.agent.id,
               tool,
+              callId,
               args,
               trace: trace || undefined,
             });
           },
-          onToolResult: ({ tool, result, trace }) => {
+          onToolResult: ({ tool, callId, result, trace, isError }) => {
             const preview = typeof result === 'string' ? result : JSON.stringify(result || {});
+            const resultInfo = normalizeStepText(result, STEP_TEXT_LIMIT);
+            const started = callId ? toolTimings.get(callId) : null;
+            const elapsedMs = started ? Date.now() - started : null;
+            if (callId) {
+              toolTimings.delete(callId);
+            }
+            pushStep({
+              type: 'tool_result',
+              tool,
+              call_id: callId || '',
+              result: resultInfo.text,
+              result_truncated: resultInfo.truncated,
+              result_length: resultInfo.length,
+              is_error: Boolean(isError),
+              ...(Number.isFinite(elapsedMs) ? { elapsed_ms: elapsedMs } : {}),
+            });
             eventLogger?.log?.('subagent_tool_result', {
               agent: agentRef.agent.id,
               tool,
+              callId,
               result: preview,
+              isError,
               trace: trace || undefined,
             });
           },
@@ -883,12 +985,41 @@ async function executeSubAgent({
     trace: traceMeta || undefined,
   });
 
+  const elapsedMs = Date.now() - startedAt;
+  const toolCallCount = steps.filter((step) => step?.type === 'tool_call').length;
+  const toolResultCount = steps.filter((step) => step?.type === 'tool_result').length;
+
+  if (emitProgress) {
+    try {
+      emitProgress({
+        stage: 'done',
+        done: true,
+        stats: {
+          elapsed_ms: elapsedMs,
+          steps: steps.length,
+          tool_calls: toolCallCount,
+          tool_results: toolResultCount,
+        },
+      });
+    } catch {
+      // ignore progress failures
+    }
+  }
+
   return {
     agentRef,
     usedSkills,
     commandMeta,
     targetModel,
     response,
+    steps,
+    trace: traceMeta || null,
+    stats: {
+      elapsed_ms: elapsedMs,
+      steps: steps.length,
+      tool_calls: toolCallCount,
+      tool_results: toolResultCount,
+    },
   };
 }
 
@@ -904,6 +1035,9 @@ function buildJobResultPayload(result) {
     skills: result.usedSkills,
     command: result.commandMeta,
     response: result.response,
+    steps: Array.isArray(result.steps) ? result.steps : [],
+    stats: result.stats || null,
+    trace: result.trace || null,
   };
 }
 

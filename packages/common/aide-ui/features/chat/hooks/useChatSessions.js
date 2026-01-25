@@ -84,6 +84,7 @@ function extractErrorMessage(payload) {
 }
 
 const MAX_MCP_STREAM_ITEMS = 200;
+const MAX_SUBAGENT_STEPS = 240;
 
 function buildFinalTextFromChunks(chunks) {
   if (!chunks || typeof chunks !== 'object') return '';
@@ -115,6 +116,25 @@ function buildMcpStreamText(payload) {
   return '';
 }
 
+function normalizeProgressKind(params) {
+  const raw = typeof params?.kind === 'string' ? params.kind.trim().toLowerCase() : '';
+  if (raw) return raw;
+  const fallback = typeof params?.type === 'string' ? params.type.trim().toLowerCase() : '';
+  return fallback;
+}
+
+function pickToolCallId(params) {
+  if (!params || typeof params !== 'object') return '';
+  return normalizeId(params.toolCallId || params.tool_call_id || params.callId || params.call_id);
+}
+
+function normalizeStepsPayload(params) {
+  if (!params || typeof params !== 'object') return [];
+  if (Array.isArray(params.steps)) return params.steps.filter(Boolean);
+  if (params.step && typeof params.step === 'object') return [params.step];
+  return [];
+}
+
 export function useChatSessions() {
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
@@ -128,12 +148,14 @@ export function useChatSessions() {
   const [streamStates, setStreamStates] = useState({});
   const [streamBuffers, setStreamBuffers] = useState({});
   const [mcpStreams, setMcpStreams] = useState({});
+  const [subagentStreams, setSubagentStreams] = useState({});
   const [sessionErrors, setSessionErrors] = useState({});
 
   const selectedSessionIdRef = useRef('');
   const streamStatesRef = useRef({});
   const streamBuffersRef = useRef({});
   const mcpStreamsRef = useRef({});
+  const subagentStreamsRef = useRef({});
 
   const currentSession = useMemo(
     () => sessions.find((s) => normalizeId(s?.id) === normalizeId(selectedSessionId)) || null,
@@ -156,6 +178,10 @@ export function useChatSessions() {
     mcpStreamsRef.current = mcpStreams;
   }, [mcpStreams]);
 
+  useEffect(() => {
+    subagentStreamsRef.current = subagentStreams;
+  }, [subagentStreams]);
+
   const currentStreamState = useMemo(() => {
     const sid = normalizeId(selectedSessionId);
     if (!sid) return null;
@@ -167,6 +193,13 @@ export function useChatSessions() {
     if (!sid) return null;
     return mcpStreams[sid] || null;
   }, [selectedSessionId, mcpStreams]);
+
+  const currentSubagentStream = useMemo(() => {
+    const sid = normalizeId(selectedSessionId);
+    if (!sid) return {};
+    const entry = subagentStreams[sid];
+    return entry && typeof entry === 'object' ? entry : {};
+  }, [selectedSessionId, subagentStreams]);
 
   const sessionStatusById = useMemo(() => {
     const list = Array.isArray(sessions) ? sessions : [];
@@ -338,6 +371,66 @@ export function useChatSessions() {
     });
   };
 
+  const updateSubagentStream = (sessionId, payload) => {
+    const sid = normalizeId(sessionId);
+    if (!sid || !payload || typeof payload !== 'object') return;
+    const params = payload?.params && typeof payload.params === 'object' ? payload.params : null;
+    if (!params) return;
+    const kind = normalizeProgressKind(params);
+    if (kind && kind !== 'subagent_step' && kind !== 'subagent_progress') return;
+    const callId = pickToolCallId(params);
+    if (!callId) return;
+    const incomingSteps = normalizeStepsPayload(params);
+    const done = params?.done === true || params?.stage === 'done' || params?.status === 'completed';
+    if (incomingSteps.length === 0 && !done) return;
+
+    setSubagentStreams((prev) => {
+      const next = { ...(prev || {}) };
+      const sessionMap = next[sid] && typeof next[sid] === 'object' ? { ...next[sid] } : {};
+      const current = sessionMap[callId] && typeof sessionMap[callId] === 'object' ? sessionMap[callId] : {};
+      let steps = Array.isArray(current.steps) ? current.steps.slice() : [];
+
+      if (incomingSteps.length > 0) {
+        const seen = new Set(steps.map((step) => normalizeId(step?.ts) || String(step?.index ?? '')));
+        incomingSteps.forEach((step) => {
+          const key = normalizeId(step?.ts) || String(step?.index ?? '');
+          if (key && seen.has(key)) return;
+          steps.push(step);
+          if (key) seen.add(key);
+        });
+        if (steps.length > MAX_SUBAGENT_STEPS) {
+          steps = steps.slice(-MAX_SUBAGENT_STEPS);
+        }
+      }
+
+      sessionMap[callId] = {
+        ...current,
+        steps,
+        done: current.done || done,
+        status: typeof params?.status === 'string' ? params.status : current.status,
+        updatedAt: new Date().toISOString(),
+      };
+      next[sid] = sessionMap;
+      subagentStreamsRef.current = next;
+      return next;
+    });
+  };
+
+  const clearSubagentStream = (sessionId, toolCallId) => {
+    const sid = normalizeId(sessionId);
+    const callId = normalizeId(toolCallId);
+    if (!sid || !callId) return;
+    setSubagentStreams((prev) => {
+      if (!prev || !prev[sid]) return prev;
+      const sessionMap = { ...prev[sid] };
+      if (!sessionMap[callId]) return prev;
+      delete sessionMap[callId];
+      const next = { ...prev, [sid]: sessionMap };
+      subagentStreamsRef.current = next;
+      return next;
+    });
+  };
+
   const clearMcpStream = (sessionId) => {
     const sid = normalizeId(sessionId);
     if (!sid) return;
@@ -501,6 +594,11 @@ export function useChatSessions() {
       if (type === 'tool_result') {
         const record = payload.message;
         if (!record || typeof record !== 'object') return;
+        const sid = normalizeId(record?.sessionId);
+        const callId = normalizeId(record?.toolCallId);
+        if (sid && callId) {
+          clearSubagentStream(sid, callId);
+        }
         if (normalizeId(record?.sessionId) !== normalizeId(selectedSessionIdRef.current)) return;
         setMessages((prev) => {
           const list = Array.isArray(prev) ? prev : [];
@@ -515,6 +613,10 @@ export function useChatSessions() {
         if (!sid) return;
         const streamPayload = payload.payload && typeof payload.payload === 'object' ? payload.payload : null;
         if (!streamPayload) return;
+        const streamServer = typeof streamPayload.server === 'string' ? streamPayload.server.trim().toLowerCase() : '';
+        if (streamServer === 'subagent_router') {
+          updateSubagentStream(sid, streamPayload);
+        }
         updateMcpStream(sid, streamPayload);
         return;
       }
@@ -818,6 +920,7 @@ export function useChatSessions() {
     composerAttachments,
     streamState: currentStreamState,
     mcpStreamState: currentMcpStream,
+    subagentStreamState: currentSubagentStream,
     currentSession,
     sessionStatusById,
     setComposerText,

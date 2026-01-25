@@ -144,6 +144,7 @@ const MCP_STREAM_NOTIFICATION_METHODS = [
   'codex_app.window_run.stream',
   'codex_app.window_run.done',
   'codex_app.window_run.completed',
+  'notifications/progress',
 ];
 
 const buildLooseNotificationSchema = (method) =>
@@ -1666,6 +1667,18 @@ function buildCallMeta(serverEntry, runtimeMeta, toolContext) {
       next = { sessionId: contextSessionId };
     } else if (!Object.prototype.hasOwnProperty.call(next, 'sessionId')) {
       next = { ...next, sessionId: contextSessionId };
+    }
+  }
+  const contextToolCallId = normalizeSessionId(toolContext?.toolCallId);
+  if (contextToolCallId) {
+    const hasToolCallId =
+      next &&
+      (Object.prototype.hasOwnProperty.call(next, 'toolCallId') ||
+        Object.prototype.hasOwnProperty.call(next, 'tool_call_id'));
+    if (!next) {
+      next = { toolCallId: contextToolCallId, tool_call_id: contextToolCallId };
+    } else if (!hasToolCallId) {
+      next = { ...next, toolCallId: contextToolCallId, tool_call_id: contextToolCallId };
     }
   }
   const traceMeta = extractTraceMeta(toolContext?.trace);

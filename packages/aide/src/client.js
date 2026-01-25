@@ -158,17 +158,18 @@ export class ModelClient {
             const requestedToolName = call.function?.name || 'unknown';
             const toolTrace = createChildTrace(chatTrace, { tool: requestedToolName });
             const target = toolset.find((tool) => tool.name === requestedToolName);
-            if (!target) {
-              const errMsg = `Tool "${requestedToolName}" is not registered but was requested by the model`;
-              session.addToolResult(call.id, `[error] ${errMsg}`, requestedToolName);
-              options.onToolResult?.({
-                tool: requestedToolName,
-                callId: call.id,
-                result: `[error] ${errMsg}`,
-                trace: toolTrace,
-              });
-              continue;
-            }
+              if (!target) {
+                const errMsg = `Tool "${requestedToolName}" is not registered but was requested by the model`;
+                session.addToolResult(call.id, `[error] ${errMsg}`, requestedToolName);
+                options.onToolResult?.({
+                  tool: requestedToolName,
+                  callId: call.id,
+                  result: `[error] ${errMsg}`,
+                  trace: toolTrace,
+                  isError: true,
+                });
+                continue;
+              }
             const argsRaw = call.function?.arguments || '{}';
             let parsedArgs = {};
             try {
@@ -181,6 +182,7 @@ export class ModelClient {
                 callId: call.id,
                 result: errText,
                 trace: toolTrace,
+                isError: true,
               });
               continue;
             }
@@ -208,6 +210,9 @@ export class ModelClient {
                 ...(toolWorkdir ? { workdir: toolWorkdir } : {}),
                 trace: toolTrace,
               });
+              const toolStructuredContent =
+                toolResult && typeof toolResult === 'object' ? toolResult.structuredContent ?? null : null;
+              const toolIsError = Boolean(toolResult?.isError);
               const toolResultText = formatToolResultText(toolResult);
               const toolResultForSession = sanitizeToolResultForSession(toolResultText, {
                 tool: target.name,
@@ -218,6 +223,8 @@ export class ModelClient {
                 callId: call.id,
                 result: toolResultText,
                 trace: toolTrace,
+                structuredContent: toolStructuredContent,
+                isError: toolIsError,
               });
             } catch (err) {
               if (err?.name === 'AbortError' || options.signal?.aborted) {
@@ -230,6 +237,7 @@ export class ModelClient {
                 callId: call.id,
                 result: errText,
                 trace: toolTrace,
+                isError: true,
               });
             }
           }

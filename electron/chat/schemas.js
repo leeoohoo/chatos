@@ -71,6 +71,8 @@ export const chatMessageSchema = z.object({
   attachments: z.array(imageAttachmentSchema).optional().default([]),
   toolCallId: z.string().trim().optional().default(''),
   toolName: z.string().trim().optional().default(''),
+  toolStructuredContent: z.any().optional(),
+  toolIsError: z.boolean().optional(),
   toolCalls: z.array(toolCallSchema).optional(),
   name: z.string().trim().optional().default(''),
   hidden: z.boolean().optional(),
