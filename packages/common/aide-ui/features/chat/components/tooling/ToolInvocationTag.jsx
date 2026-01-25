@@ -75,6 +75,7 @@ export function ToolInvocationTag({
   const isSubagent = toolKind === 'subagent';
   const popoverMaxWidth = isSubagent ? Math.max(maxWidth, 900) : maxWidth;
   const popoverMaxHeight = isSubagent ? Math.max(maxHeight, 520) : maxHeight;
+  const popoverPlacement = isSubagent ? 'bottomLeft' : undefined;
   const drawerWidth = isSubagent ? '100vw' : 780;
   const drawerClassName = isSubagent
     ? 'ds-tool-drawer ds-tool-drawer-wide ds-tool-drawer-full'
@@ -151,6 +152,7 @@ export function ToolInvocationTag({
         actions={actions}
         maxWidth={popoverMaxWidth}
         maxHeight={popoverMaxHeight}
+        placement={popoverPlacement}
       >
         <ToolDetails
           toolName={name}

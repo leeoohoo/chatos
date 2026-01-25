@@ -12,13 +12,25 @@ export function ToolSection({ title, children }) {
   );
 }
 
-export function ToolSummary({ items = [] }) {
+function normalizeSummaryKey(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+export function ToolSummary({ items = [], className = '', variant }) {
   const list = (Array.isArray(items) ? items : []).filter((item) => item && item.value !== '');
   if (list.length === 0) return null;
+  const summaryClassName = ['ds-tool-summary', className].filter(Boolean).join(' ');
+  const dataVariant = typeof variant === 'string' && variant.trim() ? variant.trim() : undefined;
   return (
-    <div className="ds-tool-summary">
+    <div className={summaryClassName} data-variant={dataVariant}>
       {list.map((item, idx) => (
-        <div key={`${item.label}-${idx}`} className="ds-tool-summary-item" data-tone={item.tone || undefined}>
+        <div
+          key={`${item.label}-${idx}`}
+          className="ds-tool-summary-item"
+          data-tone={item.tone || undefined}
+          data-key={normalizeSummaryKey(item.key || item.label) || undefined}
+        >
           <div className="ds-tool-summary-label">{item.label}</div>
           <div className="ds-tool-summary-value">{item.value}</div>
         </div>

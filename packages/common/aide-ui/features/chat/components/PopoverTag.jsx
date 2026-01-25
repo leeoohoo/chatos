@@ -102,6 +102,8 @@ export function PopoverTag({
   children,
   maxWidth = 720,
   maxHeight = 360,
+  placement,
+  autoAdjustOverflow = true,
 }) {
   const [innerOpen, setInnerOpen] = useState(false);
   const safeText = normalizeToken(text) || 'tool';
@@ -133,11 +135,16 @@ export function PopoverTag({
   const open = openProp === undefined ? innerOpen : openProp;
   const badgeSubtitleText = useMemo(() => normalizeToken(badgeSubtitle), [badgeSubtitle]);
 
+  const resolvedMaxWidth = typeof maxWidth === 'number' ? `min(${maxWidth}px, 92vw)` : maxWidth;
+  const resolvedMaxHeight = typeof maxHeight === 'number' ? `min(${maxHeight}px, 78vh)` : maxHeight;
+
   return (
     <Popover
       trigger="click"
       open={open}
       onOpenChange={handleOpenChange}
+      placement={placement}
+      autoAdjustOverflow={autoAdjustOverflow}
       classNames={{ root: popoverClassName }}
       title={
         <div className="ds-tool-popover-header">
@@ -166,7 +173,7 @@ export function PopoverTag({
         </div>
       }
       content={
-        <div className="ds-tool-popover-body" style={{ maxWidth, maxHeight, overflow: 'auto' }}>
+        <div className="ds-tool-popover-body" style={{ maxWidth: resolvedMaxWidth, maxHeight: resolvedMaxHeight, overflow: 'auto' }}>
           {children}
         </div>
       }

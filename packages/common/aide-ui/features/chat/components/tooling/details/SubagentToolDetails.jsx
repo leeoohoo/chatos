@@ -37,6 +37,8 @@ function RawJsonSection({ title, label, text }) {
 
 export function SubagentToolDetails({ toolName, argsRaw, argsParsed, resultText, structuredContent, liveSteps }) {
   const summaryItems = [];
+  const primaryItems = [];
+  const secondaryItems = [];
   const parsedResult = parseJsonSafe(resultText, null);
   const payload =
     structuredContent && typeof structuredContent === 'object'
@@ -78,26 +80,29 @@ export function SubagentToolDetails({ toolName, argsRaw, argsParsed, resultText,
     )
   );
 
-  if (agentId) summaryItems.push({ label: 'agent', value: formatSummaryValue(agentId, 80) });
-  if (agentName) summaryItems.push({ label: 'agent_name', value: formatSummaryValue(agentName, 80) });
-  if (category) summaryItems.push({ label: 'category', value: formatSummaryValue(category, 80) });
-  if (skills.length > 0) summaryItems.push({ label: 'skills', value: formatSummaryValue(skills.join(', '), 120) });
-  if (task) summaryItems.push({ label: 'task', value: formatSummaryValue(task, 140) });
-  if (plugin) summaryItems.push({ label: 'plugin', value: formatSummaryValue(plugin, 80) });
-  if (model) summaryItems.push({ label: 'model', value: formatSummaryValue(model, 80) });
-  if (commandName) summaryItems.push({ label: 'command', value: formatSummaryValue(commandName, 80) });
-  if (stats?.elapsed_ms) summaryItems.push({ label: 'elapsed', value: formatElapsed(stats.elapsed_ms) });
-  if (stats?.tool_calls) summaryItems.push({ label: 'tools', value: String(stats.tool_calls) });
-  if (effectiveSteps.length > 0) summaryItems.push({ label: 'steps', value: String(effectiveSteps.length) });
+  if (agentId) primaryItems.push({ label: 'agent', value: formatSummaryValue(agentId, 80) });
+  if (skills.length > 0) primaryItems.push({ label: 'skills', value: formatSummaryValue(skills.join(', '), 120) });
+  if (task) primaryItems.push({ label: 'task', value: formatSummaryValue(task, 140) });
+
+  if (agentName) secondaryItems.push({ label: 'agent_name', value: formatSummaryValue(agentName, 80) });
+  if (category) secondaryItems.push({ label: 'category', value: formatSummaryValue(category, 80) });
+  if (plugin) secondaryItems.push({ label: 'plugin', value: formatSummaryValue(plugin, 80) });
+  if (model) secondaryItems.push({ label: 'model', value: formatSummaryValue(model, 80) });
+  if (commandName) secondaryItems.push({ label: 'command', value: formatSummaryValue(commandName, 80) });
+  if (stats?.elapsed_ms) secondaryItems.push({ label: 'elapsed', value: formatElapsed(stats.elapsed_ms) });
+  if (stats?.tool_calls) secondaryItems.push({ label: 'tools', value: String(stats.tool_calls) });
+  if (effectiveSteps.length > 0) secondaryItems.push({ label: 'steps', value: String(effectiveSteps.length) });
   if (toolNames.length > 0) {
-    summaryItems.push({ label: 'tools_used', value: formatSummaryValue(toolNames.join(', '), 160) });
+    secondaryItems.push({ label: 'tools_used', value: formatSummaryValue(toolNames.join(', '), 160) });
   }
+
+  summaryItems.push(...primaryItems, ...secondaryItems);
 
   return (
     <>
       {summaryItems.length > 0 ? (
         <ToolSection title="摘要">
-          <ToolSummary items={summaryItems} />
+          <ToolSummary items={summaryItems} variant={isRunSubAgent ? 'subagent' : undefined} />
         </ToolSection>
       ) : null}
       {!isRunSubAgent && argsRaw ? (

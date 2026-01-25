@@ -706,6 +706,19 @@ export function GlobalStyles({ extraCss = '' } = {}) {
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 8px;
       }
+      .ds-tool-summary[data-variant='subagent'] {
+        grid-template-columns: minmax(110px, 150px) minmax(130px, 190px) minmax(200px, 1fr);
+        align-items: start;
+      }
+      .ds-tool-summary[data-variant='subagent'] .ds-tool-summary-item[data-key='agent'],
+      .ds-tool-summary[data-variant='subagent'] .ds-tool-summary-item[data-key='skills'] {
+        padding: 6px 8px;
+      }
+      @media (max-width: 860px) {
+        .ds-tool-summary[data-variant='subagent'] {
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        }
+      }
       .ds-tool-summary-item {
         padding: 8px 10px;
         border-radius: 10px;
