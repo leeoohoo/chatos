@@ -23,6 +23,8 @@ const imageAttachmentSchema = z
   })
   .passthrough();
 
+const subagentStepSchema = z.record(z.any());
+
 export const chatAgentSchema = z.object({
   id: z.string().uuid().optional(),
   mode: z.enum(['custom', 'flow']).optional().default('custom'),
@@ -76,4 +78,16 @@ export const chatMessageSchema = z.object({
   toolCalls: z.array(toolCallSchema).optional(),
   name: z.string().trim().optional().default(''),
   hidden: z.boolean().optional(),
+});
+
+export const chatSubagentStreamSchema = z.object({
+  id: z.string().trim().min(1, 'id is required').optional(),
+  sessionId: z.string().trim().min(1, 'sessionId is required'),
+  toolCallId: z.string().trim().min(1, 'toolCallId is required'),
+  jobId: z.string().trim().optional().default(''),
+  status: z.string().trim().optional().default(''),
+  done: z.boolean().optional().default(false),
+  steps: z.array(subagentStepSchema).optional().default([]),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
 });

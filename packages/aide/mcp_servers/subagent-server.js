@@ -1173,9 +1173,13 @@ function startAsyncJob(job) {
     }
     if (msg.type === 'progress') {
       const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : null;
-      if (payload && progressEmitter) {
+      const payloadWithJob =
+        payload && typeof payload === 'object'
+          ? { ...payload, job_id: job.id, jobId: job.id }
+          : null;
+      if (payloadWithJob && progressEmitter) {
         try {
-          progressEmitter(payload);
+          progressEmitter(payloadWithJob);
         } catch {
           // ignore progress relay failures
         }
@@ -1186,12 +1190,13 @@ function startAsyncJob(job) {
         j.updatedAtMono = performance.now();
         j.heartbeatStale = false;
       }
-      if (payload) {
-        const step = payload.step && typeof payload.step === 'object' ? payload.step : null;
+      if (payloadWithJob || payload) {
+        const stepSource = payloadWithJob || payload;
+        const step = stepSource.step && typeof stepSource.step === 'object' ? stepSource.step : null;
         eventLogger?.log?.('subagent_async_progress', {
           job_id: job.id,
-          stage: payload.stage || null,
-          done: payload.done === true,
+          stage: stepSource.stage || null,
+          done: stepSource.done === true,
           step_index: typeof step?.index === 'number' ? step.index : null,
           step_type: step?.type || null,
           tool: step?.tool || null,

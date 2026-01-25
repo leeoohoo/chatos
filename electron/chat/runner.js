@@ -750,6 +750,30 @@ export function createChatRunner({
     }
     return '';
   };
+  const normalizeProgressKind = (params) => {
+    const raw = typeof params?.kind === 'string' ? params.kind.trim().toLowerCase() : '';
+    if (raw) return raw;
+    const fallback = typeof params?.type === 'string' ? params.type.trim().toLowerCase() : '';
+    return fallback;
+  };
+  const pickToolCallId = (params) => {
+    if (!params || typeof params !== 'object') return '';
+    return normalizeId(params.toolCallId || params.tool_call_id || params.callId || params.call_id);
+  };
+  const normalizeStepsPayload = (params) => {
+    if (!params || typeof params !== 'object') return [];
+    if (Array.isArray(params.steps)) return params.steps.filter(Boolean);
+    if (params.step && typeof params.step === 'object') return [params.step];
+    return [];
+  };
+  const resolveProgressDone = (params) => {
+    if (params?.done === true) return true;
+    if (typeof params?.stage === 'string' && params.stage.trim().toLowerCase() === 'done') return true;
+    const status = typeof params?.status === 'string' ? params.status.trim().toLowerCase() : '';
+    return ['completed', 'failed', 'aborted', 'cancelled', 'canceled', 'error'].includes(status);
+  };
+  const resolveProgressJobId = (params) =>
+    normalizeId(params?.job_id || params?.jobId || params?.jobID || '');
   const handleMcpNotification = (notification) => {
     if (!notification) return;
     const params = notification?.params && typeof notification.params === 'object' ? notification.params : null;
@@ -766,6 +790,34 @@ export function createChatRunner({
     if (type === 'mcp_stream') {
       const sessionId = resolveMcpSessionId(params);
       if (sessionId) {
+        if (
+          payload.server === 'subagent_router' &&
+          payload.method === 'notifications/progress' &&
+          store?.subagentStreams?.upsert
+        ) {
+          const callId = pickToolCallId(params);
+          const kind = normalizeProgressKind(params);
+          if (callId && (!kind || kind === 'subagent_step' || kind === 'subagent_progress')) {
+            const steps = normalizeStepsPayload(params);
+            const done = resolveProgressDone(params);
+            const jobId = resolveProgressJobId(params);
+            const status = typeof params?.status === 'string' ? params.status : done ? 'completed' : '';
+            if (steps.length > 0 || done || jobId) {
+              try {
+                store.subagentStreams.upsert({
+                  sessionId,
+                  toolCallId: callId,
+                  jobId,
+                  status,
+                  done,
+                  steps,
+                });
+              } catch {
+                // ignore persistence errors
+              }
+            }
+          }
+        }
         sendEvent({
           type: 'mcp_stream',
           sessionId,
@@ -1045,6 +1097,19 @@ export function createChatRunner({
       entry.controller.abort();
     } catch {
       // ignore
+    }
+    if (store?.subagentStreams?.list && store?.subagentStreams?.markDone) {
+      try {
+        const streams = store.subagentStreams.list(sid) || [];
+        streams.forEach((stream) => {
+          if (stream?.done === true) return;
+          const toolCallId = normalizeId(stream?.toolCallId);
+          if (!toolCallId) return;
+          store.subagentStreams.markDone(sid, toolCallId, 'cancelled');
+        });
+      } catch {
+        // ignore
+      }
     }
     return { ok: true };
   };
@@ -2176,6 +2241,19 @@ export function createChatRunner({
         ...(traceMeta ? { trace: traceMeta } : {}),
       });
       scopedSendEvent({ type: 'tool_result', sessionId: sid, message: record });
+      const normalizedTool = toolName.toLowerCase();
+      if (
+        toolCallId &&
+        normalizedTool.includes('subagent_router') &&
+        normalizedTool.includes('run_sub_agent') &&
+        store?.subagentStreams?.markDone
+      ) {
+        try {
+          store.subagentStreams.markDone(sid, toolCallId, toolIsError ? 'failed' : 'completed');
+        } catch {
+          // ignore
+        }
+      }
     };
 
     const run = async () => {

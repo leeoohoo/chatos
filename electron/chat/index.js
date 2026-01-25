@@ -268,6 +268,11 @@ export function registerChatApi(ipcMain, options = {}) {
     }
     return { ok: true, messages: store.messages.list(sessionId), hasMore: false };
   });
+  ipcMain.handle('chat:subagent:streams', async (_event, payload = {}) => {
+    const sessionId = normalizeId(payload?.sessionId);
+    const streams = store.subagentStreams?.list ? store.subagentStreams.list(sessionId) : [];
+    return { ok: true, sessionId: sessionId || null, streams };
+  });
 
   ipcMain.handle('chat:send', async (_event, payload = {}) => {
     const sessionId = normalizeId(payload?.sessionId);

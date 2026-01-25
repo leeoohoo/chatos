@@ -35,6 +35,7 @@ const INVOKE_CHANNELS = new Set([
   'chat:agents:update',
   'chat:messages:list',
   'chat:send',
+  'chat:subagent:streams',
   'chat:sessions:create',
   'chat:sessions:delete',
   'chat:sessions:ensureDefault',

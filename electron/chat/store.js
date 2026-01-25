@@ -1,6 +1,6 @@
 import { ZodError } from 'zod';
 
-import { chatAgentSchema, chatMessageSchema, chatSessionSchema } from './schemas.js';
+import { chatAgentSchema, chatMessageSchema, chatSessionSchema, chatSubagentStreamSchema } from './schemas.js';
 
 function formatZodError(err) {
   if (!(err instanceof ZodError)) return err?.message || String(err);
@@ -25,6 +25,35 @@ function parsePartial(schema, payload) {
 
 function normalizeId(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeStepKey(step) {
+  if (!step || typeof step !== 'object') return '';
+  return normalizeId(step.ts) || String(step.index ?? '');
+}
+
+function buildSubagentStreamId(sessionId, toolCallId) {
+  const sid = normalizeId(sessionId);
+  const tid = normalizeId(toolCallId);
+  if (!sid || !tid) return '';
+  return `subagent:${sid}:${tid}`;
+}
+
+function appendSubagentSteps(current, incoming, limit = 240) {
+  const base = Array.isArray(current) ? current.slice() : [];
+  const additions = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];
+  if (additions.length === 0) return base;
+  const seen = new Set(base.map((step) => normalizeStepKey(step)));
+  additions.forEach((step) => {
+    const key = normalizeStepKey(step);
+    if (key && seen.has(key)) return;
+    base.push(step);
+    if (key) seen.add(key);
+  });
+  if (limit > 0 && base.length > limit) {
+    return base.slice(-limit);
+  }
+  return base;
 }
 
 function parseMs(ts) {
@@ -102,6 +131,70 @@ export function createChatStore(db) {
     return { removed };
   };
 
+  const listSubagentStreams = (sessionId) => {
+    const list = db.list('subagentStreams') || [];
+    const sid = normalizeId(sessionId);
+    if (!sid) return list;
+    return list.filter((entry) => normalizeId(entry?.sessionId) === sid);
+  };
+
+  const getSubagentStream = (sessionId, toolCallId) => {
+    const id = buildSubagentStreamId(sessionId, toolCallId);
+    if (!id) return null;
+    return db.get('subagentStreams', id);
+  };
+
+  const upsertSubagentStream = ({
+    sessionId,
+    toolCallId,
+    jobId,
+    status,
+    done,
+    steps,
+    step,
+    maxSteps = 240,
+  } = {}) => {
+    const sid = normalizeId(sessionId);
+    const tid = normalizeId(toolCallId);
+    if (!sid || !tid) return null;
+    const id = buildSubagentStreamId(sid, tid);
+    const existing = db.get('subagentStreams', id);
+    const mergedSteps = appendSubagentSteps(
+      Array.isArray(existing?.steps) ? existing.steps : [],
+      Array.isArray(steps) ? steps : step ? [step] : [],
+      maxSteps
+    );
+    const payload = {
+      ...(existing && typeof existing === 'object' ? existing : {}),
+      id,
+      sessionId: sid,
+      toolCallId: tid,
+      jobId: normalizeId(jobId) || normalizeId(existing?.jobId) || '',
+      status: typeof status === 'string' ? status : existing?.status || '',
+      done: done === true || existing?.done === true,
+      steps: mergedSteps,
+    };
+    if (existing) {
+      return db.update('subagentStreams', id, parsePartial(chatSubagentStreamSchema, payload));
+    }
+    return db.insert('subagentStreams', parse(chatSubagentStreamSchema, payload));
+  };
+
+  const markSubagentStreamDone = (sessionId, toolCallId, status) => {
+    const sid = normalizeId(sessionId);
+    const tid = normalizeId(toolCallId);
+    if (!sid || !tid) return null;
+    const id = buildSubagentStreamId(sid, tid);
+    const existing = db.get('subagentStreams', id);
+    if (!existing) return null;
+    const payload = {
+      ...existing,
+      done: true,
+      status: typeof status === 'string' ? status : existing?.status || 'completed',
+    };
+    return db.update('subagentStreams', id, parsePartial(chatSubagentStreamSchema, payload));
+  };
+
   const ensureDefaultAgent = ({ modelId, name = '默认 Agent' } = {}) => {
     const existing = listAgents();
     if (existing.length > 0) {
@@ -157,6 +250,12 @@ export function createChatStore(db) {
       update: updateMessage,
       remove: removeMessage,
       removeForSession: removeMessagesForSession,
+    },
+    subagentStreams: {
+      list: listSubagentStreams,
+      get: getSubagentStream,
+      upsert: upsertSubagentStream,
+      markDone: markSubagentStreamDone,
     },
   };
 }

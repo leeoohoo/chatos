@@ -135,6 +135,33 @@ function normalizeStepsPayload(params) {
   return [];
 }
 
+function normalizeStepKey(step) {
+  if (!step || typeof step !== 'object') return '';
+  return normalizeId(step.ts) || String(step.index ?? '');
+}
+
+function mergeSubagentSteps(current, incoming, limit = MAX_SUBAGENT_STEPS) {
+  const base = Array.isArray(current) ? current.slice() : [];
+  const additions = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];
+  if (additions.length === 0) return base;
+  const seen = new Set(base.map((step) => normalizeStepKey(step)));
+  additions.forEach((step) => {
+    const key = normalizeStepKey(step);
+    if (key && seen.has(key)) return;
+    base.push(step);
+    if (key) seen.add(key);
+  });
+  if (limit > 0 && base.length > limit) {
+    return base.slice(-limit);
+  }
+  return base;
+}
+
+function isRunSubAgentToolName(value) {
+  const name = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return name.includes('run_sub_agent');
+}
+
 export function useChatSessions() {
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
@@ -181,6 +208,27 @@ export function useChatSessions() {
   useEffect(() => {
     subagentStreamsRef.current = subagentStreams;
   }, [subagentStreams]);
+
+  useEffect(() => {
+    if (!hasApi) return undefined;
+    const sid = normalizeId(selectedSessionId);
+    if (!sid) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.invoke('chat:subagent:streams', { sessionId: sid });
+        if (cancelled) return;
+        if (res?.ok === false) return;
+        const streams = Array.isArray(res?.streams) ? res.streams : [];
+        applyPersistedSubagentStreams(sid, streams);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSessionId]);
 
   const currentStreamState = useMemo(() => {
     const sid = normalizeId(selectedSessionId);
@@ -381,35 +429,65 @@ export function useChatSessions() {
     const callId = pickToolCallId(params);
     if (!callId) return;
     const incomingSteps = normalizeStepsPayload(params);
-    const done = params?.done === true || params?.stage === 'done' || params?.status === 'completed';
-    if (incomingSteps.length === 0 && !done) return;
+    const jobId = normalizeId(params?.job_id || params?.jobId || params?.jobID);
+    const statusRaw = typeof params?.status === 'string' ? params.status : '';
+    const statusKey = statusRaw.trim().toLowerCase();
+    const done =
+      params?.done === true ||
+      params?.stage === 'done' ||
+      ['completed', 'failed', 'aborted', 'cancelled', 'canceled', 'error'].includes(statusKey);
+    if (incomingSteps.length === 0 && !done && !jobId) return;
 
     setSubagentStreams((prev) => {
       const next = { ...(prev || {}) };
       const sessionMap = next[sid] && typeof next[sid] === 'object' ? { ...next[sid] } : {};
       const current = sessionMap[callId] && typeof sessionMap[callId] === 'object' ? sessionMap[callId] : {};
-      let steps = Array.isArray(current.steps) ? current.steps.slice() : [];
-
-      if (incomingSteps.length > 0) {
-        const seen = new Set(steps.map((step) => normalizeId(step?.ts) || String(step?.index ?? '')));
-        incomingSteps.forEach((step) => {
-          const key = normalizeId(step?.ts) || String(step?.index ?? '');
-          if (key && seen.has(key)) return;
-          steps.push(step);
-          if (key) seen.add(key);
-        });
-        if (steps.length > MAX_SUBAGENT_STEPS) {
-          steps = steps.slice(-MAX_SUBAGENT_STEPS);
-        }
-      }
+      const steps = mergeSubagentSteps(current.steps, incomingSteps, MAX_SUBAGENT_STEPS);
 
       sessionMap[callId] = {
         ...current,
         steps,
         done: current.done || done,
-        status: typeof params?.status === 'string' ? params.status : current.status,
+        status: statusRaw || current.status,
+        jobId: jobId || current.jobId,
         updatedAt: new Date().toISOString(),
       };
+      next[sid] = sessionMap;
+      subagentStreamsRef.current = next;
+      return next;
+    });
+  };
+
+  const applyPersistedSubagentStreams = (sessionId, entries = []) => {
+    const sid = normalizeId(sessionId);
+    if (!sid) return;
+    const list = Array.isArray(entries) ? entries : [];
+    setSubagentStreams((prev) => {
+      const next = { ...(prev || {}) };
+      const prevSession = next[sid] && typeof next[sid] === 'object' ? { ...next[sid] } : {};
+      const sessionMap = {};
+      if (list.length === 0) {
+        next[sid] = sessionMap;
+        subagentStreamsRef.current = next;
+        return next;
+      }
+      list.forEach((entry) => {
+        const callId = normalizeId(entry?.toolCallId || entry?.tool_call_id || entry?.callId || entry?.call_id);
+        if (!callId) return;
+        const existing = prevSession[callId] && typeof prevSession[callId] === 'object' ? prevSession[callId] : {};
+        const steps = mergeSubagentSteps(existing.steps, entry?.steps, MAX_SUBAGENT_STEPS);
+        const done = entry?.done === true;
+        const status = typeof entry?.status === 'string' ? entry.status : existing.status;
+        const jobId = normalizeId(entry?.jobId || entry?.job_id) || existing.jobId;
+        sessionMap[callId] = {
+          ...existing,
+          steps,
+          done: existing.done || done,
+          status,
+          jobId,
+          updatedAt: typeof entry?.updatedAt === 'string' ? entry.updatedAt : existing.updatedAt,
+        };
+      });
       next[sid] = sessionMap;
       subagentStreamsRef.current = next;
       return next;
@@ -596,7 +674,8 @@ export function useChatSessions() {
         if (!record || typeof record !== 'object') return;
         const sid = normalizeId(record?.sessionId);
         const callId = normalizeId(record?.toolCallId);
-        if (sid && callId) {
+        const hasSubagentStream = Boolean(subagentStreamsRef.current?.[sid]?.[callId]);
+        if (sid && callId && !isRunSubAgentToolName(record?.toolName) && !hasSubagentStream) {
           clearSubagentStream(sid, callId);
         }
         if (normalizeId(record?.sessionId) !== normalizeId(selectedSessionIdRef.current)) return;
@@ -899,7 +978,6 @@ export function useChatSessions() {
 
   const stopStreaming = async () => {
     const sid = normalizeId(selectedSessionIdRef.current);
-    if (!sid || !streamStatesRef.current[sid]) return;
     if (!sid) return;
     try {
       await api.invoke('chat:abort', { sessionId: sid });
