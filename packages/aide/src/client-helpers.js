@@ -115,6 +115,7 @@ export function repairJsonString(input, options = {}) {
     return input;
   }
   const allowedKeys = options?.allowedKeys instanceof Set ? options.allowedKeys : null;
+  const freeformKeys = FREEFORM_VALUE_KEYS;
   let output = '';
   let inString = false;
   let escaping = false;
@@ -145,7 +146,11 @@ export function repairJsonString(input, options = {}) {
       if (char === '"') {
         const containerType = contextStack.length > 0 ? contextStack[contextStack.length - 1].type : null;
         const parentType = contextStack.length > 1 ? contextStack[contextStack.length - 2].type : null;
-        if (stringIsKey || shouldTerminateValueString(input, i, containerType, parentType, contextStack.length, allowedKeys)) {
+        const valueKey = getCurrentValueKey(contextStack);
+        if (
+          stringIsKey ||
+          shouldTerminateValueString(input, i, containerType, parentType, contextStack.length, allowedKeys, valueKey)
+        ) {
           inString = false;
           stringIsKey = false;
           updateObjectKeyState(contextStack, false);
@@ -172,14 +177,25 @@ export function repairJsonString(input, options = {}) {
       continue;
     }
     if (char === '"') {
+      if (shouldInsertCommaBeforeKey(input, i, contextStack, allowedKeys)) {
+        output += ',';
+        updateObjectKeyState(contextStack, true);
+      }
       inString = true;
       escaping = false;
       stringIsKey = isExpectingKey(contextStack);
+      if (stringIsKey) {
+        const keyToken = readJsonStringToken(input, i);
+        const top = contextStack.length > 0 ? contextStack[contextStack.length - 1] : null;
+        if (top && top.type === 'object' && keyToken) {
+          top.lastKey = keyToken.value;
+        }
+      }
       output += char;
       continue;
     }
     if (char === '{') {
-      contextStack.push({ type: 'object', expectingKey: true });
+      contextStack.push({ type: 'object', expectingKey: true, lastKey: null, valueKey: null });
       output += char;
       continue;
     }
@@ -189,17 +205,20 @@ export function repairJsonString(input, options = {}) {
       continue;
     }
     if (char === '}' || char === ']') {
+      output = stripTrailingComma(output);
       contextStack.pop();
       output += char;
       continue;
     }
     if (char === ':') {
       updateObjectKeyState(contextStack, false);
+      setValueKey(contextStack);
       output += char;
       continue;
     }
     if (char === ',') {
       updateObjectKeyState(contextStack, true);
+      clearValueKey(contextStack);
       output += char;
       continue;
     }
@@ -212,6 +231,54 @@ export function repairJsonString(input, options = {}) {
     output += '"';
   }
   return output;
+}
+
+const FREEFORM_VALUE_KEYS = new Set([
+  'contents',
+  'contents_base64',
+  'patch',
+  'patch_base64',
+  'old_string',
+  'new_string',
+]);
+
+function shouldInsertCommaBeforeKey(source, index, stack, allowedKeys) {
+  if (!stack || stack.length === 0) {
+    return false;
+  }
+  const top = stack[stack.length - 1];
+  if (!top || top.type !== 'object' || top.expectingKey) {
+    return false;
+  }
+  const keyToken = readJsonStringToken(source, index);
+  if (!keyToken) return false;
+  const colonIdx = findNextNonWhitespaceIndex(source, keyToken.endIndex + 1);
+  if (colonIdx === -1 || source[colonIdx] !== ':') return false;
+  if (allowedKeys && stack.length === 1 && !allowedKeys.has(keyToken.value)) {
+    return false;
+  }
+  return true;
+}
+
+function getCurrentValueKey(stack) {
+  if (!stack || stack.length === 0) return null;
+  const top = stack[stack.length - 1];
+  if (!top || top.type !== 'object') return null;
+  return typeof top.valueKey === 'string' ? top.valueKey : null;
+}
+
+function setValueKey(stack) {
+  if (!stack || stack.length === 0) return;
+  const top = stack[stack.length - 1];
+  if (!top || top.type !== 'object') return;
+  top.valueKey = typeof top.lastKey === 'string' ? top.lastKey : null;
+}
+
+function clearValueKey(stack) {
+  if (!stack || stack.length === 0) return;
+  const top = stack[stack.length - 1];
+  if (!top || top.type !== 'object') return;
+  top.valueKey = null;
 }
 
 function extractJsonSchemaObjectKeys(schema) {
@@ -230,6 +297,11 @@ function extractJsonSchemaObjectKeys(schema) {
   };
   visit(schema);
   return out.size > 0 ? out : null;
+}
+
+function stripTrailingComma(text) {
+  if (!text) return text;
+  return text.replace(/,\s*$/, '');
 }
 
 function isValidJsonEscape(char) {
@@ -263,12 +335,13 @@ function updateObjectKeyState(stack, expecting) {
   }
 }
 
-function shouldTerminateValueString(source, index, containerType, parentType, depth, allowedKeys) {
+function shouldTerminateValueString(source, index, containerType, parentType, depth, allowedKeys, valueKey) {
   const nextIdx = findNextNonWhitespaceIndex(source, index + 1);
   if (nextIdx === -1) {
     return true;
   }
   const next = source[nextIdx];
+  const isFreeformValue = typeof valueKey === 'string' && FREEFORM_VALUE_KEYS.has(valueKey);
   const closesObject = containerType === 'object' && next === '}';
   const closesArray = containerType === 'array' && next === ']';
 
@@ -287,6 +360,25 @@ function shouldTerminateValueString(source, index, containerType, parentType, de
     return false;
   }
 
+  if (isFreeformValue) {
+    if (next === '}' || next === ']') {
+      return true;
+    }
+    return false;
+  }
+
+  if (containerType === 'object' && next === '"') {
+    const keyToken = readJsonStringToken(source, nextIdx);
+    if (keyToken) {
+      const colonIdx = findNextNonWhitespaceIndex(source, keyToken.endIndex + 1);
+      if (colonIdx !== -1 && source[colonIdx] === ':') {
+        if (!allowedKeys || depth !== 1 || allowedKeys.has(keyToken.value)) {
+          return true;
+        }
+      }
+    }
+  }
+
   if (next !== ',') return false;
 
   const afterCommaIdx = findNextNonWhitespaceIndex(source, nextIdx + 1);
@@ -297,7 +389,7 @@ function shouldTerminateValueString(source, index, containerType, parentType, de
 
   if (containerType === 'object') {
     if (afterComma === '}' || afterComma === ']') {
-      return false;
+      return true;
     }
     if (afterComma !== '"') {
       return false;

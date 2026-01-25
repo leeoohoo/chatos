@@ -486,6 +486,15 @@ function booleanFromArg(value) {
   return false;
 }
 
+function resolveBoolFlag(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
 function clampNumber(value, min, max, fallback) {
   const parsed = Number(value);
   if (Number.isFinite(parsed)) {
