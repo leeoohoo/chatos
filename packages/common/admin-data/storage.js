@@ -34,12 +34,18 @@ const forceBetterSqlite =
   driverHint === 'better-sqlite3' || driverHint === 'better-sqlite' || driverHint === 'sqlite';
 
 let driver = null;
+let driverSource = '';
 if (!forceSqlJs) {
   const Database = loadBetterSqlite3();
   if (Database) {
     driver = { type: 'better-sqlite3', Database };
+    driverSource = forceBetterSqlite ? 'env' : 'default';
   } else if (forceBetterSqlite) {
     throw new Error('MODEL_CLI_DB_DRIVER requested better-sqlite3 but the module is not available.');
+  } else {
+    throw new Error(
+      'better-sqlite3 is required by default. Install it or set MODEL_CLI_DB_DRIVER=sqljs to use SQL.js.'
+    );
   }
 }
 
@@ -51,7 +57,17 @@ if (!driver) {
   const wasmBinary = fs.readFileSync(wasmPath);
   const SQL = await initSqlJs({ wasmBinary });
   driver = { type: 'sql.js', SQL };
+  driverSource = 'env';
 }
+
+let didLogDriver = false;
+function logDbDriverSelection() {
+  if (didLogDriver) return;
+  didLogDriver = true;
+  const suffix = driverSource ? ` (${driverSource})` : '';
+  console.error(`[db] driver=${driver.type}${suffix}`);
+}
+logDbDriverSelection();
 
 export function getDefaultDbPath(env = process.env) {
   const home = getHomeDir(env) || os.homedir();
