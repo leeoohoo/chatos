@@ -20,20 +20,13 @@ import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
 import { resolveBoolFlag } from './shared/flags.js';
 import { normalizeKey } from '../shared/text-utils.js';
+import { normalizeShellSafetyMode } from '../shared/runtime-settings-utils.js';
 
 const execAsync = promisify(exec);
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
   printHelp();
   process.exit(0);
-}
-
-function normalizeShellSafetyMode(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return '';
-  if (raw === 'relaxed' || raw === 'unsafe' || raw === 'loose') return 'relaxed';
-  if (raw === 'strict' || raw === 'safe') return 'strict';
-  return '';
 }
 
 function resolveShellSafetyMode({ explicitUnsafe, explicitMode, runtimeMode } = {}) {
@@ -78,8 +71,10 @@ try {
 } catch {
   settingsDb = null;
 }
-const explicitMode = normalizeShellSafetyMode(args['shell-mode'] || process.env.MODEL_CLI_SHELL_SAFETY_MODE);
-const runtimeMode = normalizeShellSafetyMode(settingsDb?.getRuntime?.()?.shellSafetyMode);
+const explicitMode = normalizeShellSafetyMode(args['shell-mode'] || process.env.MODEL_CLI_SHELL_SAFETY_MODE, {
+  allowAliases: true,
+});
+const runtimeMode = normalizeShellSafetyMode(settingsDb?.getRuntime?.()?.shellSafetyMode, { allowAliases: true });
 const runtimeMaxBuffer = clampNumber(
   settingsDb?.getRuntime?.()?.shellMaxBufferBytes,
   1024 * 16,

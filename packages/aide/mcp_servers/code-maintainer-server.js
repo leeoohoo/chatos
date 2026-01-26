@@ -14,6 +14,7 @@ import { createToolResponder } from './shared/tool-helpers.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir } from './shared/fs-utils.js';
 import { booleanFromArg, resolveBoolFlag } from './shared/flags.js';
+import { normalizeSymlinkPolicy } from '../shared/runtime-settings-utils.js';
 
 const fsp = fs.promises;
 
@@ -48,12 +49,9 @@ try {
 }
 
 const runtimeConfig = settingsDb?.getRuntime?.() || null;
-const symlinkPolicyRaw =
-  typeof runtimeConfig?.filesystemSymlinkPolicy === 'string'
-    ? runtimeConfig.filesystemSymlinkPolicy.trim().toLowerCase()
-    : '';
+const symlinkPolicy = normalizeSymlinkPolicy(runtimeConfig?.filesystemSymlinkPolicy, { allowAliases: true });
 const allowSymlinkEscape =
-  symlinkPolicyRaw === 'deny' || symlinkPolicyRaw === 'disallow'
+  symlinkPolicy === 'deny'
     ? false
     : resolveBoolFlag(process.env.MODEL_CLI_ALLOW_SYMLINK_ESCAPE, true);
 const runtimeMaxFileBytes = clampNumber(runtimeConfig?.filesystemMaxFileBytes, 1024, 50 * 1024 * 1024, null);

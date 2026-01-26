@@ -1,27 +1,8 @@
 import { formatJson, truncateText } from './format.js';
+import { resolvePatchPayload } from '../../tool-payload-utils.js';
 
 function isPlainObject(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function decodeBase64(value) {
-  const text = typeof value === 'string' ? value : '';
-  if (!text) return '';
-  if (typeof atob === 'function') {
-    try {
-      return atob(text);
-    } catch {
-      // ignore
-    }
-  }
-  if (typeof Buffer !== 'undefined') {
-    try {
-      return Buffer.from(text, 'base64').toString('utf8');
-    } catch {
-      // ignore
-    }
-  }
-  return '';
 }
 
 function toBlockquote(text) {
@@ -116,20 +97,7 @@ function summarizeArgs(toolName, args) {
     lines.push(`- ${label}: ${value}`);
   };
 
-  const patchText = (() => {
-    if (typeof args.patch === 'string') return args.patch;
-    if (typeof args.patch_base64 === 'string') return decodeBase64(args.patch_base64);
-    if (Array.isArray(args.chunks)) {
-      return args.chunks
-        .map((chunk) => {
-          if (!chunk || typeof chunk.content !== 'string') return '';
-          if (chunk.encoding === 'base64') return decodeBase64(chunk.content);
-          return chunk.content;
-        })
-        .join('');
-    }
-    return '';
-  })();
+  const patchText = resolvePatchPayload(args);
 
   const looksLikePatchTool =
     normalized.endsWith('_apply_patch') || normalized === 'apply_patch' || normalized.includes('apply_patch');

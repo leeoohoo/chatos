@@ -375,13 +375,13 @@ export function useChatSessions() {
         return next;
       }
       list.forEach((entry) => {
-        const callId = normalizeId(entry?.toolCallId || entry?.tool_call_id || entry?.callId || entry?.call_id);
+        const callId = pickToolCallId(entry);
         if (!callId) return;
         const existing = prevSession[callId] && typeof prevSession[callId] === 'object' ? prevSession[callId] : {};
         const steps = mergeSubagentSteps(existing.steps, entry?.steps, MAX_SUBAGENT_STEPS);
         const done = entry?.done === true;
         const status = typeof entry?.status === 'string' ? entry.status : existing.status;
-        const jobId = normalizeId(entry?.jobId || entry?.job_id) || existing.jobId;
+        const jobId = resolveProgressJobId(entry) || existing.jobId;
         sessionMap[callId] = {
           ...existing,
           steps,

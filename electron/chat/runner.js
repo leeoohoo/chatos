@@ -13,13 +13,16 @@ import {
   extractLatestSummaryText,
   pickLatestSummaryMessage,
 } from '../../packages/common/chat-summary-utils.js';
+import { normalizeToolCallMessages } from '../../packages/common/chat-toolcall-utils.js';
 import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
 import { computeTailStartIndex } from '../../packages/common/chat-tail-utils.js';
+import { runWithContextLengthRecovery } from '../../packages/common/context-recovery-utils.js';
 import { appendEventLog } from '../../packages/common/event-log-utils.js';
 import { isContextLengthError } from '../../packages/common/error-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { appendPromptBlock } from '../../packages/common/prompt-utils.js';
 import { applySecretsToProcessEnv } from '../../packages/common/secrets-env.js';
+import { applyRuntimeSettingsToEnv } from '../../packages/common/runtime-settings-utils.js';
 import { normalizeKey, uniqueIds } from '../../packages/common/text-utils.js';
 import { extractTraceMeta } from '../../packages/common/trace-utils.js';
 import { readRegistrySnapshot } from '../../packages/common/admin-data/registry-utils.js';
@@ -82,59 +85,6 @@ async function loadEngineDeps() {
   return engineDepsPromise;
 }
 
-function applyRuntimeSettingsToEnv(runtimeConfig) {
-  if (!runtimeConfig || typeof runtimeConfig !== 'object') return;
-  const pickNumber = (value) => {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : undefined;
-  };
-  const normalizeShellSafetyMode = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'strict' || raw === 'relaxed') return raw;
-    return '';
-  };
-  const normalizeSymlinkPolicy = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'allow' || raw === 'deny') return raw;
-    return '';
-  };
-  const normalizeLogLevel = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'off' || raw === 'info' || raw === 'debug') return raw;
-    return '';
-  };
-  const normalizePromptLogMode = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'full' || raw === 'minimal') return raw;
-    return '';
-  };
-  const setNumberEnv = (key, value) => {
-    if (Number.isFinite(value)) {
-      process.env[key] = String(value);
-    }
-  };
-
-  const shellSafetyMode = normalizeShellSafetyMode(runtimeConfig.shellSafetyMode);
-  if (shellSafetyMode) {
-    process.env.MODEL_CLI_SHELL_SAFETY_MODE = shellSafetyMode;
-  }
-  const symlinkPolicy = normalizeSymlinkPolicy(runtimeConfig.filesystemSymlinkPolicy);
-  if (symlinkPolicy) {
-    process.env.MODEL_CLI_ALLOW_SYMLINK_ESCAPE = symlinkPolicy === 'allow' ? '1' : '0';
-  }
-  const logLevel = normalizeLogLevel(runtimeConfig.mcpToolLogLevel);
-  if (logLevel) {
-    process.env.MODEL_CLI_MCP_LOG_LEVEL = logLevel;
-  }
-  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES', pickNumber(runtimeConfig.mcpToolLogMaxBytes));
-  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_LINES', pickNumber(runtimeConfig.mcpToolLogMaxLines));
-  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS', pickNumber(runtimeConfig.mcpToolLogMaxFieldChars));
-  setNumberEnv('MODEL_CLI_MCP_STARTUP_CONCURRENCY', pickNumber(runtimeConfig.mcpStartupConcurrency));
-  const promptLogMode = normalizePromptLogMode(runtimeConfig.uiPromptLogMode);
-  if (promptLogMode) {
-    process.env.MODEL_CLI_UI_PROMPTS_LOG_MODE = promptLogMode;
-  }
-}
 
 function truncateLogText(value, limit = 4000) {
   const text = typeof value === 'string' ? value : value == null ? '' : String(value);
@@ -154,57 +104,12 @@ function formatLogValue(value, limit = 4000) {
 }
 
 function normalizeConversationMessages(messages) {
-  const list = Array.isArray(messages) ? messages : [];
-  const normalized = [];
-  let pendingToolCallIds = null;
-  let pendingAssistantIndex = -1;
-  const stripToolCalls = (msg) => {
-    if (!msg || typeof msg !== 'object') return msg;
-    if (!Array.isArray(msg.toolCalls) || msg.toolCalls.length === 0) return msg;
-    const next = { ...msg };
-    next.toolCalls = [];
-    return next;
-  };
-  const clearPendingToolCalls = () => {
-    if (pendingToolCallIds && pendingToolCallIds.size > 0 && pendingAssistantIndex >= 0) {
-      normalized[pendingAssistantIndex] = stripToolCalls(normalized[pendingAssistantIndex]);
-    }
-    pendingToolCallIds = null;
-    pendingAssistantIndex = -1;
-  };
-  list.forEach((msg) => {
-    if (!msg || typeof msg !== 'object') return;
-    const role = msg.role;
-    if (role === 'user') {
-      clearPendingToolCalls();
-      normalized.push(msg);
-      return;
-    }
-    if (role === 'assistant') {
-      clearPendingToolCalls();
-      normalized.push(msg);
-      const toolCalls = Array.isArray(msg?.toolCalls) ? msg.toolCalls.filter(Boolean) : [];
-      if (toolCalls.length > 0) {
-        pendingToolCallIds = new Set(toolCalls.map((call) => normalizeId(call?.id)).filter(Boolean));
-        pendingAssistantIndex = normalized.length - 1;
-      } else {
-        pendingToolCallIds = null;
-        pendingAssistantIndex = -1;
-      }
-      return;
-    }
-    if (role === 'tool') {
-      const callId = normalizeId(msg?.toolCallId);
-      if (!callId || !pendingToolCallIds || !pendingToolCallIds.has(callId)) return;
-      normalized.push(msg);
-      pendingToolCallIds.delete(callId);
-      if (pendingToolCallIds.size === 0) {
-        pendingToolCallIds = null;
-        pendingAssistantIndex = -1;
-      }
-    }
+  const { messages: normalized } = normalizeToolCallMessages(messages, {
+    toolCallsKey: 'toolCalls',
+    toolCallIdKey: 'toolCallId',
+    normalizeId,
+    pendingMode: 'strip',
   });
-  clearPendingToolCalls();
   return normalized;
 }
 
@@ -556,7 +461,7 @@ export function createChatRunner({
     const client = new ModelClient(config);
 
     const runtimeConfig = adminServices.settings?.getRuntimeConfig ? adminServices.settings.getRuntimeConfig() : null;
-    applyRuntimeSettingsToEnv(runtimeConfig);
+    applyRuntimeSettingsToEnv(runtimeConfig, { scope: 'electron' });
     const promptLanguage = runtimeConfig?.promptLanguage || null;
     const fallbackWorkspaceRoot = normalizeWorkspaceRoot(workspaceRoot) || process.cwd();
     const resolveToolWorkdir = () => {
@@ -1093,6 +998,16 @@ export function createChatRunner({
     }
 
     const listSessionMessages = () => store.messages.list(sid);
+    const touchSessionUpdatedAt = () => {
+      try {
+        store.sessions.update(sid, { updatedAt: new Date().toISOString() });
+      } catch {
+        // ignore
+      }
+    };
+    const notifyMessagesRefresh = () => {
+      scopedSendEvent({ type: 'messages_refresh', sessionId: sid });
+    };
     const getConversationSnapshot = () => {
       const all = listSessionMessages();
       const summaryRecord = pickLatestSummaryMessage(all);
@@ -1242,12 +1157,8 @@ export function createChatRunner({
           if (!mid || keepIds.has(mid)) return;
           store.messages.remove(mid);
         });
-        try {
-          store.sessions.update(sid, { updatedAt: new Date().toISOString() });
-        } catch {
-          // ignore
-        }
-        scopedSendEvent({ type: 'messages_refresh', sessionId: sid });
+        touchSessionUpdatedAt();
+        notifyMessagesRefresh();
         didSummarize = true;
       }
 
@@ -1281,12 +1192,8 @@ export function createChatRunner({
         if (!mid || keepIds.has(mid)) return;
         store.messages.remove(mid);
       });
-      try {
-        store.sessions.update(sid, { updatedAt: new Date().toISOString() });
-      } catch {
-        // ignore
-      }
-      scopedSendEvent({ type: 'messages_refresh', sessionId: sid });
+      touchSessionUpdatedAt();
+      notifyMessagesRefresh();
       rebuildChatSession();
     };
 
@@ -1295,24 +1202,37 @@ export function createChatRunner({
     const assistantReasonings = new Map([[currentAssistantId, '']]);
     const toolCallRefreshSent = new Set();
 
-    const appendAssistantText = (messageId, delta) => {
+    const appendAssistantDelta = ({ map, messageId, delta, eventType }) => {
       const mid = normalizeId(messageId);
       if (!mid) return;
       const chunk = typeof delta === 'string' ? delta : String(delta || '');
       if (!chunk) return;
-      const previous = assistantTexts.get(mid) || '';
-      assistantTexts.set(mid, `${previous}${chunk}`);
-      scopedSendEvent({ type: 'assistant_delta', sessionId: sid, messageId: mid, delta: chunk });
+      const previous = map.get(mid) || '';
+      map.set(mid, `${previous}${chunk}`);
+      scopedSendEvent({ type: eventType, sessionId: sid, messageId: mid, delta: chunk });
     };
 
-    const appendAssistantReasoning = (messageId, delta) => {
+    const appendAssistantText = (messageId, delta) =>
+      appendAssistantDelta({ map: assistantTexts, messageId, delta, eventType: 'assistant_delta' });
+
+    const appendAssistantReasoning = (messageId, delta) =>
+      appendAssistantDelta({
+        map: assistantReasonings,
+        messageId,
+        delta,
+        eventType: 'assistant_reasoning_delta',
+      });
+
+    const ensureAssistantBuffers = (messageId) => {
       const mid = normalizeId(messageId);
-      if (!mid) return;
-      const chunk = typeof delta === 'string' ? delta : String(delta || '');
-      if (!chunk) return;
-      const previous = assistantReasonings.get(mid) || '';
-      assistantReasonings.set(mid, `${previous}${chunk}`);
-      scopedSendEvent({ type: 'assistant_reasoning_delta', sessionId: sid, messageId: mid, delta: chunk });
+      if (!mid) return '';
+      if (!assistantTexts.has(mid)) {
+        assistantTexts.set(mid, '');
+      }
+      if (!assistantReasonings.has(mid)) {
+        assistantReasonings.set(mid, '');
+      }
+      return mid;
     };
 
     const syncAssistantRecord = (messageId, patch) => {
@@ -1365,12 +1285,7 @@ export function createChatRunner({
       }
       if (idx <= 0) {
         currentAssistantId = initialAssistantMessageId;
-        if (!assistantTexts.has(currentAssistantId)) {
-          assistantTexts.set(currentAssistantId, '');
-        }
-        if (!assistantReasonings.has(currentAssistantId)) {
-          assistantReasonings.set(currentAssistantId, '');
-        }
+        ensureAssistantBuffers(currentAssistantId);
         activeRuns.set(sid, { controller, messageId: currentAssistantId });
         return;
       }
@@ -1381,13 +1296,7 @@ export function createChatRunner({
         scopedSendEvent({ type: 'notice', message: `[Chat] 创建消息失败：${err?.message || String(err)}` });
         return;
       }
-      currentAssistantId = normalizeId(record?.id) || currentAssistantId;
-      if (!assistantTexts.has(currentAssistantId)) {
-        assistantTexts.set(currentAssistantId, '');
-      }
-      if (!assistantReasonings.has(currentAssistantId)) {
-        assistantReasonings.set(currentAssistantId, '');
-      }
+      currentAssistantId = ensureAssistantBuffers(record?.id) || currentAssistantId;
       activeRuns.set(sid, { controller, messageId: currentAssistantId });
       scopedSendEvent({ type: 'assistant_start', sessionId: sid, message: record });
     };
@@ -1418,7 +1327,7 @@ export function createChatRunner({
       syncAssistantRecord(mid, patch);
       if (usableToolCalls && !toolCallRefreshSent.has(mid)) {
         toolCallRefreshSent.add(mid);
-        scopedSendEvent({ type: 'messages_refresh', sessionId: sid });
+        notifyMessagesRefresh();
       }
     };
 
@@ -1533,23 +1442,15 @@ export function createChatRunner({
           return await runChat();
         };
 
-        try {
-          finalResponseText = await runChatOnce();
-        } catch (err) {
-          if (!isContextLengthError(err)) {
-            throw err;
-          }
-          await summarizeConversation({ force: true, signal: controller.signal });
-          try {
-            finalResponseText = await runChatOnce();
-          } catch (err2) {
-            if (!isContextLengthError(err2)) {
-              throw err2;
-            }
-            hardTrimConversation();
-            finalResponseText = await runChatOnce();
-          }
-        }
+        finalResponseText = await runWithContextLengthRecovery({
+          run: runChatOnce,
+          summarize: () => summarizeConversation({ force: true, signal: controller.signal }),
+          hardTrim: () => hardTrimConversation(),
+          isContextLengthError,
+          throwIfAborted,
+          signal: controller.signal,
+          retryIfSummarizeFailed: true,
+        });
 
         const finalId = normalizeId(currentAssistantId) || initialAssistantMessageId;
         const finalText = assistantTexts.get(finalId) || finalResponseText || '';
@@ -1558,7 +1459,7 @@ export function createChatRunner({
           finalId,
           finalReasoning ? { content: finalText, reasoning: finalReasoning } : { content: finalText }
         );
-        store.sessions.update(sid, { updatedAt: new Date().toISOString() });
+        touchSessionUpdatedAt();
         scopedSendEvent({ type: 'assistant_done', sessionId: sid, messageId: finalId });
         if (completionCallback) {
           try {
@@ -1586,7 +1487,7 @@ export function createChatRunner({
           ...(existingReasoning ? { reasoning: existingReasoning } : {}),
         });
         cleanupAssistantToolCalls(mid);
-        store.sessions.update(sid, { updatedAt: new Date().toISOString() });
+        touchSessionUpdatedAt();
         scopedSendEvent({
           type: aborted ? 'assistant_aborted' : 'assistant_error',
           sessionId: sid,

@@ -2,19 +2,13 @@ import fs from 'fs';
 import { safeTrim } from '../../shared/text-utils.js';
 import { capJsonlFile } from '../../shared/log-utils.js';
 import { ensureFileExists } from './fs-utils.js';
+import { normalizePromptLogMode } from '../../shared/runtime-settings-utils.js';
 
-const PROMPT_LOG_MODES = new Set(['full', 'minimal']);
 const DEFAULT_PROMPT_LOG_MODE = 'full';
-
-function normalizePromptLogMode(value) {
-  const raw = safeTrim(value).toLowerCase();
-  if (PROMPT_LOG_MODES.has(raw)) return raw;
-  return DEFAULT_PROMPT_LOG_MODE;
-}
 
 export function resolveUiPromptLogMode(env = process.env) {
   const raw = env && typeof env.MODEL_CLI_UI_PROMPTS_LOG_MODE === 'string' ? env.MODEL_CLI_UI_PROMPTS_LOG_MODE : '';
-  return normalizePromptLogMode(raw);
+  return normalizePromptLogMode(raw, DEFAULT_PROMPT_LOG_MODE);
 }
 
 function buildPromptMeta(prompt) {

@@ -12,12 +12,31 @@ export function getRunId(entry) {
 
 export function parseTimestampMs(ts) {
   if (!ts) return 0;
+  if (typeof ts === 'number') {
+    if (!Number.isFinite(ts)) return 0;
+    return ts < 1e12 ? ts * 1000 : ts;
+  }
+  if (typeof ts === 'string') {
+    const trimmed = ts.trim();
+    if (!trimmed) return 0;
+    const asNum = Number(trimmed);
+    if (Number.isFinite(asNum)) {
+      return asNum < 1e12 ? asNum * 1000 : asNum;
+    }
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
   const date = new Date(ts);
   const ms = date.getTime();
   return Number.isFinite(ms) ? ms : 0;
 }
 
-export function buildRunFilterOptions(eventList = [], fileChangeEntries = [], tasksEntries = [], runEntries = []) {
+export function collectRunStats({
+  eventList = [],
+  fileChangeEntries = [],
+  tasksEntries = [],
+  runEntries = [],
+} = {}) {
   const runMap = new Map();
   const unknown = { events: 0, changes: 0, tasks: 0, lastMs: 0 };
 
@@ -41,13 +60,25 @@ export function buildRunFilterOptions(eventList = [], fileChangeEntries = [], ta
   };
 
   (Array.isArray(eventList) ? eventList : []).forEach((e) => touch(getRunId(e), e?.ts, 'event'));
-  (Array.isArray(fileChangeEntries) ? fileChangeEntries : []).forEach((c) => touch(getRunId(c), c?.ts, 'change'));
+  (Array.isArray(fileChangeEntries) ? fileChangeEntries : []).forEach((c) =>
+    touch(getRunId(c), c?.ts, 'change')
+  );
   (Array.isArray(tasksEntries) ? tasksEntries : []).forEach((t) =>
     touch(getRunId(t), t?.updatedAt || t?.createdAt, 'task')
   );
   (Array.isArray(runEntries) ? runEntries : []).forEach((r) => touch(getRunId(r), r?.ts, 'run'));
 
   const runs = Array.from(runMap.values()).sort((a, b) => b.lastMs - a.lastMs);
+  return { runs, unknown };
+}
+
+export function buildRunFilterOptions(eventList = [], fileChangeEntries = [], tasksEntries = [], runEntries = []) {
+  const { runs, unknown } = collectRunStats({
+    eventList,
+    fileChangeEntries,
+    tasksEntries,
+    runEntries,
+  });
   const hasUnknown = unknown.events + unknown.changes + unknown.tasks > 0;
   const latestAnyRunId = runs.length > 0 ? runs[0].runId : null;
   const latestActiveRunId =
@@ -71,6 +102,32 @@ export function buildRunFilterOptions(eventList = [], fileChangeEntries = [], ta
   ];
 
   return { options, latestRunId };
+}
+
+export function resolveEffectiveRunFilter(selection, latestRunId, fallback = RUN_FILTER_ALL) {
+  const normalized = typeof selection === 'string' ? selection.trim() : '';
+  if (!normalized || normalized === RUN_FILTER_AUTO) {
+    const latest = normalizeRunId(latestRunId);
+    return latest || fallback;
+  }
+  return normalized;
+}
+
+export function resolveDispatchRunId(selection, latestRunId, options = {}) {
+  const { emptyAsAuto = false, preferLatestForAll = false, preferLatestForUnknown = false } = options;
+  const normalized = typeof selection === 'string' ? selection.trim() : '';
+  const effective = normalized || (emptyAsAuto ? RUN_FILTER_AUTO : '');
+  if (!effective) return null;
+  if (effective === RUN_FILTER_AUTO) {
+    return normalizeRunId(latestRunId) || null;
+  }
+  if (effective === RUN_FILTER_ALL) {
+    return preferLatestForAll ? normalizeRunId(latestRunId) || null : null;
+  }
+  if (effective === RUN_FILTER_UNKNOWN) {
+    return preferLatestForUnknown ? normalizeRunId(latestRunId) || null : null;
+  }
+  return normalizeRunId(effective);
 }
 
 export function filterEntriesByRunId(list, runFilter) {

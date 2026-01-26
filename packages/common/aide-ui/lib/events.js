@@ -33,7 +33,7 @@ export function getEventMeta(type) {
   return { label: normalized, color: 'default' };
 }
 
-function buildEventPreview(payload, type) {
+export function buildEventPreview(payload, type) {
   if (!payload) return '';
   if (typeof payload.text === 'string') return payload.text;
   if (typeof payload.content === 'string') return payload.content;

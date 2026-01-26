@@ -1,5 +1,6 @@
 import * as colors from './colors.js';
 import { renderMarkdown } from './markdown.js';
+import { resolvePatchPayload, resolveWritePayload } from '../shared/tool-payload-utils.js';
 
 const DEFAULT_TOOL_PREVIEW_LIMIT =
   Number(process.env.MODEL_CLI_TOOL_PREVIEW_LIMIT || '') || 6000;
@@ -312,7 +313,7 @@ function formatFileWritePreview(toolName, args = {}, limit = DEFAULT_TOOL_PREVIE
   const label = colors.green(`↳ ${toolName}`);
   const lines = [];
   if (isApplyPatchTool(toolName)) {
-    const patchText = decodePatchPayload(safeArgs);
+    const patchText = resolvePatchPayload(safeArgs, { fallbackToRaw: true });
     const { text, truncated, omitted, originalLength } = truncateForPreview(patchText, limit);
     const metaParts = [];
     if (targetPath) metaParts.push(targetPath);
@@ -364,7 +365,7 @@ function formatFileWritePreview(toolName, args = {}, limit = DEFAULT_TOOL_PREVIE
 
     return lines.join('\n');
   }
-  const payload = decodeWritePayload(safeArgs);
+  const payload = resolveWritePayload(safeArgs, { fallbackToRaw: true });
   const { text, truncated, omitted, originalLength } = truncateForPreview(payload, limit);
   const mode = safeArgs.mode ? String(safeArgs.mode) : 'overwrite';
   const metaParts = [];
@@ -404,49 +405,6 @@ function isEditFileTool(toolName) {
   return String(toolName).toLowerCase().includes('edit_file');
 }
 
-function decodeWritePayload(args = {}) {
-  const encoding = args.encoding || 'plain';
-  if (typeof args.contents_base64 === 'string' && args.contents_base64.length > 0) {
-    return decodeWithEncoding(args.contents_base64, 'base64');
-  }
-  if (Array.isArray(args.chunks) && args.chunks.length > 0) {
-    return args.chunks
-      .map((chunk) => decodeWithEncoding(chunk?.content || '', chunk?.encoding || encoding))
-      .join('');
-  }
-  if (typeof args.contents === 'string') {
-    return decodeWithEncoding(args.contents, encoding);
-  }
-  return '';
-}
-
-function decodePatchPayload(args = {}) {
-  const encoding = args.encoding || 'plain';
-  if (typeof args.patch_base64 === 'string' && args.patch_base64.length > 0) {
-    return decodeWithEncoding(args.patch_base64, 'base64');
-  }
-  if (Array.isArray(args.chunks) && args.chunks.length > 0) {
-    return args.chunks
-      .map((chunk) => decodeWithEncoding(chunk?.content || '', chunk?.encoding || encoding))
-      .join('');
-  }
-  if (typeof args.patch === 'string') {
-    return decodeWithEncoding(args.patch, encoding);
-  }
-  return '';
-}
-
-function decodeWithEncoding(value, encoding = 'plain') {
-  const text = value === undefined || value === null ? '' : String(value);
-  if (String(encoding).toLowerCase() === 'base64') {
-    try {
-      return Buffer.from(text, 'base64').toString('utf8');
-    } catch {
-      return text;
-    }
-  }
-  return text;
-}
 
 function truncateForPreview(rawText, limit = DEFAULT_TOOL_PREVIEW_LIMIT) {
   const text = typeof rawText === 'string' ? rawText : '';

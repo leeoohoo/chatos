@@ -1,3 +1,21 @@
+import {
+  RUN_FILTER_AUTO,
+  RUN_FILTER_ALL,
+  createStorageKeys,
+  safeLocalStorageGet,
+  safeLocalStorageSet,
+} from 'aide-ui/lib/storage-helpers.js';
+import {
+  collectRunStats,
+  filterEntriesByRunId,
+  normalizeRunId,
+  parseTimestampMs,
+  resolveEffectiveRunFilter,
+  resolveDispatchRunId,
+} from 'aide-ui/lib/runs.js';
+import { buildEventPreview, getEventMeta as getBaseEventMeta } from 'aide-ui/lib/events.js';
+import { dedupeFileChanges } from 'aide-ui/lib/file-changes.js';
+
 export function mount({ container, host }) {
   if (!container) throw new Error('container is required');
 
@@ -580,33 +598,9 @@ export function mount({ container, host }) {
   root.appendChild(overlay);
   container.appendChild(root);
 
-  const RUN_FILTER_STORAGE_KEY = 'deepseek_cli.ui.runFilter';
-  const RUN_FILTER_AUTO = '__auto__';
-  const RUN_FILTER_ALL = 'all';
-  const FLOATING_ISLAND_COLLAPSED_STORAGE_KEY = 'deepseek_cli.ui.floatingIsland.collapsed';
-
-  function safeLocalStorageGet(key) {
-    try {
-      if (!window?.localStorage) return null;
-      return window.localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  }
-
-  function safeLocalStorageSet(key, value) {
-    try {
-      if (!window?.localStorage) return;
-      window.localStorage.setItem(key, value);
-    } catch {
-      // ignore storage errors
-    }
-  }
-
-  function normalizeRunId(value) {
-    const text = typeof value === 'string' ? value.trim() : '';
-    return text || '';
-  }
+  const STORAGE_KEYS = createStorageKeys('deepseek_cli.ui');
+  const RUN_FILTER_STORAGE_KEY = STORAGE_KEYS.RUN_FILTER_STORAGE_KEY;
+  const FLOATING_ISLAND_COLLAPSED_STORAGE_KEY = STORAGE_KEYS.FLOATING_ISLAND_COLLAPSED_STORAGE_KEY;
 
   const state = {
     events: null,
@@ -642,22 +636,57 @@ export function mount({ container, host }) {
     system: '\u7cfb\u7edf',
   };
 
-  const EVENT_META = {
-    user: { label: '\u7528\u6237', variant: 'info' },
-    assistant: { label: '\u52a9\u624b', variant: 'success' },
-    assistant_thinking: { label: '\u601d\u8003', variant: 'warning' },
-    system: { label: '\u7cfb\u7edf', variant: 'warning' },
-    tool_call: { label: '\u5de5\u5177\u8c03\u7528', variant: 'warning' },
-    tool_result: { label: '\u5de5\u5177\u7ed3\u679c', variant: 'info' },
-    tool: { label: '\u5de5\u5177', variant: 'info' },
-    subagent_start: { label: '\u5b50\u4ee3\u7406', variant: 'warning' },
-    subagent_done: { label: '\u5b50\u4ee3\u7406', variant: 'success' },
-    subagent_thinking: { label: '\u5b50\u4ee3\u7406\u601d\u8003', variant: 'warning' },
-    subagent_assistant: { label: '\u5b50\u4ee3\u7406\u56de\u590d', variant: 'success' },
-    subagent_tool_call: { label: '\u5b50\u4ee3\u7406\u5de5\u5177', variant: 'warning' },
-    subagent_tool_result: { label: '\u5b50\u4ee3\u7406\u7ed3\u679c', variant: 'info' },
-    subagent_tool: { label: '\u5b50\u4ee3\u7406\u5de5\u5177', variant: 'info' },
+  const EVENT_VARIANTS = {
+    user: 'info',
+    assistant: 'success',
+    assistant_thinking: 'warning',
+    system: 'warning',
+    tool_call: 'warning',
+    tool_result: 'info',
+    tool: 'info',
+    subagent_start: 'warning',
+    subagent_done: 'success',
+    subagent_thinking: 'warning',
+    subagent_assistant: 'success',
+    subagent_tool_call: 'warning',
+    subagent_tool_result: 'info',
+    subagent_tool: 'info',
+    mcp_error: 'danger',
+    mcp_warning: 'warning',
   };
+
+  function mapEventColorToVariant(color) {
+    switch (color) {
+      case 'red':
+        return 'danger';
+      case 'green':
+      case 'magenta':
+        return 'success';
+      case 'gold':
+      case 'orange':
+      case 'volcano':
+      case 'purple':
+        return 'warning';
+      case 'blue':
+      case 'geekblue':
+      case 'cyan':
+      default:
+        return 'info';
+    }
+  }
+
+  function getEventMeta(type) {
+    const meta = getBaseEventMeta(type);
+    const normalized = typeof type === 'string' ? type.trim().toLowerCase() : '';
+    if (normalized && EVENT_VARIANTS[normalized]) {
+      return { label: meta.label, variant: EVENT_VARIANTS[normalized] };
+    }
+    if (normalized.includes('tool')) return { label: meta.label, variant: 'warning' };
+    if (normalized.includes('assistant')) return { label: meta.label, variant: 'success' };
+    if (normalized.includes('user')) return { label: meta.label, variant: 'info' };
+    if (normalized.includes('system')) return { label: meta.label, variant: 'warning' };
+    return { label: meta.label, variant: mapEventColorToVariant(meta.color) };
+  }
 
   function applyTheme(mode) {
     const isDark = mode === 'dark';
@@ -715,22 +744,8 @@ export function mount({ container, host }) {
     return `${str.slice(0, limit)}...`;
   }
 
-  function normalizeTimestamp(value) {
-    if (!value) return null;
-    if (typeof value === 'number') {
-      return value < 1e12 ? value * 1000 : value;
-    }
-    if (typeof value === 'string') {
-      const asNum = Number(value);
-      if (!Number.isNaN(asNum)) return normalizeTimestamp(asNum);
-      const parsed = Date.parse(value);
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-    return null;
-  }
-
   function formatTimestamp(value) {
-    const ts = normalizeTimestamp(value);
+    const ts = parseTimestampMs(value);
     if (!ts) return '';
     const date = new Date(ts);
     const pad = (n) => String(n).padStart(2, '0');
@@ -739,57 +754,17 @@ export function mount({ container, host }) {
     )}`;
   }
 
-  function buildEventPreview(payload) {
-    if (!payload) return '';
-    if (typeof payload.text === 'string') return payload.text;
-    if (typeof payload.content === 'string') return payload.content;
-    if (typeof payload.responsePreview === 'string') return payload.responsePreview;
-    if (typeof payload.task === 'string') return payload.task;
-    if (typeof payload === 'string') return payload;
-    try {
-      return JSON.stringify(payload);
-    } catch {
-      return String(payload);
-    }
-  }
-
-  function getEventMeta(type) {
-    const key = typeof type === 'string' ? type.trim() : '';
-    if (EVENT_META[key]) return EVENT_META[key];
-    if (key.includes('tool')) return { label: '\u5de5\u5177', variant: 'warning' };
-    if (key.includes('assistant')) return { label: '\u52a9\u624b', variant: 'success' };
-    if (key.includes('user')) return { label: '\u7528\u6237', variant: 'info' };
-    if (key.includes('system')) return { label: '\u7cfb\u7edf', variant: 'warning' };
-    return { label: key || '\u4e8b\u4ef6', variant: 'info' };
-  }
-
-  function parseTimestampMs(value) {
-    const ts = normalizeTimestamp(value);
-    return typeof ts === 'number' ? ts : 0;
-  }
-
   function buildRunSummary() {
-    const stats = new Map();
-    const touch = (runId, ts) => {
-      const rid = normalizeRunId(runId);
-      if (!rid) return;
-      const ms = parseTimestampMs(ts);
-      if (!stats.has(rid)) {
-        stats.set(rid, { runId: rid, lastMs: ms });
-        return;
-      }
-      const item = stats.get(rid);
-      if (ms > item.lastMs) item.lastMs = ms;
-    };
     const events = Array.isArray(state.events?.eventsList) ? state.events.eventsList : [];
-    events.forEach((entry) => touch(entry?.runId, entry?.ts));
     const changes = Array.isArray(state.fileChanges?.entries) ? state.fileChanges.entries : [];
-    changes.forEach((entry) => touch(entry?.runId, entry?.ts));
-    const runs = Array.isArray(state.runs?.entries) ? state.runs.entries : [];
-    runs.forEach((entry) => touch(entry?.runId, entry?.ts));
-    const options = Array.from(stats.values()).sort((a, b) => b.lastMs - a.lastMs);
-    const latestRunId = options.length > 0 ? options[0].runId : null;
-    const formatted = options.map((item) => ({
+    const runEntries = Array.isArray(state.runs?.entries) ? state.runs.entries : [];
+    const { runs } = collectRunStats({
+      eventList: events,
+      fileChangeEntries: changes,
+      runEntries,
+    });
+    const latestRunId = runs.length > 0 ? runs[0].runId : null;
+    const formatted = runs.map((item) => ({
       value: item.runId,
       label: item.lastMs ? `${item.runId} \u00b7 ${formatTimestamp(item.lastMs)}` : item.runId,
     }));
@@ -797,10 +772,9 @@ export function mount({ container, host }) {
   }
 
   function resolveActiveRunId() {
-    const selection = typeof state.runFilter === 'string' ? state.runFilter.trim() : RUN_FILTER_AUTO;
-    if (!selection || selection === RUN_FILTER_AUTO) return normalizeRunId(state.runSummary?.latestRunId);
-    if (selection === RUN_FILTER_ALL) return '';
-    return normalizeRunId(selection);
+    const effective = resolveEffectiveRunFilter(state.runFilter, state.runSummary?.latestRunId, RUN_FILTER_ALL);
+    if (effective === RUN_FILTER_ALL) return '';
+    return normalizeRunId(effective);
   }
 
   function getRunLabel() {
@@ -815,11 +789,8 @@ export function mount({ container, host }) {
 
   function filterEntriesByRun(list) {
     const entries = Array.isArray(list) ? list : [];
-    const selection = typeof state.runFilter === 'string' ? state.runFilter.trim() : RUN_FILTER_AUTO;
-    if (selection === RUN_FILTER_ALL) return entries;
-    const activeRunId = resolveActiveRunId();
-    if (!activeRunId) return entries;
-    return entries.filter((entry) => normalizeRunId(entry?.runId) === activeRunId);
+    const effective = resolveEffectiveRunFilter(state.runFilter, state.runSummary?.latestRunId, RUN_FILTER_ALL);
+    return filterEntriesByRunId(entries, effective);
   }
 
   function updateRunSelect() {
@@ -851,20 +822,6 @@ export function mount({ container, host }) {
     safeLocalStorageSet(RUN_FILTER_STORAGE_KEY, resolved);
     updateRunSelect();
     renderAll();
-  }
-
-  function dedupeFileChanges(entries) {
-    const list = Array.isArray(entries) ? entries : [];
-    const seen = new Set();
-    const result = [];
-    for (let i = list.length - 1; i >= 0; i -= 1) {
-      const item = list[i];
-      const key = item?.path || item?.absolutePath;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      result.push(item);
-    }
-    return result;
   }
 
   function createTag(label, variant) {
@@ -1309,13 +1266,6 @@ export function mount({ container, host }) {
     }
   }
 
-  function resolveDispatchRunId() {
-    const selection = typeof state.runFilter === 'string' ? state.runFilter.trim() : RUN_FILTER_AUTO;
-    if (!selection || selection === RUN_FILTER_AUTO) return normalizeRunId(state.runSummary?.latestRunId);
-    if (selection === RUN_FILTER_ALL) return '';
-    return normalizeRunId(selection);
-  }
-
   async function sendMessage({ force = false } = {}) {
     if (!bridgeEnabled) {
       setAlert('IPC bridge \u672a\u542f\u7528\uff0c\u65e0\u6cd5\u53d1\u9001\u6d88\u606f\u3002');
@@ -1326,7 +1276,9 @@ export function mount({ container, host }) {
     state.sending = true;
     renderFloatingBar();
     try {
-      const runId = resolveDispatchRunId();
+      const runId = resolveDispatchRunId(state.runFilter, state.runSummary?.latestRunId, {
+        emptyAsAuto: true,
+      });
       const result = await api.invoke('terminal:dispatch', {
         text,
         runId: runId || undefined,
@@ -1362,7 +1314,9 @@ export function mount({ container, host }) {
       setAlert('IPC bridge \u672a\u542f\u7528\uff0c\u65e0\u6cd5\u505c\u6b62\u3002');
       return;
     }
-    const runId = resolveDispatchRunId();
+    const runId = resolveDispatchRunId(state.runFilter, state.runSummary?.latestRunId, {
+      emptyAsAuto: true,
+    });
     if (!runId) {
       setAlert('\u8bf7\u5148\u9009\u62e9\u4e00\u4e2a\u7ec8\u7aef\u3002');
       return;

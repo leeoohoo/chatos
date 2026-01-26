@@ -30,6 +30,7 @@ import { appendPromptBlock } from '../../packages/aide/shared/prompt-utils.js';
 import { createRuntimeLogger } from '../../packages/aide/shared/runtime-log.js';
 import { normalizeKey } from '../../packages/aide/shared/text-utils.js';
 import { readRegistrySnapshot } from '../../packages/common/admin-data/registry-utils.js';
+import { applyRuntimeSettings } from '../../packages/common/runtime-settings-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -263,99 +264,6 @@ function parseBoolean(value, flag) {
   throw new Error(`Option ${flag} expected a boolean value but received "${value}"`);
 }
 
-function applyRuntimeSettings(config) {
-  const normalized = {};
-  if (!config || typeof config !== 'object') {
-    return normalized;
-  }
-  const normalizeLanguage = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'zh' || raw === 'en') return raw;
-    return undefined;
-  };
-  const normalizeShellSafetyMode = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'strict' || raw === 'relaxed') return raw;
-    return undefined;
-  };
-  const normalizeSymlinkPolicy = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'allow' || raw === 'deny') return raw;
-    return undefined;
-  };
-  const normalizeLogLevel = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'off' || raw === 'info' || raw === 'debug') return raw;
-    return undefined;
-  };
-  const normalizePromptLogMode = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'full' || raw === 'minimal') return raw;
-    return undefined;
-  };
-  const pickNumber = (value) => {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : undefined;
-  };
-  const setFlag = (key, enabled) => {
-    process.env[key] = enabled ? '1' : '0';
-  };
-  const setNumberEnv = (key, value) => {
-    if (Number.isFinite(value)) {
-      process.env[key] = String(value);
-    }
-  };
-  const setStringEnv = (key, value) => {
-    if (typeof value === 'string' && value.trim()) {
-      process.env[key] = value.trim();
-    }
-  };
-  const summaryThreshold = pickNumber(config.summaryTokenThreshold);
-  const maxToolPasses = pickNumber(config.maxToolPasses);
-  if (summaryThreshold !== undefined) {
-    normalized.summaryThreshold = summaryThreshold;
-    setNumberEnv('MODEL_CLI_SUMMARY_TOKENS', summaryThreshold);
-  }
-  if (maxToolPasses !== undefined) {
-    normalized.maxToolPasses = maxToolPasses;
-  }
-  const promptLanguage = normalizeLanguage(config.promptLanguage);
-  if (promptLanguage) {
-    normalized.promptLanguage = promptLanguage;
-    process.env.MODEL_CLI_PROMPT_LANGUAGE = promptLanguage;
-  }
-  if (typeof config.landConfigId === 'string') {
-    normalized.landConfigId = config.landConfigId.trim();
-  }
-  setFlag('MODEL_CLI_AUTO_ROUTE', Boolean(config.autoRoute));
-  setFlag('MODEL_CLI_LOG_REQUEST', Boolean(config.logRequests));
-  setFlag('MODEL_CLI_STREAM_RAW', Boolean(config.streamRaw));
-  setNumberEnv('MODEL_CLI_TOOL_PREVIEW_LIMIT', pickNumber(config.toolPreviewLimit));
-  setNumberEnv('MODEL_CLI_RETRY', pickNumber(config.retry));
-  setNumberEnv('MODEL_CLI_MCP_TIMEOUT_MS', pickNumber(config.mcpTimeoutMs));
-  setNumberEnv('MODEL_CLI_MCP_MAX_TIMEOUT_MS', pickNumber(config.mcpMaxTimeoutMs));
-  const shellSafetyMode = normalizeShellSafetyMode(config.shellSafetyMode);
-  if (shellSafetyMode) {
-    setStringEnv('MODEL_CLI_SHELL_SAFETY_MODE', shellSafetyMode);
-  }
-  const symlinkPolicy = normalizeSymlinkPolicy(config.filesystemSymlinkPolicy);
-  if (symlinkPolicy) {
-    setFlag('MODEL_CLI_ALLOW_SYMLINK_ESCAPE', symlinkPolicy === 'allow');
-  }
-  const logLevel = normalizeLogLevel(config.mcpToolLogLevel);
-  if (logLevel) {
-    setStringEnv('MODEL_CLI_MCP_LOG_LEVEL', logLevel);
-  }
-  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_BYTES', pickNumber(config.mcpToolLogMaxBytes));
-  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_LINES', pickNumber(config.mcpToolLogMaxLines));
-  setNumberEnv('MODEL_CLI_MCP_TOOL_LOG_MAX_FIELD_CHARS', pickNumber(config.mcpToolLogMaxFieldChars));
-  setNumberEnv('MODEL_CLI_MCP_STARTUP_CONCURRENCY', pickNumber(config.mcpStartupConcurrency));
-  const promptLogMode = normalizePromptLogMode(config.uiPromptLogMode);
-  if (promptLogMode) {
-    setStringEnv('MODEL_CLI_UI_PROMPTS_LOG_MODE', promptLogMode);
-  }
-  return normalized;
-}
 
 function runListModels() {
   const { services } = getAdminServices();

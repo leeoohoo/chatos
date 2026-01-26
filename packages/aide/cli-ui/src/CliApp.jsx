@@ -11,7 +11,14 @@ import { useElementHeight } from './hooks/useElementSize.js';
 import { api, hasApi } from './lib/api.js';
 import { buildEventList, readRawEventList } from './lib/events.js';
 import { parseTasks } from './lib/parse.js';
-import { buildRunFilterOptions, filterEntriesByRunId, normalizeRunId, parseTimestampMs } from './lib/runs.js';
+import {
+  buildRunFilterOptions,
+  filterEntriesByRunId,
+  normalizeRunId,
+  parseTimestampMs,
+  resolveDispatchRunId,
+  resolveEffectiveRunFilter,
+} from './lib/runs.js';
 import {
   DISPATCH_CWD_STORAGE_KEY,
   HIDDEN_RUNS_STORAGE_KEY,
@@ -164,13 +171,10 @@ function CliAppBody({ host, mountContainer }) {
     safeLocalStorageSet(RUN_FILTER_STORAGE_KEY, next);
   };
 
-  const effectiveRunFilter = useMemo(() => {
-    const selection = typeof runFilter === 'string' ? runFilter : '';
-    if (!selection || selection === RUN_FILTER_AUTO) {
-      return visibleRunSummary?.latestRunId || RUN_FILTER_ALL;
-    }
-    return selection;
-  }, [runFilter, visibleRunSummary]);
+  const effectiveRunFilter = useMemo(
+    () => resolveEffectiveRunFilter(runFilter, visibleRunSummary?.latestRunId, RUN_FILTER_ALL),
+    [runFilter, visibleRunSummary]
+  );
 
   const filteredRawEvents = useMemo(
     () => filterEntriesByRunId(allRawEvents, effectiveRunFilter),
@@ -192,19 +196,14 @@ function CliAppBody({ host, mountContainer }) {
     [pendingUiPrompts, effectiveRunFilter]
   );
 
-  const dispatchRunId = useMemo(() => {
-    const selection = typeof runFilter === 'string' ? runFilter.trim() : '';
-    if (!selection) return null;
-    if (selection === RUN_FILTER_ALL || selection === RUN_FILTER_UNKNOWN) {
-      const latest = normalizeRunId(visibleRunSummary?.latestRunId);
-      return latest || null;
-    }
-    if (selection === RUN_FILTER_AUTO) {
-      const latest = normalizeRunId(visibleRunSummary?.latestRunId);
-      return latest || null;
-    }
-    return selection;
-  }, [runFilter, visibleRunSummary]);
+  const dispatchRunId = useMemo(
+    () =>
+      resolveDispatchRunId(runFilter, visibleRunSummary?.latestRunId, {
+        preferLatestForAll: true,
+        preferLatestForUnknown: true,
+      }),
+    [runFilter, visibleRunSummary]
+  );
 
   const dispatchRunCwd = useMemo(() => {
     const rid = normalizeRunId(dispatchRunId);

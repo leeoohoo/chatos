@@ -12,6 +12,14 @@ import {
 import { normalizeRunId } from '../../lib/runs.js';
 import { formatAideDropText, getAideDragPayload, getAideDragText } from '../../lib/dnd.js';
 import { FloatingIslandPrompt } from './floating-island/FloatingIslandPrompt.jsx';
+import {
+  coerceRuntimeNumber,
+  normalizeMcpLogLevel,
+  normalizePromptLogMode,
+  normalizeShellSafetyMode,
+  normalizeSymlinkPolicy,
+  normalizeUiTerminalMode,
+} from '../../../runtime-settings-utils.js';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -116,9 +124,7 @@ function FloatingIsland({
     : '当前 land_config 已失效，请重新选择';
   const blockDispatch = landConfigMissing || landConfigInvalid;
   const uiTerminalMode = useMemo(() => {
-    const raw = typeof runtimeSettings?.uiTerminalMode === 'string' ? runtimeSettings.uiTerminalMode.trim().toLowerCase() : '';
-    if (raw === 'system' || raw === 'headless' || raw === 'auto') return raw;
-    return 'auto';
+    return normalizeUiTerminalMode(runtimeSettings?.uiTerminalMode, 'auto');
   }, [runtimeSettings]);
   const platformPrefersSystemTerminal = useMemo(() => {
     const platform = typeof navigator !== 'undefined' ? String(navigator.platform || '') : '';
@@ -129,36 +135,37 @@ function FloatingIsland({
   const openSystemTerminalOnSend =
     uiTerminalMode === 'system' ? true : uiTerminalMode === 'headless' ? false : platformPrefersSystemTerminal;
   const shellSafetyMode = useMemo(() => {
-    const raw = typeof runtimeSettings?.shellSafetyMode === 'string' ? runtimeSettings.shellSafetyMode.trim().toLowerCase() : '';
-    return raw === 'relaxed' ? 'relaxed' : 'strict';
+    return normalizeShellSafetyMode(runtimeSettings?.shellSafetyMode, {
+      allowAliases: true,
+      fallback: 'strict',
+    });
   }, [runtimeSettings]);
   const filesystemSymlinkPolicy = useMemo(() => {
-    const raw = typeof runtimeSettings?.filesystemSymlinkPolicy === 'string' ? runtimeSettings.filesystemSymlinkPolicy.trim().toLowerCase() : '';
-    return raw === 'deny' ? 'deny' : 'allow';
+    return normalizeSymlinkPolicy(runtimeSettings?.filesystemSymlinkPolicy, {
+      allowAliases: true,
+      fallback: 'allow',
+    });
   }, [runtimeSettings]);
   const mcpToolLogLevel = useMemo(() => {
-    const raw = typeof runtimeSettings?.mcpToolLogLevel === 'string' ? runtimeSettings.mcpToolLogLevel.trim().toLowerCase() : '';
-    if (raw === 'off' || raw === 'debug') return raw;
-    return 'info';
+    return normalizeMcpLogLevel(runtimeSettings?.mcpToolLogLevel, 'info');
   }, [runtimeSettings]);
   const uiPromptLogMode = useMemo(() => {
-    const raw = typeof runtimeSettings?.uiPromptLogMode === 'string' ? runtimeSettings.uiPromptLogMode.trim().toLowerCase() : '';
-    return raw === 'minimal' ? 'minimal' : 'full';
+    return normalizePromptLogMode(runtimeSettings?.uiPromptLogMode, 'full');
   }, [runtimeSettings]);
   const shellMaxBufferKb = useMemo(() => {
-    const value = Number(runtimeSettings?.shellMaxBufferBytes);
+    const value = coerceRuntimeNumber(runtimeSettings?.shellMaxBufferBytes);
     return Number.isFinite(value) ? Math.max(16, Math.round(value / 1024)) : 2048;
   }, [runtimeSettings]);
   const filesystemMaxFileKb = useMemo(() => {
-    const value = Number(runtimeSettings?.filesystemMaxFileBytes);
+    const value = coerceRuntimeNumber(runtimeSettings?.filesystemMaxFileBytes);
     return Number.isFinite(value) ? Math.max(1, Math.round(value / 1024)) : 256;
   }, [runtimeSettings]);
   const filesystemMaxWriteKb = useMemo(() => {
-    const value = Number(runtimeSettings?.filesystemMaxWriteBytes);
+    const value = coerceRuntimeNumber(runtimeSettings?.filesystemMaxWriteBytes);
     return Number.isFinite(value) ? Math.max(1, Math.round(value / 1024)) : 5120;
   }, [runtimeSettings]);
   const mcpStartupConcurrency = useMemo(() => {
-    const value = Number(runtimeSettings?.mcpStartupConcurrency);
+    const value = coerceRuntimeNumber(runtimeSettings?.mcpStartupConcurrency);
     return Number.isFinite(value) ? Math.max(1, Math.min(20, Math.round(value))) : 4;
   }, [runtimeSettings]);
   const shellSafetyOptions = [

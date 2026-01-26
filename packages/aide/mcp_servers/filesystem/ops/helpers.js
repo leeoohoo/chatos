@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { resolvePatchPayload as resolvePatchPayloadBase, resolveWritePayload as resolveWritePayloadBase } from '../../../shared/tool-payload-utils.js';
 
 function resolveRealPath(target) {
   try {
@@ -91,56 +92,16 @@ export function createWorkspaceResolver({ root, allowSymlinkEscape = true } = {}
   };
 }
 
-function decodePayload(value, encoding) {
-  if (!value) return '';
-  if (encoding === 'base64') {
-    return Buffer.from(value, 'base64').toString('utf8');
-  }
-  return value;
-}
-
 export async function resolveWritePayload(args) {
-  let encoding = args.encoding || 'plain';
-  if (typeof args.contents_base64 === 'string' && args.contents_base64.length > 0) {
-    encoding = 'base64';
-    return decodePayload(args.contents_base64, 'base64');
-  }
-  if (Array.isArray(args.chunks) && args.chunks.length > 0) {
-    const pieces = args.chunks.map((chunk) => {
-      const chunkEncoding = chunk.encoding || encoding;
-      return decodePayload(chunk.content, chunkEncoding);
-    });
-    return pieces.join('');
-  }
-  if (typeof args.contents === 'string') {
-    return decodePayload(args.contents, encoding);
-  }
-  return '';
+  return resolveWritePayloadBase(args, { fallbackToRaw: true, defaultEncoding: 'plain' });
 }
 
 export async function resolvePatchPayload(args) {
-  let encoding = args.encoding || 'plain';
-  let patchText = '';
-
-  if (typeof args.patch_base64 === 'string' && args.patch_base64.length > 0) {
-    encoding = 'base64';
-    patchText = decodePayload(args.patch_base64, 'base64');
-  } else if (Array.isArray(args.chunks) && args.chunks.length > 0) {
-    const segments = args.chunks.map((chunk) => {
-      const chunkEncoding = chunk.encoding || encoding;
-      return decodePayload(chunk.content, chunkEncoding);
-    });
-    patchText = segments.join('');
-  } else if (typeof args.patch === 'string') {
-    patchText = decodePayload(args.patch, encoding);
-  }
-
-  // 确保 patch 以换行符结束
-  if (patchText && !patchText.endsWith('\n')) {
-    patchText += '\n';
-  }
-
-  return patchText;
+  return resolvePatchPayloadBase(args, {
+    fallbackToRaw: true,
+    defaultEncoding: 'plain',
+    ensureTrailingNewline: true,
+  });
 }
 
 export function isFriendlyPatch(patchText) {

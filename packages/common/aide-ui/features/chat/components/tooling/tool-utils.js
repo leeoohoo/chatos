@@ -1,28 +1,8 @@
 import { parseJsonSafe } from '../../../../lib/parse.js';
 import { truncateText } from '../../../../lib/format.js';
+import { inferToolKind, normalizeToolStatus } from '../../../../lib/tooling-utils.js';
 
-const STATUS_MAP = {
-  ok: 'ok',
-  success: 'ok',
-  noop: 'ok',
-  pending: 'pending',
-  running: 'pending',
-  error: 'error',
-  invalid: 'error',
-  denied: 'error',
-  not_found: 'error',
-  canceled: 'canceled',
-  cancelled: 'canceled',
-  timeout: 'timeout',
-  timed_out: 'timeout',
-  partial: 'partial',
-};
-
-function normalizeStatus(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return '';
-  return STATUS_MAP[raw] || '';
-}
+export { inferToolKind };
 
 export function parseToolArgsText(argsText) {
   const raw =
@@ -33,32 +13,6 @@ export function parseToolArgsText(argsText) {
         : String(argsText);
   if (!raw) return { raw: '', parsed: null };
   return { raw, parsed: parseJsonSafe(raw, null) };
-}
-
-export function inferToolKind(toolName) {
-  const raw = typeof toolName === 'string' ? toolName.trim().toLowerCase() : '';
-  if (!raw) return 'default';
-  if (raw.includes('run_shell_command') || raw.includes('session_') || raw.includes('shell')) return 'shell';
-  if (raw.includes('code_maintainer') || raw.includes('code-maintainer')) return 'code_maintainer';
-  if (
-    raw.includes('read_file') ||
-    raw.includes('write_file') ||
-    raw.includes('edit_file') ||
-    raw.includes('apply_patch') ||
-    raw.includes('delete_path') ||
-    raw.includes('list_directory') ||
-    raw.includes('list_workspace_files') ||
-    raw.includes('search_text')
-  ) {
-    return 'filesystem';
-  }
-  if (raw.includes('lsp')) return 'lsp';
-  if (raw.includes('task')) return 'task';
-  if (raw.includes('subagent') || raw.includes('sub_agent')) return 'subagent';
-  if (raw.includes('prompt')) return 'prompt';
-  if (raw.includes('journal')) return 'journal';
-  if (raw.includes('chrome') || raw.includes('browser') || raw.includes('devtools')) return 'browser';
-  return 'default';
 }
 
 function parseShellHeader(line) {
@@ -127,7 +81,7 @@ function readStructuredStatus(structuredContent) {
   if (!structuredContent || typeof structuredContent !== 'object') return '';
   const chatos = structuredContent.chatos && typeof structuredContent.chatos === 'object' ? structuredContent.chatos : null;
   const raw = chatos?.status || structuredContent.status || '';
-  return normalizeStatus(raw);
+  return normalizeToolStatus(raw);
 }
 
 export function inferToolStatus(resultText, shellResult, structuredContent, toolIsError) {

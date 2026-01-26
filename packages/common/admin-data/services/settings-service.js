@@ -1,5 +1,13 @@
 import { BaseService } from './base-service.js';
 import { DEFAULT_RUNTIME_SETTINGS, runtimeSettingsSchema } from '../schema.js';
+import {
+  coerceRuntimeNumber,
+  normalizeMcpLogLevel,
+  normalizePromptLogMode,
+  normalizeRuntimeLanguage,
+  normalizeShellSafetyMode,
+  normalizeSymlinkPolicy,
+} from '../../runtime-settings-utils.js';
 
 export class SettingsService extends BaseService {
   constructor(db) {
@@ -49,59 +57,34 @@ export class SettingsService extends BaseService {
     const runtime = this.ensureRuntime();
     if (!runtime) return null;
     const base = { ...DEFAULT_RUNTIME_SETTINGS, ...runtime };
-    const normalizeLanguage = (value) => {
-      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-      if (raw === 'zh' || raw === 'en') return raw;
-      return DEFAULT_RUNTIME_SETTINGS.promptLanguage;
-    };
-    const normalizeShellSafetyMode = (value) => {
-      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-      if (raw === 'strict' || raw === 'relaxed') return raw;
-      return DEFAULT_RUNTIME_SETTINGS.shellSafetyMode;
-    };
-    const normalizeSymlinkPolicy = (value) => {
-      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-      if (raw === 'allow' || raw === 'deny') return raw;
-      return DEFAULT_RUNTIME_SETTINGS.filesystemSymlinkPolicy;
-    };
-    const normalizeLogLevel = (value) => {
-      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-      if (raw === 'off' || raw === 'info' || raw === 'debug') return raw;
-      return DEFAULT_RUNTIME_SETTINGS.mcpToolLogLevel;
-    };
-    const normalizePromptLogMode = (value) => {
-      const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-      if (raw === 'full' || raw === 'minimal') return raw;
-      return DEFAULT_RUNTIME_SETTINGS.uiPromptLogMode;
-    };
-    const toInt = (value) => {
-      const num = Number(value);
-      return Number.isFinite(num) ? num : undefined;
-    };
     const normalizeWorkdir = (value) => (typeof value === 'string' ? value.trim() : '');
     return {
-      maxToolPasses: toInt(base.maxToolPasses),
-      promptLanguage: normalizeLanguage(base.promptLanguage),
+      maxToolPasses: coerceRuntimeNumber(base.maxToolPasses),
+      promptLanguage: normalizeRuntimeLanguage(base.promptLanguage, DEFAULT_RUNTIME_SETTINGS.promptLanguage),
       landConfigId: typeof base.landConfigId === 'string' ? base.landConfigId.trim() : '',
-      summaryTokenThreshold: toInt(base.summaryTokenThreshold),
+      summaryTokenThreshold: coerceRuntimeNumber(base.summaryTokenThreshold),
       autoRoute: Boolean(base.autoRoute),
       logRequests: Boolean(base.logRequests),
       streamRaw: Boolean(base.streamRaw),
-      toolPreviewLimit: toInt(base.toolPreviewLimit),
-      retry: toInt(base.retry),
-      mcpTimeoutMs: toInt(base.mcpTimeoutMs),
-      mcpMaxTimeoutMs: toInt(base.mcpMaxTimeoutMs),
-      shellSafetyMode: normalizeShellSafetyMode(base.shellSafetyMode),
-      shellMaxBufferBytes: toInt(base.shellMaxBufferBytes),
-      filesystemSymlinkPolicy: normalizeSymlinkPolicy(base.filesystemSymlinkPolicy),
-      filesystemMaxFileBytes: toInt(base.filesystemMaxFileBytes),
-      filesystemMaxWriteBytes: toInt(base.filesystemMaxWriteBytes),
-      mcpToolLogLevel: normalizeLogLevel(base.mcpToolLogLevel),
-      mcpToolLogMaxBytes: toInt(base.mcpToolLogMaxBytes),
-      mcpToolLogMaxLines: toInt(base.mcpToolLogMaxLines),
-      mcpToolLogMaxFieldChars: toInt(base.mcpToolLogMaxFieldChars),
-      mcpStartupConcurrency: toInt(base.mcpStartupConcurrency),
-      uiPromptLogMode: normalizePromptLogMode(base.uiPromptLogMode),
+      toolPreviewLimit: coerceRuntimeNumber(base.toolPreviewLimit),
+      retry: coerceRuntimeNumber(base.retry),
+      mcpTimeoutMs: coerceRuntimeNumber(base.mcpTimeoutMs),
+      mcpMaxTimeoutMs: coerceRuntimeNumber(base.mcpMaxTimeoutMs),
+      shellSafetyMode: normalizeShellSafetyMode(base.shellSafetyMode, {
+        fallback: DEFAULT_RUNTIME_SETTINGS.shellSafetyMode,
+      }),
+      shellMaxBufferBytes: coerceRuntimeNumber(base.shellMaxBufferBytes),
+      filesystemSymlinkPolicy: normalizeSymlinkPolicy(base.filesystemSymlinkPolicy, {
+        fallback: DEFAULT_RUNTIME_SETTINGS.filesystemSymlinkPolicy,
+      }),
+      filesystemMaxFileBytes: coerceRuntimeNumber(base.filesystemMaxFileBytes),
+      filesystemMaxWriteBytes: coerceRuntimeNumber(base.filesystemMaxWriteBytes),
+      mcpToolLogLevel: normalizeMcpLogLevel(base.mcpToolLogLevel, DEFAULT_RUNTIME_SETTINGS.mcpToolLogLevel),
+      mcpToolLogMaxBytes: coerceRuntimeNumber(base.mcpToolLogMaxBytes),
+      mcpToolLogMaxLines: coerceRuntimeNumber(base.mcpToolLogMaxLines),
+      mcpToolLogMaxFieldChars: coerceRuntimeNumber(base.mcpToolLogMaxFieldChars),
+      mcpStartupConcurrency: coerceRuntimeNumber(base.mcpStartupConcurrency),
+      uiPromptLogMode: normalizePromptLogMode(base.uiPromptLogMode, DEFAULT_RUNTIME_SETTINGS.uiPromptLogMode),
       injectSecretsToEnv: Boolean(base.injectSecretsToEnv),
       uiPromptWorkdir: normalizeWorkdir(base.uiPromptWorkdir),
     };

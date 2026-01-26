@@ -1,41 +1,29 @@
-export const RUN_FILTER_STORAGE_KEY = 'deepseek_cli.ui.runFilter';
-export const RUN_FILTER_AUTO = '__auto__';
-export const RUN_FILTER_ALL = 'all';
-export const RUN_FILTER_UNKNOWN = '__unknown__';
-export const THEME_STORAGE_KEY = 'deepseek_cli.ui.theme';
-export const DISPATCH_CWD_STORAGE_KEY = 'deepseek_cli.ui.dispatchCwd';
-export const HIDDEN_RUNS_STORAGE_KEY = 'deepseek_cli.ui.hiddenRunIds';
-export const WORKSPACE_ROOT_STORAGE_KEY_PREFIX = 'deepseek_cli.ui.workspaceRoot';
-export const WORKSPACE_EXPLORER_SPLIT_WIDTH_KEY_PREFIX = 'deepseek_cli.ui.workspaceExplorer.splitLeftWidth';
-export const WORKSPACE_EXPLORER_AUTO_OPEN_HISTORY_KEY = 'deepseek_cli.ui.workspaceExplorer.autoOpenHistory';
-export const FLOATING_ISLAND_COLLAPSED_STORAGE_KEY = 'deepseek_cli.ui.floatingIsland.collapsed';
+import {
+  RUN_FILTER_AUTO,
+  RUN_FILTER_ALL,
+  RUN_FILTER_UNKNOWN,
+  buildScopedStorageKey,
+  createStorageKeys,
+  safeLocalStorageGet,
+  safeLocalStorageSet,
+} from './storage-helpers.js';
 
-export function safeLocalStorageGet(key) {
-  try {
-    if (!window?.localStorage) return null;
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
+const STORAGE_KEYS = createStorageKeys('deepseek_cli.ui');
 
-export function safeLocalStorageSet(key, value) {
-  try {
-    if (!window?.localStorage) return;
-    window.localStorage.setItem(key, value);
-  } catch {
-    // ignore storage errors
-  }
-}
+export const RUN_FILTER_STORAGE_KEY = STORAGE_KEYS.RUN_FILTER_STORAGE_KEY;
+export { RUN_FILTER_AUTO, RUN_FILTER_ALL, RUN_FILTER_UNKNOWN, safeLocalStorageGet, safeLocalStorageSet };
+export const THEME_STORAGE_KEY = STORAGE_KEYS.THEME_STORAGE_KEY;
+export const DISPATCH_CWD_STORAGE_KEY = STORAGE_KEYS.DISPATCH_CWD_STORAGE_KEY;
+export const HIDDEN_RUNS_STORAGE_KEY = STORAGE_KEYS.HIDDEN_RUNS_STORAGE_KEY;
+export const WORKSPACE_ROOT_STORAGE_KEY_PREFIX = STORAGE_KEYS.WORKSPACE_ROOT_STORAGE_KEY_PREFIX;
+export const WORKSPACE_EXPLORER_SPLIT_WIDTH_KEY_PREFIX = STORAGE_KEYS.WORKSPACE_EXPLORER_SPLIT_WIDTH_KEY_PREFIX;
+export const WORKSPACE_EXPLORER_AUTO_OPEN_HISTORY_KEY = STORAGE_KEYS.WORKSPACE_EXPLORER_AUTO_OPEN_HISTORY_KEY;
+export const FLOATING_ISLAND_COLLAPSED_STORAGE_KEY = STORAGE_KEYS.FLOATING_ISLAND_COLLAPSED_STORAGE_KEY;
 
 export function buildWorkspaceRootStorageKey(runScope) {
-  const normalized = typeof runScope === 'string' ? runScope.trim() : '';
-  const suffix = normalized || RUN_FILTER_ALL;
-  return `${WORKSPACE_ROOT_STORAGE_KEY_PREFIX}:${suffix}`;
+  return buildScopedStorageKey(WORKSPACE_ROOT_STORAGE_KEY_PREFIX, runScope, RUN_FILTER_ALL);
 }
 
 export function buildWorkspaceExplorerSplitWidthStorageKey(runScope) {
-  const normalized = typeof runScope === 'string' ? runScope.trim() : '';
-  const suffix = normalized || RUN_FILTER_ALL;
-  return `${WORKSPACE_EXPLORER_SPLIT_WIDTH_KEY_PREFIX}:${suffix}`;
+  return buildScopedStorageKey(WORKSPACE_EXPLORER_SPLIT_WIDTH_KEY_PREFIX, runScope, RUN_FILTER_ALL);
 }

@@ -1,17 +1,22 @@
 import * as colors from '../colors.js';
 import { generateSessionId } from '../session.js';
 
+import { runWithContextLengthRecovery } from '../../shared/context-recovery-utils.js';
 import { extractErrorInfo, isContextLengthError, normalizeErrorText } from '../../shared/error-utils.js';
+import { normalizeToolCallMessages } from '../../shared/chat-toolcall-utils.js';
 import { summarizeSession, throwIfAborted } from './summary.js';
 
 async function chatWithContextRecovery({ client, model, session, options, summaryManager }) {
   // If a previous run was aborted mid-tool-call, the session may contain an assistant tool_calls
   // message without all tool results. Providers will 400 on that; repair it up-front.
   repairDanglingToolCalls(session, { preserveLatestUser: true });
-  try {
-    return await client.chat(model, session, options);
-  } catch (err) {
-    if (isToolCallProtocolError(err)) {
+  const runChat = async () => {
+    try {
+      return await client.chat(model, session, options);
+    } catch (err) {
+      if (!isToolCallProtocolError(err)) {
+        throw err;
+      }
       const signal = options?.signal;
       throwIfAborted(signal);
       const repaired = repairDanglingToolCalls(session, { preserveLatestUser: true });
@@ -21,17 +26,15 @@ async function chatWithContextRecovery({ client, model, session, options, summar
         return await client.chat(model, session, options);
       }
       console.log(colors.yellow('检测到 tool_calls 协议错误，但未能修复，继续抛出。'));
-    }
-    if (!isContextLengthError(err)) {
       throw err;
     }
-    const signal = options?.signal;
-    throwIfAborted(signal);
-    const info = parseContextLengthError(err);
-    const detail = formatContextErrorDetail(info);
-    console.log(colors.yellow(`上下文过长，准备自动总结后重试${detail}`));
+  };
+
+  const signal = options?.signal;
+  let summaryError = null;
+  const summarizeForContext = async () => {
+    summaryError = null;
     let summarized = false;
-    let summaryError = null;
     try {
       if (summaryManager?.forceSummarize) {
         summarized = await summaryManager.forceSummarize(session, client, model, { signal });
@@ -43,27 +46,37 @@ async function chatWithContextRecovery({ client, model, session, options, summar
       const summaryMessage = normalizeErrorText(errSummary?.message || errSummary);
       console.log(colors.yellow(`自动总结失败${summaryMessage ? `：${summaryMessage}` : ''}`));
     }
-    throwIfAborted(signal);
-    if (!summarized) {
-      const reason = summaryError ? '自动总结失败' : '自动总结未缩短上下文';
-      console.log(colors.yellow(`${reason}，将裁剪为最小上下文后重试。`));
-      hardTrimSession(session);
-      return await client.chat(model, session, options);
-    }
-    try {
-      return await client.chat(model, session, options);
-    } catch (err2) {
-      if (!isContextLengthError(err2)) {
-        throw err2;
-      }
-      throwIfAborted(signal);
-      const nextInfo = parseContextLengthError(err2);
+    return summarized;
+  };
+
+  const hardTrimForContext = ({ reason, error } = {}) => {
+    if (reason === 'summary_failed') {
+      const reasonText = summaryError ? '自动总结失败' : '自动总结未缩短上下文';
+      console.log(colors.yellow(`${reasonText}，将裁剪为最小上下文后重试。`));
+    } else if (reason === 'summary_exceeded') {
+      const nextInfo = parseContextLengthError(error);
       const nextDetail = formatContextErrorDetail(nextInfo);
       console.log(colors.yellow(`总结后仍超长，已强制裁剪为最小上下文后重试${nextDetail}`));
-      hardTrimSession(session);
-      return await client.chat(model, session, options);
     }
-  }
+    hardTrimSession(session);
+  };
+
+  const handleContextError = (err) => {
+    const info = parseContextLengthError(err);
+    const detail = formatContextErrorDetail(info);
+    console.log(colors.yellow(`上下文过长，准备自动总结后重试${detail}`));
+  };
+
+  return await runWithContextLengthRecovery({
+    run: runChat,
+    summarize: summarizeForContext,
+    hardTrim: hardTrimForContext,
+    isContextLengthError,
+    throwIfAborted,
+    signal,
+    retryIfSummarizeFailed: false,
+    onContextError: handleContextError,
+  });
 }
 
 function isToolCallProtocolError(err) {
@@ -333,116 +346,21 @@ function repairDanglingToolCalls(session, options = {}) {
       })()
     : '';
 
-  const repaired = [];
-  let changed = false;
-  let pending = null;
-
-  const dropPending = () => {
-    if (!pending) return;
-    repaired.length = pending.startIndex;
-    pending = null;
-    changed = true;
-  };
-
-  for (const msg of original) {
-    if (!msg || typeof msg !== 'object') {
-      changed = true;
-      continue;
-    }
-    const role = msg.role;
-    const hasToolCalls =
-      role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
-
-    if (hasToolCalls) {
-      dropPending();
-
-      const calls = [];
-      const expectedIds = [];
-      const expectedSet = new Set();
-      for (const call of msg.tool_calls) {
-        if (!call || typeof call !== 'object') {
-          changed = true;
-          continue;
-        }
-        const nextCall = { ...call };
-        let id = normalizeId(call.id);
-        if (!id) {
-          id = generateId();
-          changed = true;
-        }
-        while (expectedSet.has(id)) {
-          id = generateId();
-          changed = true;
-        }
-        nextCall.id = id;
-        expectedIds.push(id);
-        expectedSet.add(id);
-        calls.push(nextCall);
-      }
-
-      const assistantMsg = calls.length > 0 ? { ...msg, tool_calls: calls } : { ...msg };
-      if (calls.length > 0) {
-        pending = {
-          startIndex: repaired.length,
-          expectedIds,
-          expectedSet,
-          seen: new Set(),
-          nextUnassignedIndex: 0,
-        };
-      } else {
-        delete assistantMsg.tool_calls;
-      }
-      repaired.push(assistantMsg);
-      continue;
-    }
-
-    if (role === 'tool') {
-      if (!pending) {
-        changed = true;
-        continue;
-      }
-      let toolCallId = normalizeId(msg.tool_call_id);
-      if (toolCallId && !pending.expectedSet.has(toolCallId)) {
-        changed = true;
-        continue;
-      }
-      if (!toolCallId) {
-        while (
-          pending.nextUnassignedIndex < pending.expectedIds.length &&
-          pending.seen.has(pending.expectedIds[pending.nextUnassignedIndex])
-        ) {
-          pending.nextUnassignedIndex += 1;
-        }
-        if (pending.nextUnassignedIndex >= pending.expectedIds.length) {
-          changed = true;
-          continue;
-        }
-        toolCallId = pending.expectedIds[pending.nextUnassignedIndex];
-        pending.nextUnassignedIndex += 1;
-        changed = true;
-      }
-      const toolMsg = { ...msg, tool_call_id: toolCallId };
-      repaired.push(toolMsg);
-      pending.seen.add(toolCallId);
-      if (pending.seen.size >= pending.expectedSet.size) {
-        pending = null;
-      }
-      continue;
-    }
-
-    if (pending) {
-      dropPending();
-    }
-    repaired.push({ ...msg });
-  }
-
-  if (pending) {
-    dropPending();
-  }
+  const { messages: repaired, changed } = normalizeToolCallMessages(original, {
+    toolCallsKey: 'tool_calls',
+    toolCallIdKey: 'tool_call_id',
+    normalizeId,
+    generateId,
+    assignMissingToolCallId: true,
+    ensureUniqueToolCallIds: true,
+    stripEmptyToolCalls: true,
+    pendingMode: 'drop',
+  });
 
   if (!changed) {
     return false;
   }
+
   session.messages = repaired;
   if (preserveLatestUser && latestUserText) {
     const hasUser = session.messages.some(

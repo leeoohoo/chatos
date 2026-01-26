@@ -4,24 +4,14 @@ import { Button, Card, Drawer, Empty, List, Space, Tag, Typography, message } fr
 import { CodeBlock } from '../../../components/CodeBlock.jsx';
 import { formatDateTime } from '../../../lib/format.js';
 import { setAideDragData } from '../../../lib/dnd.js';
+import { dedupeFileChanges, getFileChangeKey } from '../../../lib/file-changes.js';
 
 const { Text } = Typography;
 
 function FileChangesCard({ entries, logPath, onRefresh, onOpenWorkspace }) {
   const [selected, setSelected] = useState(null);
   const list = Array.isArray(entries) ? entries : [];
-  const deduped = useMemo(() => {
-    const seen = new Set();
-    const result = [];
-    for (let i = list.length - 1; i >= 0; i -= 1) {
-      const item = list[i];
-      const key = item?.path || item?.absolutePath;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      result.push(item);
-    }
-    return result;
-  }, [list]);
+  const deduped = useMemo(() => dedupeFileChanges(list), [list]);
 
   const renderChangeTag = (type) => {
     if (type === 'created') return <Tag color="green">新增</Tag>;
@@ -50,7 +40,7 @@ function FileChangesCard({ entries, logPath, onRefresh, onOpenWorkspace }) {
           dataSource={deduped}
           renderItem={(item) => (
             <List.Item
-              key={item.path || item.absolutePath || item.ts}
+              key={getFileChangeKey(item) || item.ts}
               draggable
               onDragStart={(event) => {
                 const relPath = typeof item?.path === 'string' ? item.path : '';

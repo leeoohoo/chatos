@@ -6,6 +6,7 @@ import { getHostApp } from '../packages/common/host-app.js';
 import { appendEventLog as appendEventLogCore } from '../packages/common/event-log-utils.js';
 import { resolveAppStateDir } from '../packages/common/state-core/state-paths.js';
 import { createRuntimeLogger } from '../packages/common/state-core/runtime-log.js';
+import { normalizeUiTerminalMode } from '../packages/common/runtime-settings-utils.js';
 
 import { isPidAlive, listProcessTreePidsFromPs, tryKillPid, tryKillProcessGroup } from './terminal-manager/process-utils.js';
 import { isPendingSystemTerminalLaunch, launchCliInSystemTerminal } from './terminal-manager/system-terminal.js';
@@ -88,12 +89,8 @@ export function createTerminalManager({
     const fromSettings = (() => {
       try {
         const runtime = adminServices?.settings?.getRuntime?.();
-        const raw = typeof runtime?.uiTerminalMode === 'string' ? runtime.uiTerminalMode.trim() : '';
-        if (!raw) return '';
-        const normalized = raw.toLowerCase();
-        if (['headless', 'system', 'auto'].includes(normalized)) {
-          return normalized;
-        }
+        const normalized = normalizeUiTerminalMode(runtime?.uiTerminalMode, '');
+        if (normalized) return normalized;
       } catch {
         // ignore settings lookup failures
       }
