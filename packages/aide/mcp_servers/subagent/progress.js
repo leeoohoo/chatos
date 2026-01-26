@@ -1,16 +1,4 @@
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeMetaValue(meta, keys = []) {
-  if (!meta || typeof meta !== 'object') return '';
-  for (const key of keys) {
-    if (!key) continue;
-    const value = normalizeText(meta[key]);
-    if (value) return value;
-  }
-  return '';
-}
+import { normalizeMetaValue, normalizeText } from './meta-utils.js';
 
 function truncateText(value, maxLen = 140) {
   const text = normalizeText(value);

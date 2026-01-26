@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
+import { safeTrim } from '../shared/text-utils.js';
 import { resolveAppStateDir, STATE_FILE_NAMES } from '../shared/state-paths.js';
 import { resolveSessionRoot as resolveSessionRootCore } from '../shared/session-root.js';
 import { createToolResponder } from './shared/tool-helpers.js';
@@ -693,10 +694,6 @@ function normalizeHostApp(value) {
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-function safeTrim(value) {
-  return typeof value === 'string' ? value.trim() : '';
 }
 
 function createWriteQueue() {

@@ -1,13 +1,10 @@
 import fs from 'fs';
+import { safeTrim } from '../../shared/text-utils.js';
 import { capJsonlFile } from '../../shared/log-utils.js';
 import { ensureFileExists } from './fs-utils.js';
 
 const PROMPT_LOG_MODES = new Set(['full', 'minimal']);
 const DEFAULT_PROMPT_LOG_MODE = 'full';
-
-function safeTrim(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function normalizePromptLogMode(value) {
   const raw = safeTrim(value).toLowerCase();

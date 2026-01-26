@@ -7,6 +7,7 @@ import * as colors from '../colors.js';
 import { ChatSession } from '../session.js';
 import { ModelClient } from '../client.js';
 import { estimateMessageTokens, estimateTokenCount, extractPlainText } from './token-utils.js';
+import { isContextLengthError } from '../../shared/error-utils.js';
 import { resolveSessionRoot } from '../../shared/session-root.js';
 import { resolveAuthDir } from '../../shared/state-paths.js';
 

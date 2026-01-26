@@ -1,6 +1,7 @@
 import { ZodError } from 'zod';
 
 import { normalizeId } from './normalize.js';
+import { mergeSubagentSteps } from '../../packages/common/chat-stream-utils.js';
 import { chatAgentSchema, chatMessageSchema, chatSessionSchema, chatSubagentStreamSchema } from './schemas.js';
 
 function formatZodError(err) {
@@ -24,33 +25,11 @@ function parsePartial(schema, payload) {
   }
 }
 
-function normalizeStepKey(step) {
-  if (!step || typeof step !== 'object') return '';
-  return normalizeId(step.ts) || String(step.index ?? '');
-}
-
 function buildSubagentStreamId(sessionId, toolCallId) {
   const sid = normalizeId(sessionId);
   const tid = normalizeId(toolCallId);
   if (!sid || !tid) return '';
   return `subagent:${sid}:${tid}`;
-}
-
-function appendSubagentSteps(current, incoming, limit = 240) {
-  const base = Array.isArray(current) ? current.slice() : [];
-  const additions = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];
-  if (additions.length === 0) return base;
-  const seen = new Set(base.map((step) => normalizeStepKey(step)));
-  additions.forEach((step) => {
-    const key = normalizeStepKey(step);
-    if (key && seen.has(key)) return;
-    base.push(step);
-    if (key) seen.add(key);
-  });
-  if (limit > 0 && base.length > limit) {
-    return base.slice(-limit);
-  }
-  return base;
 }
 
 function parseMs(ts) {
@@ -156,7 +135,7 @@ export function createChatStore(db) {
     if (!sid || !tid) return null;
     const id = buildSubagentStreamId(sid, tid);
     const existing = db.get('subagentStreams', id);
-    const mergedSteps = appendSubagentSteps(
+    const mergedSteps = mergeSubagentSteps(
       Array.isArray(existing?.steps) ? existing.steps : [],
       Array.isArray(steps) ? steps : step ? [step] : [],
       maxSteps

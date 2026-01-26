@@ -2,10 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as toast } from 'antd';
 
 import { api, hasApi } from '../../../lib/api.js';
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+import { normalizeId } from '../../../../text-utils.js';
+import {
+  mergeSubagentSteps,
+  normalizeProgressKind,
+  normalizeStepsPayload,
+  pickToolCallId,
+  resolveProgressDone,
+  resolveProgressJobId,
+} from '../../../../chat-stream-utils.js';
 
 function normalizeErrorText(value) {
   if (typeof value === 'string') return value.trim();
@@ -114,47 +119,6 @@ function buildMcpStreamText(payload) {
   }
   if (typeof params?.status === 'string' && params.status.trim()) return `status ${params.status}`;
   return '';
-}
-
-function normalizeProgressKind(params) {
-  const raw = typeof params?.kind === 'string' ? params.kind.trim().toLowerCase() : '';
-  if (raw) return raw;
-  const fallback = typeof params?.type === 'string' ? params.type.trim().toLowerCase() : '';
-  return fallback;
-}
-
-function pickToolCallId(params) {
-  if (!params || typeof params !== 'object') return '';
-  return normalizeId(params.toolCallId || params.tool_call_id || params.callId || params.call_id);
-}
-
-function normalizeStepsPayload(params) {
-  if (!params || typeof params !== 'object') return [];
-  if (Array.isArray(params.steps)) return params.steps.filter(Boolean);
-  if (params.step && typeof params.step === 'object') return [params.step];
-  return [];
-}
-
-function normalizeStepKey(step) {
-  if (!step || typeof step !== 'object') return '';
-  return normalizeId(step.ts) || String(step.index ?? '');
-}
-
-function mergeSubagentSteps(current, incoming, limit = MAX_SUBAGENT_STEPS) {
-  const base = Array.isArray(current) ? current.slice() : [];
-  const additions = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];
-  if (additions.length === 0) return base;
-  const seen = new Set(base.map((step) => normalizeStepKey(step)));
-  additions.forEach((step) => {
-    const key = normalizeStepKey(step);
-    if (key && seen.has(key)) return;
-    base.push(step);
-    if (key) seen.add(key);
-  });
-  if (limit > 0 && base.length > limit) {
-    return base.slice(-limit);
-  }
-  return base;
 }
 
 function isRunSubAgentToolName(value) {
@@ -429,13 +393,9 @@ export function useChatSessions() {
     const callId = pickToolCallId(params);
     if (!callId) return;
     const incomingSteps = normalizeStepsPayload(params);
-    const jobId = normalizeId(params?.job_id || params?.jobId || params?.jobID);
+    const jobId = resolveProgressJobId(params);
     const statusRaw = typeof params?.status === 'string' ? params.status : '';
-    const statusKey = statusRaw.trim().toLowerCase();
-    const done =
-      params?.done === true ||
-      params?.stage === 'done' ||
-      ['completed', 'failed', 'aborted', 'cancelled', 'canceled', 'error'].includes(statusKey);
+    const done = resolveProgressDone(params);
     if (incomingSteps.length === 0 && !done && !jobId) return;
 
     setSubagentStreams((prev) => {

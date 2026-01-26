@@ -1,6 +1,6 @@
-export function safeTrim(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+import { safeTrim } from '../../shared/text-utils.js';
+
+export { safeTrim };
 
 export function normalizeTaskPriority(value) {
   const v = typeof value === 'string' ? value.trim().toLowerCase() : '';

@@ -1,7 +1,8 @@
 import path from 'path';
+import { normalizeId as normalizeCommonId } from '../../packages/common/text-utils.js';
 
 export function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
+  return normalizeCommonId(value);
 }
 
 export function normalizeAgentMode(value) {

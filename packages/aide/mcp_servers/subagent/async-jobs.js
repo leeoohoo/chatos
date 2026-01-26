@@ -1,16 +1,6 @@
 import { fork } from 'child_process';
-import { normalizeTraceValue } from '../../shared/trace-utils.js';
 import { appendRunPid } from './process-utils.js';
-
-function normalizeMetaValue(meta, keys = []) {
-  if (!meta || typeof meta !== 'object') return '';
-  for (const key of keys) {
-    if (!key) continue;
-    const value = normalizeTraceValue(meta[key]);
-    if (value) return value;
-  }
-  return '';
-}
+import { normalizeMetaValue } from './meta-utils.js';
 
 function buildJobResultPayload(result) {
   if (!result || !result.agentRef || !result.agentRef.agent || !result.agentRef.plugin) {

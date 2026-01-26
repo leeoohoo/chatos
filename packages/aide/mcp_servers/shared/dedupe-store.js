@@ -1,14 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import { safeTrim } from '../../shared/text-utils.js';
 import { ensureDir } from './fs-utils.js';
 
 const DEFAULT_MAX_ENTRIES = 5000;
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_IDS = 20;
-
-function safeTrim(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function parseTimestamp(value) {
   const ms = Date.parse(value);

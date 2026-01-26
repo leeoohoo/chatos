@@ -3,6 +3,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { safeTrim } from '../../common/text-utils.js';
+import { normalizeChoiceLimits, normalizeChoiceOptions, normalizeKvFields } from '../../common/ui-prompt-utils.js';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createTtyPrompt } from './tty-prompt.js';
 import { resolveUiPromptsPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
@@ -78,7 +80,7 @@ server.registerTool(
   async (input) => {
     const allowCancel = input?.allow_cancel !== false;
     const timeoutMs = normalizeTimeoutMs(input?.timeout_ms);
-    const normalized = normalizeKvFields(input?.fields);
+    const normalized = normalizeKvFields(input?.fields, { maxFields: 50 });
 
     const requestId = crypto.randomUUID();
     const secretKeys = collectSecretKeys(normalized);
@@ -279,12 +281,15 @@ server.registerTool(
     const allowCancel = input?.allow_cancel !== false;
     const timeoutMs = normalizeTimeoutMs(input?.timeout_ms);
     const multiple = input?.multiple === true;
-    const options = normalizeChoiceOptions(input?.options);
+    const options = normalizeChoiceOptions(input?.options, { maxOptions: 60 });
     const limits = normalizeChoiceLimits({
       multiple,
       min: input?.min_selections,
       max: input?.max_selections,
       optionCount: options.length,
+      mode: 'clamp',
+      singleMin: 1,
+      singleMax: 1,
     });
     const defaultSelection = normalizeDefaultSelection(input?.default, { multiple, options });
 
@@ -722,33 +727,6 @@ function normalizeResponseStatus(status) {
   return 'canceled';
 }
 
-function normalizeKvFields(fields) {
-  if (!Array.isArray(fields) || fields.length === 0) {
-    throw new Error('fields is required');
-  }
-  const seen = new Set();
-  return fields.map((field) => {
-    const key = safeTrim(field?.key);
-    if (!key) {
-      throw new Error('field.key is required');
-    }
-    if (seen.has(key)) {
-      throw new Error(`duplicate field key: ${key}`);
-    }
-    seen.add(key);
-    return {
-      key,
-      label: safeTrim(field?.label),
-      description: safeTrim(field?.description),
-      placeholder: safeTrim(field?.placeholder),
-      default: typeof field?.default === 'string' ? field.default : '',
-      required: field?.required === true,
-      multiline: field?.multiline === true,
-      secret: field?.secret === true,
-    };
-  });
-}
-
 function normalizeKvValues(values, fields) {
   const out = {};
   const map = new Map((Array.isArray(fields) ? fields : []).map((f) => [f.key, f]));
@@ -766,46 +744,6 @@ function normalizeKvValues(values, fields) {
     }
   });
   return out;
-}
-
-function normalizeChoiceOptions(options) {
-  if (!Array.isArray(options) || options.length === 0) {
-    throw new Error('options is required');
-  }
-  const seen = new Set();
-  return options.map((opt) => {
-    const value = safeTrim(opt?.value);
-    if (!value) {
-      throw new Error('options[].value is required');
-    }
-    if (seen.has(value)) {
-      throw new Error(`duplicate option value: ${value}`);
-    }
-    seen.add(value);
-    return {
-      value,
-      label: safeTrim(opt?.label),
-      description: safeTrim(opt?.description),
-    };
-  });
-}
-
-function normalizeChoiceLimits({ multiple, min, max, optionCount }) {
-  const count = Number(optionCount);
-  const minRaw = Number(min);
-  const maxRaw = Number(max);
-  const minSelections =
-    multiple && Number.isFinite(minRaw) && minRaw >= 0 ? Math.min(Math.max(0, Math.floor(minRaw)), count) : 0;
-  const maxSelections =
-    multiple && Number.isFinite(maxRaw) && maxRaw >= 1
-      ? Math.min(Math.max(1, Math.floor(maxRaw)), count)
-      : multiple
-        ? count
-        : 1;
-  return {
-    minSelections: multiple ? Math.min(minSelections, maxSelections) : 1,
-    maxSelections: multiple ? maxSelections : 1,
-  };
 }
 
 function normalizeDefaultSelection(inputDefault, { multiple, options }) {
@@ -832,10 +770,6 @@ function normalizeChoiceSelection(selection, { multiple, options }) {
   }
   const value = typeof selection === 'string' ? safeTrim(selection) : '';
   return value && allowed.has(value) ? value : '';
-}
-
-function safeTrim(value) {
-  return typeof value === 'string' ? value.trim() : '';
 }
 
 function printHelp() {

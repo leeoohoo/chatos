@@ -3,6 +3,13 @@ import path from 'path';
 import crypto from 'crypto';
 import { createDb } from '../packages/aide/shared/data/storage.js';
 import { syncAdminToFiles } from '../packages/aide/shared/data/sync.js';
+import { safeTrim } from '../packages/common/text-utils.js';
+import {
+  normalizeChoiceLimits,
+  normalizeChoiceOptions,
+  normalizeKvFields,
+  normalizeTaskConfirmTasks,
+} from '../packages/common/ui-prompt-utils.js';
 import {
   parseEvents,
   parseInstalledPlugins,
@@ -480,7 +487,6 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
         ? crypto.randomUUID()
         : `req_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`);
 
-    const safeTrim = (value) => (typeof value === 'string' ? value.trim() : '');
     const kind = safeTrim(rawPrompt?.kind);
     if (!kind) {
       return { ok: false, message: 'prompt.kind is required' };
@@ -490,108 +496,6 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     const message = typeof rawPrompt?.message === 'string' ? rawPrompt.message : '';
     const source = typeof rawPrompt?.source === 'string' ? rawPrompt.source : '';
     const allowCancel = rawPrompt?.allowCancel !== false;
-
-    const normalizeStringList = (value) =>
-      (Array.isArray(value) ? value : [])
-        .filter((item) => typeof item === 'string')
-        .map((item) => item.trim())
-        .filter(Boolean);
-
-    const normalizeKvFields = (fields) => {
-      const list = Array.isArray(fields) ? fields : [];
-      if (list.length === 0) {
-        return { ok: false, message: 'prompt.fields is required for kind=kv' };
-      }
-      if (list.length > 50) {
-        return { ok: false, message: 'prompt.fields must be <= 50' };
-      }
-      const seen = new Set();
-      const out = [];
-      for (const field of list) {
-        const key = safeTrim(field?.key);
-        if (!key) return { ok: false, message: 'prompt.fields[].key is required' };
-        if (seen.has(key)) return { ok: false, message: `duplicate field key: ${key}` };
-        seen.add(key);
-        out.push({
-          key,
-          label: safeTrim(field?.label),
-          description: safeTrim(field?.description),
-          placeholder: safeTrim(field?.placeholder),
-          default: typeof field?.default === 'string' ? field.default : '',
-          required: field?.required === true,
-          multiline: field?.multiline === true,
-          secret: field?.secret === true,
-        });
-      }
-      return { ok: true, fields: out };
-    };
-
-    const normalizeChoiceOptions = (options) => {
-      const list = Array.isArray(options) ? options : [];
-      if (list.length === 0) {
-        return { ok: false, message: 'prompt.options is required for kind=choice' };
-      }
-      if (list.length > 60) {
-        return { ok: false, message: 'prompt.options must be <= 60' };
-      }
-      const seen = new Set();
-      const out = [];
-      for (const opt of list) {
-        const value = safeTrim(opt?.value);
-        if (!value) return { ok: false, message: 'prompt.options[].value is required' };
-        if (seen.has(value)) return { ok: false, message: `duplicate option value: ${value}` };
-        seen.add(value);
-        out.push({
-          value,
-          label: safeTrim(opt?.label),
-          description: safeTrim(opt?.description),
-        });
-      }
-      return { ok: true, options: out };
-    };
-
-    const normalizeChoiceLimits = ({ multiple, minSelections, maxSelections, optionCount }) => {
-      if (!multiple) {
-        return { ok: true, minSelections: 0, maxSelections: optionCount };
-      }
-      const min = Number.isFinite(Number(minSelections)) ? Number(minSelections) : 0;
-      const max = Number.isFinite(Number(maxSelections)) ? Number(maxSelections) : optionCount;
-      if (!Number.isInteger(min) || min < 0 || min > optionCount) {
-        return { ok: false, message: `prompt.minSelections must be an int between 0 and ${optionCount}` };
-      }
-      if (!Number.isInteger(max) || max < 1 || max > optionCount) {
-        return { ok: false, message: `prompt.maxSelections must be an int between 1 and ${optionCount}` };
-      }
-      if (min > max) {
-        return { ok: false, message: 'prompt.minSelections must be <= prompt.maxSelections' };
-      }
-      return { ok: true, minSelections: min, maxSelections: max };
-    };
-
-    const normalizeTaskConfirmTasks = (tasks) => {
-      const list = Array.isArray(tasks) ? tasks : [];
-      const allowedPriority = new Set(['high', 'medium', 'low']);
-      const allowedStatus = new Set(['todo', 'doing', 'blocked', 'done']);
-      return list
-        .filter((item) => item && typeof item === 'object')
-        .map((task) => {
-          const priorityRaw = safeTrim(task?.priority);
-          const statusRaw = safeTrim(task?.status);
-          const draftId =
-            safeTrim(task?.draftId) ||
-            (typeof crypto?.randomUUID === 'function'
-              ? crypto.randomUUID()
-              : `draft_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`);
-          return {
-            draftId,
-            title: typeof task?.title === 'string' ? task.title : '',
-            details: typeof task?.details === 'string' ? task.details : '',
-            priority: allowedPriority.has(priorityRaw) ? priorityRaw : 'medium',
-            status: allowedStatus.has(statusRaw) ? statusRaw : 'todo',
-            tags: normalizeStringList(task?.tags),
-          };
-        });
-    };
 
     const promptBase = {
       kind,
@@ -603,7 +507,12 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
 
     let prompt = null;
     if (kind === 'kv') {
-      const normalized = normalizeKvFields(rawPrompt?.fields);
+      const normalized = normalizeKvFields(rawPrompt?.fields, {
+        maxFields: 50,
+        returnResult: true,
+        label: 'prompt.fields',
+        keyLabel: 'prompt.fields[].key',
+      });
       if (!normalized.ok) return normalized;
       prompt = {
         ...promptBase,
@@ -612,7 +521,12 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
       };
     } else if (kind === 'choice') {
       const multiple = rawPrompt?.multiple === true;
-      const normalizedOptions = normalizeChoiceOptions(rawPrompt?.options);
+      const normalizedOptions = normalizeChoiceOptions(rawPrompt?.options, {
+        maxOptions: 60,
+        returnResult: true,
+        label: 'prompt.options',
+        valueLabel: 'prompt.options[].value',
+      });
       if (!normalizedOptions.ok) return normalizedOptions;
       const optionValues = new Set(normalizedOptions.options.map((o) => o.value));
       const defaultSelection = (() => {
@@ -632,6 +546,12 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
         minSelections: rawPrompt?.minSelections,
         maxSelections: rawPrompt?.maxSelections,
         optionCount: normalizedOptions.options.length,
+        mode: 'strict',
+        singleMin: 0,
+        singleMax: normalizedOptions.options.length,
+        returnResult: true,
+        minLabel: 'prompt.minSelections',
+        maxLabel: 'prompt.maxSelections',
       });
       if (!normalizedLimits.ok) return normalizedLimits;
       prompt = {
@@ -644,7 +564,12 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
         maxSelections: normalizedLimits.maxSelections,
       };
     } else if (kind === 'task_confirm') {
-      const tasks = normalizeTaskConfirmTasks(rawPrompt?.tasks);
+      const tasks = normalizeTaskConfirmTasks(rawPrompt?.tasks, {
+        generateId: () =>
+          typeof crypto?.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `draft_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`,
+      });
       const defaultRemark = typeof rawPrompt?.defaultRemark === 'string' ? rawPrompt.defaultRemark : '';
       prompt = {
         ...promptBase,

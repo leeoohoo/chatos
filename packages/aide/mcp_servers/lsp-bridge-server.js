@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { spawn } from 'child_process';
-import { pathToFileURL } from 'url';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
@@ -12,6 +10,8 @@ import { resolveAppStateDir, resolveAppStatePath, resolveFileChangesPath, STATE_
 import { createToolResponder } from './shared/tool-helpers.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir } from './shared/fs-utils.js';
+import { applyTextEdits, normalizeTextEdits } from './lsp/utils/text-edits.js';
+import { formatBytes, fromFileUri, guessLanguageId, hashContent, safeStat, toFileUri, toLspPosition } from './lsp/utils/document-utils.js';
 
 const fsp = fs.promises;
 
@@ -1070,64 +1070,6 @@ class LspClient {
   }
 }
 
-function applyTextEdits(text, edits) {
-  const sorted = edits
-    .slice()
-    .sort((a, b) => {
-      const aStart = a.range?.start || { line: 0, character: 0 };
-      const bStart = b.range?.start || { line: 0, character: 0 };
-      if (aStart.line !== bStart.line) return bStart.line - aStart.line;
-      return bStart.character - aStart.character;
-    });
-
-  let changed = false;
-  let current = text;
-  for (const edit of sorted) {
-    const range = edit.range;
-    if (!range || !range.start || !range.end) {
-      continue;
-    }
-    const start = lspPositionToOffsetUtf16(current, range.start);
-    const end = lspPositionToOffsetUtf16(current, range.end);
-    if (start < 0 || end < 0 || start > end) {
-      throw new Error('Invalid text edit range.');
-    }
-    const newText = typeof edit.newText === 'string' ? edit.newText : '';
-    current = current.slice(0, start) + newText + current.slice(end);
-    changed = true;
-  }
-  return { changed, text: current };
-}
-
-function lspPositionToOffsetUtf16(text, pos) {
-  const line = Number(pos?.line);
-  const character = Number(pos?.character);
-  if (!Number.isFinite(line) || !Number.isFinite(character) || line < 0 || character < 0) {
-    return -1;
-  }
-  const lines = text.split('\n');
-  if (line >= lines.length) {
-    return text.length;
-  }
-  let offset = 0;
-  for (let i = 0; i < line; i += 1) {
-    offset += lines[i].length + 1;
-  }
-  const lineText = lines[line] || '';
-  const slice = lineText.slice(0, character);
-  return offset + slice.length;
-}
-
-function normalizeTextEdits(edits) {
-  if (!Array.isArray(edits)) return [];
-  return edits
-    .filter((e) => e && typeof e === 'object')
-    .map((e) => ({
-      range: e.range,
-      newText: typeof e.newText === 'string' ? e.newText : '',
-    }));
-}
-
 function buildClientCapabilities() {
   return {
     workspace: {
@@ -1196,106 +1138,12 @@ function waitForExit(proc, timeoutMs) {
   });
 }
 
-function safeStat(target) {
-  return fsp
-    .stat(target)
-    .catch((err) => {
-      if (err && err.code === 'ENOENT') return null;
-      throw err;
-    });
-}
-
-function toFileUri(p) {
-  return pathToFileURL(path.resolve(p)).toString();
-}
-
-function fromFileUri(uri) {
-  try {
-    const url = new URL(uri);
-    if (url.protocol !== 'file:') return null;
-    return url.pathname ? decodeURIComponent(url.pathname) : null;
-  } catch {
-    return null;
-  }
-}
-
-function guessLanguageId(absPath) {
-  const name = path.basename(absPath);
-  if (name === 'Dockerfile') return 'dockerfile';
-  const ext = path.extname(name).toLowerCase();
-  const map = {
-    '.ts': 'typescript',
-    '.tsx': 'typescriptreact',
-    '.js': 'javascript',
-    '.jsx': 'javascriptreact',
-    '.mjs': 'javascript',
-    '.cjs': 'javascript',
-    '.json': 'json',
-    '.py': 'python',
-    '.go': 'go',
-    '.rs': 'rust',
-    '.java': 'java',
-    '.kt': 'kotlin',
-    '.c': 'c',
-    '.h': 'c',
-    '.cc': 'cpp',
-    '.cpp': 'cpp',
-    '.cxx': 'cpp',
-    '.hpp': 'cpp',
-    '.cs': 'csharp',
-    '.php': 'php',
-    '.rb': 'ruby',
-    '.swift': 'swift',
-    '.lua': 'lua',
-    '.sh': 'shellscript',
-    '.bash': 'shellscript',
-    '.zsh': 'shellscript',
-    '.yaml': 'yaml',
-    '.yml': 'yaml',
-    '.toml': 'toml',
-    '.md': 'markdown',
-    '.html': 'html',
-    '.htm': 'html',
-    '.css': 'css',
-    '.scss': 'scss',
-    '.less': 'less',
-  };
-  return map[ext] || 'plaintext';
-}
-
-function toLspPosition({ line, character }) {
-  const l = clampNumber(line, 1, Number.MAX_SAFE_INTEGER, 1) - 1;
-  const c = clampNumber(character, 1, Number.MAX_SAFE_INTEGER, 1) - 1;
-  return { line: l, character: c };
-}
-
-function hashContent(content) {
-  return crypto.createHash('sha256').update(content).digest('hex');
-}
-
 function booleanFromArg(value) {
   if (value === true) return true;
   const text = String(value || '').trim().toLowerCase();
   if (!text) return false;
   if (text === '1' || text === 'true' || text === 'yes' || text === 'y') return true;
   return false;
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) {
-    return 'n/a';
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes;
-  let unitIndex = -1;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
 }
 
 function renderJson(value) {

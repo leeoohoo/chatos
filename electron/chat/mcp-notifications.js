@@ -1,4 +1,10 @@
-import { normalizeId } from './normalize.js';
+import {
+  normalizeProgressKind,
+  normalizeStepsPayload,
+  pickToolCallId,
+  resolveProgressDone,
+  resolveProgressJobId,
+} from '../../packages/common/chat-stream-utils.js';
 
 export function createMcpNotificationHandler({
   eventLogPath,
@@ -10,31 +16,6 @@ export function createMcpNotificationHandler({
   const resolveSessionId = typeof resolveMcpSessionId === 'function' ? resolveMcpSessionId : () => '';
   const emitEvent = typeof sendEvent === 'function' ? sendEvent : () => {};
   const logEvent = typeof appendEventLog === 'function' ? appendEventLog : null;
-
-  const normalizeProgressKind = (params) => {
-    const raw = typeof params?.kind === 'string' ? params.kind.trim().toLowerCase() : '';
-    if (raw) return raw;
-    const fallback = typeof params?.type === 'string' ? params.type.trim().toLowerCase() : '';
-    return fallback;
-  };
-  const pickToolCallId = (params) => {
-    if (!params || typeof params !== 'object') return '';
-    return normalizeId(params.toolCallId || params.tool_call_id || params.callId || params.call_id);
-  };
-  const normalizeStepsPayload = (params) => {
-    if (!params || typeof params !== 'object') return [];
-    if (Array.isArray(params.steps)) return params.steps.filter(Boolean);
-    if (params.step && typeof params.step === 'object') return [params.step];
-    return [];
-  };
-  const resolveProgressDone = (params) => {
-    if (params?.done === true) return true;
-    if (typeof params?.stage === 'string' && params.stage.trim().toLowerCase() === 'done') return true;
-    const status = typeof params?.status === 'string' ? params.status.trim().toLowerCase() : '';
-    return ['completed', 'failed', 'aborted', 'cancelled', 'canceled', 'error'].includes(status);
-  };
-  const resolveProgressJobId = (params) =>
-    normalizeId(params?.job_id || params?.jobId || params?.jobID || '');
 
   return (notification) => {
     if (!notification) return;
