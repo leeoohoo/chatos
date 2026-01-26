@@ -1,3 +1,7 @@
+import { createAbortError, throwIfAborted } from '../../client-helpers.js';
+
+export { createAbortError, throwIfAborted };
+
 export function sleepWithSignal(ms, signal) {
   if (!Number.isFinite(ms) || ms <= 0) {
     throwIfAborted(signal);
@@ -26,16 +30,4 @@ export function sleepWithSignal(ms, signal) {
       signal.addEventListener('abort', onAbort, { once: true });
     }
   });
-}
-
-export function throwIfAborted(signal) {
-  if (signal?.aborted) {
-    throw createAbortError();
-  }
-}
-
-export function createAbortError() {
-  const err = new Error('aborted');
-  err.name = 'AbortError';
-  return err;
 }

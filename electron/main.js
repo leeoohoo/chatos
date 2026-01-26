@@ -40,6 +40,7 @@ import { createLspInstaller } from './lsp-installer.js';
 import { ConfigApplier } from '../packages/core/session/ConfigApplier.js';
 import { readLastLinesFromFile } from './sessions/utils.js';
 import { resolveEngineModule } from '../src/engine-loader.js';
+import { resolveBoolEnv } from './shared/env-utils.js';
 
 const { app, BrowserWindow, ipcMain, dialog, nativeImage } = electron;
 const APP_DISPLAY_NAME = 'chatos';
@@ -116,12 +117,12 @@ const WINDOWS_DESKTOP_CLI_COMMAND_NAME = 'chatos-desktop';
 const CLI_COMMAND_NAME = process.platform === 'win32' ? WINDOWS_DESKTOP_CLI_COMMAND_NAME : DEFAULT_CLI_COMMAND_NAME;
 const LEGACY_CLI_COMMAND_NAME = DEFAULT_CLI_COMMAND_NAME;
 const UI_DEVELOPER_MODE = (!app?.isPackaged) || runtimeEnv.MODEL_CLI_UI_DEVELOPER_MODE === '1';
-const UI_EXPOSE_SUBAGENTS = resolveBoolEnv('MODEL_CLI_UI_EXPOSE_SUBAGENTS', true);
-const UI_WEB_SECURITY = resolveBoolEnv('MODEL_CLI_UI_WEB_SECURITY', true);
+const UI_EXPOSE_SUBAGENTS = resolveBoolEnv(runtimeEnv.MODEL_CLI_UI_EXPOSE_SUBAGENTS, true);
+const UI_WEB_SECURITY = resolveBoolEnv(runtimeEnv.MODEL_CLI_UI_WEB_SECURITY, true);
 const UI_FLAGS = { developerMode: UI_DEVELOPER_MODE, aideInstalled: true, exposeSubagents: UI_EXPOSE_SUBAGENTS };
-const ENABLE_ALL_SUBAGENTS = resolveBoolEnv('MODEL_CLI_ENABLE_ALL_SUBAGENTS', Boolean(app?.isPackaged));
+const ENABLE_ALL_SUBAGENTS = resolveBoolEnv(runtimeEnv.MODEL_CLI_ENABLE_ALL_SUBAGENTS, Boolean(app?.isPackaged));
 // IMPORTANT: keep UI Apps scanning read-only by default; only enable DB sync explicitly via env.
-const UIAPPS_SYNC_AI_CONTRIBUTES = resolveBoolEnv('MODEL_CLI_UIAPPS_SYNC_AI_CONTRIBUTES', false);
+const UIAPPS_SYNC_AI_CONTRIBUTES = resolveBoolEnv(runtimeEnv.MODEL_CLI_UIAPPS_SYNC_AI_CONTRIBUTES, false);
 const BUILTIN_UI_APPS_DIR = path.join(projectRoot, 'ui_apps', 'plugins');
 const REGISTRY_KNOWN_APPS = Array.from(new Set([hostApp, 'git_app', 'wsl'].filter(Boolean)));
 const sanitizeAdminForUi = (snapshot) => {
@@ -152,14 +153,6 @@ function resolveAppIconPath() {
     }
   }
   return null;
-}
-
-function resolveBoolEnv(name, fallback = false) {
-  const raw = typeof runtimeEnv[name] === 'string' ? runtimeEnv[name].trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
 }
 
 function readRuntimeLog({ lineCount, maxBytes } = {}) {

@@ -10,6 +10,7 @@ import { estimateMessageTokens, estimateTokenCount, extractPlainText } from './t
 import { isContextLengthError } from '../../shared/error-utils.js';
 import { resolveSessionRoot } from '../../shared/session-root.js';
 import { resolveAuthDir } from '../../shared/state-paths.js';
+import { throwIfAborted } from '../client-helpers.js';
 
 const DEFAULT_SUMMARY_PROMPT = {
   system:
@@ -179,18 +180,6 @@ function pickLatestSummaryText(messages = []) {
     if (content) return content;
   }
   return '';
-}
-
-function createAbortError() {
-  const err = new Error('aborted');
-  err.name = 'AbortError';
-  return err;
-}
-
-function throwIfAborted(signal) {
-  if (signal?.aborted) {
-    throw createAbortError();
-  }
 }
 
 async function summarizeSession(session, client, modelName, options = {}) {

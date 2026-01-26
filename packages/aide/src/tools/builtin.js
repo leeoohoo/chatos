@@ -12,6 +12,7 @@ import { filterSubagentTools, withSubagentGuardrails } from '../subagents/toolin
 import { buildUserPromptMessages } from '../prompts.js';
 import { appendRunPid } from '../chat/terminal.js';
 import { estimateTokenCount } from '../chat/token-utils.js';
+import { createAbortError } from '../client-helpers.js';
 
 registerTool({
   name: 'get_current_time',
@@ -547,12 +548,6 @@ function createRunInboxListener({ runId, sessionRoot, consumerId, onEntry, skipE
   };
 
   return { close };
-}
-
-function createAbortError() {
-  const err = new Error('aborted');
-  err.name = 'AbortError';
-  return err;
 }
 
 async function chatWithRetry(client, model, session, options, retries = 1) {

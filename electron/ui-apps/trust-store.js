@@ -1,19 +1,12 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { resolveBoolEnv } from '../shared/env-utils.js';
 
 const TRUST_FILE_NAME = 'trust.json';
 const FINGERPRINT_VERSION = 1;
 const IGNORED_DIRS = new Set(['node_modules', '.git']);
 const IGNORED_FILES = new Set(['.DS_Store']);
-
-function resolveBoolEnv(value, fallback = false) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
-}
 
 export function resolveUiAppsTrustPath(stateDir) {
   const base = typeof stateDir === 'string' ? stateDir.trim() : '';

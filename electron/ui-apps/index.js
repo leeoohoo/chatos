@@ -6,18 +6,11 @@ import { isUiAppsPluginTrusted, setUiAppsPluginTrust } from './trust-store.js';
 import { resolveUiAppsAi, syncUiAppsAiContributes } from './ai.js';
 import { getRegistryCenter } from '../backend/registry-center.js';
 import { createRuntimeLogger } from '../../packages/common/state-core/runtime-log.js';
+import { resolveBoolEnv } from '../shared/env-utils.js';
 
 const DEFAULT_MANIFEST_FILE = 'plugin.json';
 const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 const DEFAULT_MAX_PROMPT_BYTES = 128 * 1024;
-
-function resolveBoolEnv(value, fallback = false) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
-}
 
 export function createUiAppsManager(options = {}) {
   return new UiAppsManager(options);
