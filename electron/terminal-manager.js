@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { parseJsonSafe, safeRead } from '../packages/aide/shared/data/legacy.js';
 import { getHostApp } from '../packages/common/host-app.js';
+import { appendEventLog as appendEventLogCore } from '../packages/common/event-log-utils.js';
 import { resolveAppStateDir } from '../packages/common/state-core/state-paths.js';
 import { createRuntimeLogger } from '../packages/common/state-core/runtime-log.js';
 
@@ -375,22 +376,7 @@ export function createTerminalManager({
 
   function appendEventLog(type, payload, runId) {
     const eventPath = typeof defaultPaths?.events === 'string' && defaultPaths.events.trim() ? defaultPaths.events : '';
-    if (!eventPath) return;
-    try {
-      fs.mkdirSync(path.dirname(eventPath), { recursive: true });
-      fs.appendFileSync(
-        eventPath,
-        `${JSON.stringify({
-          ts: new Date().toISOString(),
-          type: String(type || ''),
-          payload: payload && typeof payload === 'object' ? payload : payload === undefined ? undefined : { value: payload },
-          runId: typeof runId === 'string' && runId.trim() ? runId.trim() : undefined,
-        })}\n`,
-        'utf8'
-      );
-    } catch {
-      // ignore
-    }
+    appendEventLogCore(eventPath, type, payload, runId);
   }
 
   async function intervene(payload = {}) {

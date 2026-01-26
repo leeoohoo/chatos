@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { resolveEngineRoot } from '../src/engine-paths.js';
 import { resolveAppStateDir } from '../packages/aide/shared/state-paths.js';
+import { extractContentText } from '../packages/common/mcp-content-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -203,21 +204,17 @@ function printSettled(label, settled) {
   } else {
     console.log(`[${label}] ✅ ok`);
   }
-  const text = extractContentText(res?.content);
+  const text = extractContentText(res?.content, {
+    includeNonText: false,
+    trimText: true,
+    trimResult: true,
+  });
   if (text) {
     console.log(`[${label}] text:\n${text}`);
   }
   if (res?.structuredContent && typeof res.structuredContent === 'object') {
     console.log(`[${label}] structuredContent:\n${JSON.stringify(res.structuredContent, null, 2)}`);
   }
-}
-
-function extractContentText(content) {
-  const blocks = Array.isArray(content) ? content : [];
-  const texts = blocks
-    .map((b) => (b && typeof b === 'object' && b.type === 'text' ? safeTrim(b.text) : ''))
-    .filter(Boolean);
-  return texts.join('\n').trim();
 }
 
 function ensureFileExists(filePath) {

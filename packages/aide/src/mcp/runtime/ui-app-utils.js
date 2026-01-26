@@ -3,19 +3,12 @@ import fs from 'fs';
 import { createRequire } from 'module';
 import { createLogger } from '../../logger.js';
 import { resolveAppStateDir, resolveStateDirPath, STATE_DIR_NAMES } from '../../../shared/state-paths.js';
+import { resolveBoolEnv } from '../../../../common/env-utils.js';
 
 const log = createLogger('MCP');
 const require = createRequire(import.meta.url);
 const uiAppNodeModulesReady = new Set();
 let cachedHostNodeModulesDir = null;
-
-function resolveBoolEnv(value, fallback = false) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
-}
 
 function resolveHostNodeModulesDir() {
   if (cachedHostNodeModulesDir !== null) {

@@ -17,10 +17,16 @@ function getErrorStatus(err) {
   const candidates = [
     err?.status,
     err?.statusCode,
+    err?.error?.status,
+    err?.error?.statusCode,
+    err?.error?.error?.status,
+    err?.error?.error?.statusCode,
     err?.response?.status,
     err?.response?.statusCode,
     err?.response?.data?.status,
     err?.response?.data?.statusCode,
+    err?.data?.status,
+    err?.data?.statusCode,
   ];
   for (const value of candidates) {
     const num = Number(value);
@@ -37,12 +43,18 @@ function collectErrorMessages(err) {
   };
   push(err?.message);
   push(err?.error?.message);
+  push(err?.error?.detail);
+  push(err?.error?.details);
   push(err?.error?.error?.message);
+  push(err?.error?.error?.detail);
+  push(err?.error?.error?.details);
   push(err?.response?.data?.error?.message);
   push(err?.response?.data?.message);
   push(err?.response?.data?.error_description);
   push(err?.response?.data?.error?.detail);
   push(err?.response?.data?.error?.details);
+  push(err?.detail);
+  push(err?.details);
   if (typeof err?.response?.data === 'string') push(err.response.data);
   if (typeof err?.data === 'string') push(err.data);
   if (typeof err?.error === 'string') push(err.error);

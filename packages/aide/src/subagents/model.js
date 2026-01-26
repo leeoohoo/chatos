@@ -1,19 +1,11 @@
+import { normalizeErrorText } from '../../shared/error-utils.js';
+
 export const DEFAULT_SUBAGENT_MODEL_NAME = 'deepseek_chat';
 
 function normalizeApiKey(value) {
   const raw =
     value === undefined || value === null ? '' : typeof value === 'string' ? value : String(value);
   return raw.trim();
-}
-
-function normalizeErrorText(value) {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value;
-  try {
-    return String(value);
-  } catch {
-    return '';
-  }
 }
 
 function redactSecrets(text) {

@@ -2,12 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Divider, Drawer, Empty, List, Space, Tag, Typography } from 'antd';
 
 import { formatDateTime } from '../../../lib/format.js';
+import { normalizeId } from '../../../../text-utils.js';
 
 const { Title, Text, Paragraph } = Typography;
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function normalizeStatus(value) {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';

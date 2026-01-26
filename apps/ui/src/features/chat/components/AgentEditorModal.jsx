@@ -3,17 +3,16 @@ import { Button, Checkbox, Form, Input, Modal, Select, Segmented, Space, Typogra
 import { FolderOpenOutlined } from '@ant-design/icons';
 
 import { api, hasApi } from '../../../lib/api.js';
-import { getMcpPromptNameForServer } from 'mcp-utils.js';
+import { getMcpPromptNameForServer, normalizePromptLanguage } from 'mcp-utils.js';
+import { normalizeId } from 'text-utils.js';
 
 const { Text } = Typography;
 
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 function normalizePromptLang(value, fallback = 'auto') {
+  const normalized = normalizePromptLanguage(value);
+  if (normalized) return normalized;
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (raw === 'zh' || raw === 'en' || raw === 'auto') return raw;
+  if (raw === 'auto') return 'auto';
   return fallback;
 }
 

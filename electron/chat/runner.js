@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -8,7 +7,15 @@ import { createMcpRuntimeHelpers } from './mcp-runtime-helpers.js';
 import { createMcpNotificationHandler } from './mcp-notifications.js';
 import { createUiAppRegistryHelpers } from './ui-app-registry.js';
 import { buildSystemPrompt, normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './runner-helpers.js';
+import {
+  SUMMARY_MESSAGE_NAME,
+  appendSummaryText,
+  extractLatestSummaryText,
+  pickLatestSummaryMessage,
+} from '../../packages/common/chat-summary-utils.js';
 import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
+import { computeTailStartIndex } from '../../packages/common/chat-tail-utils.js';
+import { appendEventLog } from '../../packages/common/event-log-utils.js';
 import { isContextLengthError } from '../../packages/common/error-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { appendPromptBlock } from '../../packages/common/prompt-utils.js';
@@ -139,25 +146,6 @@ function applyRuntimeSettingsToEnv(runtimeConfig) {
   }
 }
 
-function appendEventLog(eventPath, type, payload, runId) {
-  if (!eventPath) return;
-  try {
-    fs.mkdirSync(path.dirname(eventPath), { recursive: true });
-    fs.appendFileSync(
-      eventPath,
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: String(type || ''),
-        payload: payload && typeof payload === 'object' ? payload : payload === undefined ? undefined : { value: payload },
-        runId: typeof runId === 'string' && runId.trim() ? runId.trim() : undefined,
-      })}\n`,
-      'utf8'
-    );
-  } catch {
-    // ignore
-  }
-}
-
 function truncateLogText(value, limit = 4000) {
   const text = typeof value === 'string' ? value : value == null ? '' : String(value);
   if (!text) return '';
@@ -173,66 +161,6 @@ function formatLogValue(value, limit = 4000) {
   } catch {
     return truncateLogText(String(value), limit);
   }
-}
-
-const SUMMARY_MESSAGE_NAME = 'conversation_summary';
-const SUMMARY_SEPARATOR = '\n\n---\n\n';
-
-function isSummaryMessage(record) {
-  if (!record || record.role !== 'system') return false;
-  const name = typeof record?.name === 'string' ? record.name.trim() : '';
-  return name === SUMMARY_MESSAGE_NAME;
-}
-
-function pickLatestSummaryMessage(messages) {
-  const list = Array.isArray(messages) ? messages : [];
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const msg = list[i];
-    if (isSummaryMessage(msg)) return msg;
-  }
-  return null;
-}
-
-function appendSummaryText(existing, addition) {
-  const base = typeof existing === 'string' ? existing.trim() : '';
-  const extra = typeof addition === 'string' ? addition.trim() : '';
-  if (!base) return extra;
-  if (!extra) return base;
-  return `${base}${SUMMARY_SEPARATOR}${extra}`;
-}
-
-function estimateMessageTokens(estimateTokenCount, message) {
-  if (typeof estimateTokenCount !== 'function') return 0;
-  return estimateTokenCount([message]);
-}
-
-function computeTailStartIndex(messages, keepRatio, estimateTokenCount) {
-  const list = Array.isArray(messages) ? messages : [];
-  if (list.length < 2) return -1;
-  const totalTokens = estimateTokenCount(list);
-  if (!(totalTokens > 0)) return -1;
-  const ratio =
-    Number.isFinite(keepRatio) && keepRatio > 0 && keepRatio < 1 ? Number(keepRatio) : 0.3;
-  const keepTargetTokens = Math.max(1, Math.ceil(totalTokens * ratio));
-  let keepTokens = 0;
-  let tailStartIndex = list.length - 1;
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    keepTokens += estimateMessageTokens(estimateTokenCount, list[i]);
-    tailStartIndex = i;
-    if (keepTokens >= keepTargetTokens) break;
-  }
-  let lastUserIndex = -1;
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    if (list[i] && list[i].role === 'user') {
-      lastUserIndex = i;
-      break;
-    }
-  }
-  if (lastUserIndex >= 0 && tailStartIndex > lastUserIndex) {
-    tailStartIndex = lastUserIndex;
-  }
-  if (tailStartIndex <= 0) return -1;
-  return tailStartIndex;
 }
 
 function normalizeConversationMessages(messages) {
@@ -346,18 +274,6 @@ function buildChatSessionFromMessages({
     }
   });
   return chatSession;
-}
-
-function extractLatestSummaryText(messages) {
-  const list = Array.isArray(messages) ? messages : [];
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const msg = list[i];
-    if (!msg || msg.role !== 'system') continue;
-    if (msg.name !== SUMMARY_MESSAGE_NAME) continue;
-    const content = typeof msg.content === 'string' ? msg.content.trim() : '';
-    if (content) return content;
-  }
-  return '';
 }
 
 function readRegistrySnapshot(services) {
@@ -1097,17 +1013,6 @@ export function createChatRunner({
       });
     }
 
-    const uniqueIds = (list) => {
-      const out = [];
-      const seen = new Set();
-      (Array.isArray(list) ? list : []).forEach((id) => {
-        const v = normalizeId(id);
-        if (!v || seen.has(v)) return;
-        seen.add(v);
-        out.push(v);
-      });
-      return out;
-    };
     effectiveAgent = {
       ...agentRecord,
       mcpServerIds: uniqueIds([

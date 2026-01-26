@@ -2,10 +2,9 @@ import React, { useMemo } from 'react';
 import { Space, Tag, Typography } from 'antd';
 
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
+import { SUMMARY_MESSAGE_NAME } from '../../../../chat-summary-utils.js';
 
 const { Text } = Typography;
-
-const SUMMARY_MESSAGE_NAME = 'conversation_summary';
 
 function formatTime(ts) {
   const ms = Date.parse(ts);

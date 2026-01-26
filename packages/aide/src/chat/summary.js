@@ -6,11 +6,13 @@ import YAML from 'yaml';
 import * as colors from '../colors.js';
 import { ChatSession } from '../session.js';
 import { ModelClient } from '../client.js';
-import { estimateMessageTokens, estimateTokenCount, extractPlainText } from './token-utils.js';
+import { estimateTokenCount, extractPlainText } from './token-utils.js';
 import { isContextLengthError } from '../../shared/error-utils.js';
 import { resolveSessionRoot } from '../../shared/session-root.js';
 import { resolveAuthDir } from '../../shared/state-paths.js';
 import { throwIfAborted } from '../client-helpers.js';
+import { computeTailStartIndex } from '../../../common/chat-tail-utils.js';
+import { extractLatestSummaryText, SUMMARY_MESSAGE_NAME } from '../../../common/chat-summary-utils.js';
 
 const DEFAULT_SUMMARY_PROMPT = {
   system:
@@ -91,7 +93,7 @@ function createSummaryManager(options = {}) {
       didSummarize = true;
       lastBefore = before;
       lastAfter = after;
-      const latestSummary = pickLatestSummaryText(session.messages);
+      const latestSummary = extractLatestSummaryText(session.messages);
       if (latestSummary) {
         lastSummaryText = latestSummary;
       }
@@ -170,18 +172,6 @@ function createSummaryManager(options = {}) {
   }
 }
 
-function pickLatestSummaryText(messages = []) {
-  if (!Array.isArray(messages)) return '';
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (!msg || msg.role !== 'system') continue;
-    if (msg.name !== 'conversation_summary') continue;
-    const content = typeof msg.content === 'string' ? msg.content.trim() : '';
-    if (content) return content;
-  }
-  return '';
-}
-
 async function summarizeSession(session, client, modelName, options = {}) {
   if (!session || !client) {
     return false;
@@ -206,35 +196,8 @@ async function summarizeSession(session, client, modelName, options = {}) {
     return false;
   }
 
-  const totalBodyTokens = estimateTokenCount(body);
-  if (!(totalBodyTokens > 0)) {
-    return false;
-  }
-  const keepTargetTokens = Math.max(1, Math.ceil(totalBodyTokens * keepRatio));
-  let keepTokens = 0;
-  let tailStartIndex = body.length - 1;
-  for (let i = body.length - 1; i >= 0; i -= 1) {
-    keepTokens += estimateMessageTokens(body[i]);
-    tailStartIndex = i;
-    if (keepTokens >= keepTargetTokens) {
-      break;
-    }
-  }
-
-  const lastUserIndex = (() => {
-    for (let i = body.length - 1; i >= 0; i -= 1) {
-      if (body[i] && body[i].role === 'user') {
-        return i;
-      }
-    }
-    return -1;
-  })();
-  if (lastUserIndex >= 0 && tailStartIndex > lastUserIndex) {
-    tailStartIndex = lastUserIndex;
-  }
-  if (tailStartIndex <= 0) {
-    return false;
-  }
+  const tailStartIndex = computeTailStartIndex(body, keepRatio, estimateTokenCount);
+  if (tailStartIndex <= 0) return false;
 
   const toSummarize = body.slice(0, tailStartIndex);
   const tail = body.slice(tailStartIndex);
@@ -279,7 +242,7 @@ async function summarizeSession(session, client, modelName, options = {}) {
   const summaryEntry = {
     role: 'system',
     content: summaryMessage,
-    name: 'conversation_summary',
+    name: SUMMARY_MESSAGE_NAME,
   };
 
   // 保留：系统 prompt + 用户 prompt + 最新总结 + 最近 ~30% 的原始对话（提升保真）

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { resolveTerminalsDir } from '../../shared/state-paths.js';
 import { extractTraceMeta } from '../../shared/trace-utils.js';
+import { SUMMARY_MESSAGE_NAME } from '../../../common/chat-summary-utils.js';
 
 import { registerTool, listTools } from './registry.js';
 import { ChatSession, generateSessionId } from '../session.js';
@@ -661,7 +662,7 @@ function summarizeSession(session) {
   if (typeof session.getExtraSystemPrompts === 'function') {
     retained.push(...session.getExtraSystemPrompts());
   }
-  retained.push({ role: 'system', content: summary, name: 'conversation_summary' });
+  retained.push({ role: 'system', content: summary, name: SUMMARY_MESSAGE_NAME });
   if (lastUser) {
     retained.push(lastUser);
   }

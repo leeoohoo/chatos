@@ -4,26 +4,8 @@ import { Button, Space } from 'antd';
 import { UserMessageCard } from './UserMessageCard.jsx';
 import { AssistantTurnCard } from './AssistantTurnCard.jsx';
 import { SystemMessageCard } from './SystemMessageCard.jsx';
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-const SUMMARY_MESSAGE_NAME = 'conversation_summary';
-
-function isSummaryMessage(message) {
-  if (!message || message.role !== 'system') return false;
-  const name = typeof message?.name === 'string' ? message.name.trim() : '';
-  return name === SUMMARY_MESSAGE_NAME;
-}
-
-function pickLatestSummary(messages) {
-  const list = Array.isArray(messages) ? messages : [];
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    if (isSummaryMessage(list[i])) return list[i];
-  }
-  return null;
-}
+import { normalizeId } from '../../../../text-utils.js';
+import { pickLatestSummaryMessage } from '../../../../chat-summary-utils.js';
 
 function shouldAutoScroll(el) {
   if (!el) return true;
@@ -33,7 +15,7 @@ function shouldAutoScroll(el) {
 
 export function ChatMessages({ messages, streaming, subagentStreams, hasMore, loadingMore, onLoadMore }) {
   const allMessages = useMemo(() => (Array.isArray(messages) ? messages.filter(Boolean) : []), [messages]);
-  const summaryMessage = useMemo(() => pickLatestSummary(allMessages), [allMessages]);
+  const summaryMessage = useMemo(() => pickLatestSummaryMessage(allMessages), [allMessages]);
   const summaryId = normalizeId(summaryMessage?.id);
   const list = useMemo(() => {
     return allMessages.filter((msg) => {

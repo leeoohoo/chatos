@@ -5,12 +5,9 @@ import { CopyOutlined } from '@ant-design/icons';
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
 import { copyPlainText } from '../../../lib/clipboard.js';
 import { ToolInvocationTag } from './tooling/ToolInvocationTag.jsx';
+import { normalizeId } from '../../../../text-utils.js';
 
 const { Text } = Typography;
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function formatTime(ts) {
   const ms = Date.parse(ts);

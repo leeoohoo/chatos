@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as toast } from 'antd';
 
 import { api, hasApi } from '../../../lib/api.js';
+import { isContextLengthError, normalizeErrorText } from '../../../../error-utils.js';
 import { normalizeId } from '../../../../text-utils.js';
 import {
+  buildFinalTextFromChunks,
   mergeSubagentSteps,
   normalizeProgressKind,
   normalizeStepsPayload,
@@ -11,13 +13,6 @@ import {
   resolveProgressDone,
   resolveProgressJobId,
 } from '../../../../chat-stream-utils.js';
-
-function normalizeErrorText(value) {
-  if (typeof value === 'string') return value.trim();
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return '';
-}
 
 function collectErrorHints(payload) {
   const hints = [];
@@ -39,49 +34,6 @@ function collectErrorHints(payload) {
   return hints;
 }
 
-function getErrorStatus(payload) {
-  const candidates = [
-    payload?.status,
-    payload?.statusCode,
-    payload?.error?.status,
-    payload?.error?.statusCode,
-    payload?.error?.error?.status,
-    payload?.error?.error?.statusCode,
-  ];
-  for (const value of candidates) {
-    const num = Number(value);
-    if (Number.isFinite(num) && num > 0) return num;
-  }
-  return null;
-}
-
-function isContextLengthErrorPayload(payload) {
-  const status = getErrorStatus(payload);
-  const text = collectErrorHints(payload).join(' ').toLowerCase();
-  const patterns = [
-    /maximum context length/,
-    /context length/,
-    /context window/,
-    /context_length_exceeded/,
-    /max(?:imum)?\s*tokens?/,
-    /token limit/,
-    /too many tokens/,
-    /prompt.*too long/,
-    /input.*too long/,
-    /上下文.*(过长|超出|超长|超过|上限|限制)/,
-    /上下文长度/,
-    /最大.*(上下文|token)/,
-    /(token|tokens).*(超|超过|上限|限制)/,
-  ];
-  if (patterns.some((pattern) => pattern.test(text))) {
-    return true;
-  }
-  if (status === 400) {
-    return /(context|token|length|window|上下文|长度)/i.test(text);
-  }
-  return false;
-}
-
 function extractErrorMessage(payload) {
   const hints = collectErrorHints(payload);
   if (hints.length > 0) return hints[0];
@@ -90,15 +42,6 @@ function extractErrorMessage(payload) {
 
 const MAX_MCP_STREAM_ITEMS = 200;
 const MAX_SUBAGENT_STEPS = 240;
-
-function buildFinalTextFromChunks(chunks) {
-  if (!chunks || typeof chunks !== 'object') return '';
-  const ordered = Object.entries(chunks)
-    .map(([key, value]) => [Number(key), value])
-    .filter(([idx]) => Number.isFinite(idx))
-    .sort((a, b) => a[0] - b[0]);
-  return ordered.map(([, value]) => (typeof value === 'string' ? value : String(value || ''))).join('');
-}
 
 function isMcpStreamDone(method, params) {
   const status = typeof params?.status === 'string' ? params.status.toLowerCase() : '';
@@ -691,7 +634,7 @@ export function useChatSessions() {
         if (type === 'assistant_error') {
           const errorMessage = extractErrorMessage(payload);
           setSessionError(sid, errorMessage || payload?.message || '');
-          const isContextLength = isContextLengthErrorPayload(payload);
+          const isContextLength = isContextLengthError(payload);
           const friendlyMessage = isContextLength
             ? '上下文过长，系统正在自动恢复…'
             : '';

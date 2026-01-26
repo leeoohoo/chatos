@@ -2,6 +2,7 @@ import { LoggingMessageNotificationSchema, NotificationSchema } from '@modelcont
 import { z } from 'zod/v4';
 import { getDefaultToolMaxTimeoutMs } from './timeouts.js';
 import { normalizeSessionId } from './identity-utils.js';
+import { buildFinalTextFromChunks } from '../../../../common/chat-stream-utils.js';
 
 const MCP_STREAM_NOTIFICATION_METHODS = [
   'codex_app.window_run.stream',
@@ -20,14 +21,6 @@ export const resolveMcpStreamTimeoutMs = (options) => {
   const fromOptions = Number(options?.maxTotalTimeout || options?.timeout || 0);
   if (Number.isFinite(fromOptions) && fromOptions > 0) return fromOptions;
   return getDefaultToolMaxTimeoutMs();
-};
-
-const buildFinalTextFromChunks = (chunks) => {
-  if (!chunks || chunks.size === 0) return '';
-  const ordered = Array.from(chunks.keys())
-    .filter((key) => Number.isFinite(key))
-    .sort((a, b) => a - b);
-  return ordered.map((idx) => chunks.get(idx) || '').join('');
 };
 
 export const shouldUseFinalStreamResult = (serverName, toolName) => {

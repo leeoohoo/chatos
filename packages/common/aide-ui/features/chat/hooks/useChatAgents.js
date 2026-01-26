@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { message as toast } from 'antd';
 
 import { api, hasApi } from '../../../lib/api.js';
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+import { normalizeId } from '../../../../text-utils.js';
 
 export function useChatAgents({ models } = {}) {
   const [agents, setAgents] = useState([]);

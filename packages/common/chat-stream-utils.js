@@ -24,6 +24,26 @@ export function normalizeStepKey(step) {
   return normalizeId(step.ts) || String(step.index ?? '');
 }
 
+const normalizeChunkValue = (value) =>
+  typeof value === 'string' ? value : String(value || '');
+
+export function buildFinalTextFromChunks(chunks) {
+  if (!chunks || typeof chunks !== 'object') return '';
+  if (chunks instanceof Map) {
+    if (chunks.size === 0) return '';
+    const ordered = Array.from(chunks.entries())
+      .map(([key, value]) => [Number(key), value])
+      .filter(([idx]) => Number.isFinite(idx))
+      .sort((a, b) => a[0] - b[0]);
+    return ordered.map(([, value]) => normalizeChunkValue(value)).join('');
+  }
+  const ordered = Object.entries(chunks)
+    .map(([key, value]) => [Number(key), value])
+    .filter(([idx]) => Number.isFinite(idx))
+    .sort((a, b) => a[0] - b[0]);
+  return ordered.map(([, value]) => normalizeChunkValue(value)).join('');
+}
+
 export function mergeSubagentSteps(current, incoming, limit = 240) {
   const base = Array.isArray(current) ? current.slice() : [];
   const additions = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];

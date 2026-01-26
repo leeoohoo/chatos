@@ -11,13 +11,10 @@ import { ChatComposer } from './components/ChatComposer.jsx';
 import { TasksWorkbenchDrawer } from './components/TasksWorkbenchDrawer.jsx';
 import { McpStreamPanel } from './components/McpStreamPanel.jsx';
 import { useChatController } from './hooks/useChatController.js';
+import { normalizeId } from '../../../text-utils.js';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSidebarCollapsedChange }) {
   const controller = useChatController({ admin });

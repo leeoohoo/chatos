@@ -2,21 +2,13 @@ import React, { useMemo } from 'react';
 import { Button, Card, Empty, List, Modal, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 
+import { normalizePromptLanguage } from 'mcp-utils.js';
+import { normalizeId } from 'text-utils.js';
 import { AgentEditorModal } from './components/AgentEditorModal.jsx';
 import { useChatAgents } from './hooks/useChatAgents.js';
 import { useUiAppsRegistry } from '../apps/hooks/useUiAppsRegistry.js';
 
 const { Text } = Typography;
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizePromptLanguage(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (raw === 'zh' || raw === 'en') return raw;
-  return '';
-}
 
 function countList(value) {
   return Array.isArray(value) ? value.filter(Boolean).length : 0;

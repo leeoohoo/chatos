@@ -2,12 +2,9 @@ import React, { useMemo } from 'react';
 import { Space, Tag, Typography } from 'antd';
 
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
+import { normalizeId } from '../../../../text-utils.js';
 
 const { Text } = Typography;
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function formatTime(ts) {
   const ms = Date.parse(ts);

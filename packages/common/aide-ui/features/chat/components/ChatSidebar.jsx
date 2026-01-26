@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 import { Badge, Button, Dropdown, Input, List, Modal, Space, Tooltip, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, MenuFoldOutlined, MoreOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 
-const { Text } = Typography;
+import { normalizeId } from '../../../../text-utils.js';
 
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+const { Text } = Typography;
 
 function formatTime(ts) {
   const ms = Date.parse(ts);
