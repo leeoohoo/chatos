@@ -103,8 +103,7 @@ export function PopoverTag({
 
   const resolvedMaxWidth = typeof maxWidth === 'number' ? `min(${maxWidth}px, 92vw)` : maxWidth;
   const resolvedMaxHeight = typeof maxHeight === 'number' ? `min(${maxHeight}px, 78vh)` : maxHeight;
-  const stretchBody = derivedKind === 'subagent';
-  const resolvedWidth = stretchBody ? resolvedMaxWidth : undefined;
+  const overlayStyle = resolvedMaxWidth ? { maxWidth: resolvedMaxWidth } : undefined;
 
   return (
     <Popover
@@ -113,6 +112,7 @@ export function PopoverTag({
       onOpenChange={handleOpenChange}
       placement={placement}
       autoAdjustOverflow={autoAdjustOverflow}
+      overlayStyle={overlayStyle}
       classNames={{ root: popoverClassName }}
       title={
         <div className="ds-tool-popover-header">
@@ -145,7 +145,7 @@ export function PopoverTag({
           className="ds-tool-popover-body"
           style={{
             maxWidth: resolvedMaxWidth,
-            width: resolvedWidth,
+            width: '100%',
             maxHeight: resolvedMaxHeight,
             overflow: 'auto',
           }}

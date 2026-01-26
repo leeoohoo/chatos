@@ -1,4 +1,4 @@
-import { extractTraceMeta } from '../shared/trace-utils.js';
+import { extractTraceMeta } from '../../shared/trace-utils.js';
 import { createCorrectionManager } from './corrections.js';
 import { runSubagentChatLoop } from './chat-loop.js';
 import { handleSubagentModelError } from './model-error.js';

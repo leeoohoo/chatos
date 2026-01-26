@@ -13,6 +13,7 @@ import {
   resolveEffectiveRunFilter,
   resolveDispatchRunId,
 } from 'aide-ui/lib/runs.js';
+import { truncateText } from 'aide-ui/lib/format.js';
 import { buildEventPreview, getEventMeta as getBaseEventMeta } from 'aide-ui/lib/events.js';
 import { dedupeFileChanges } from 'aide-ui/lib/file-changes.js';
 
@@ -735,13 +736,6 @@ export function mount({ container, host }) {
     }
     alert.style.display = 'block';
     alert.textContent = message;
-  }
-
-  function truncateText(text, limit = 120) {
-    if (!text) return '';
-    const str = String(text);
-    if (str.length <= limit) return str;
-    return `${str.slice(0, limit)}...`;
   }
 
   function formatTimestamp(value) {

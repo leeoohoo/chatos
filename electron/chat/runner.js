@@ -122,6 +122,12 @@ function buildChatSessionFromMessages({
   extraSystemPrompts,
   trailingSystemPrompts,
 } = {}) {
+  const { messages: normalizedMessages } = normalizeToolCallMessages(messages, {
+    toolCallsKey: 'toolCalls',
+    toolCallIdKey: 'toolCallId',
+    normalizeId,
+    pendingMode: 'strip',
+  });
   const chatSession = new ChatSession(systemPrompt || null, {
     sessionId,
     ...(extraSystemPrompts ? { extraSystemPrompts } : {}),
@@ -129,8 +135,7 @@ function buildChatSessionFromMessages({
   if (trailingSystemPrompts) {
     chatSession.setTrailingSystemPrompts(trailingSystemPrompts);
   }
-  let pendingToolCallIds = null;
-  (Array.isArray(messages) ? messages : []).forEach((msg) => {
+  normalizedMessages.forEach((msg) => {
     const role = msg?.role;
     if (role === 'user') {
       const content = buildUserMessageContent({
@@ -141,7 +146,6 @@ function buildChatSessionFromMessages({
       if (content) {
         chatSession.addUser(content);
       }
-      pendingToolCallIds = null;
       return;
     }
     if (role === 'assistant') {
@@ -153,19 +157,12 @@ function buildChatSessionFromMessages({
           ? null
           : rawContent || '';
       chatSession.addAssistant(normalizedContent, usableToolCalls);
-      if (usableToolCalls) {
-        pendingToolCallIds = new Set(usableToolCalls.map((call) => normalizeId(call?.id)).filter(Boolean));
-      } else {
-        pendingToolCallIds = null;
-      }
       return;
     }
     if (role === 'tool') {
       const callId = normalizeId(msg?.toolCallId);
       if (!callId) return;
-      if (!pendingToolCallIds || !pendingToolCallIds.has(callId)) return;
       chatSession.addToolResult(callId, msg?.content || '', msg?.toolName || msg?.name);
-      pendingToolCallIds.delete(callId);
     }
   });
   return chatSession;

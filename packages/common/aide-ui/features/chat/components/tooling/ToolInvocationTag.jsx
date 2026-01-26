@@ -73,8 +73,8 @@ export function ToolInvocationTag({
 
   const { argsInfo, toolKind, shellResult, status, subtitle, color } = presentation;
   const isSubagent = toolKind === 'subagent';
-  const popoverMaxWidth = isSubagent ? Math.max(maxWidth, 900) : maxWidth;
-  const popoverMaxHeight = isSubagent ? Math.max(maxHeight, 520) : maxHeight;
+  const popoverMaxWidth = maxWidth;
+  const popoverMaxHeight = maxHeight;
   const popoverPlacement = isSubagent ? 'bottomLeft' : undefined;
   const drawerWidth = isSubagent ? '100vw' : 780;
   const drawerClassName = isSubagent

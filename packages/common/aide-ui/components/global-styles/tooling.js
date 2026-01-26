@@ -321,28 +321,16 @@ export const GLOBAL_TOOLING_STYLES = `
         color: rgba(148, 163, 184, 0.9);
       }
       .ds-tool-summary {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        display: flex;
+        flex-direction: column;
         gap: 8px;
-      }
-      .ds-tool-summary[data-variant='subagent'] {
-        grid-template-columns: minmax(110px, 150px) minmax(130px, 190px) minmax(200px, 1fr);
-        align-items: start;
-      }
-      .ds-tool-summary[data-variant='subagent'] .ds-tool-summary-item[data-key='agent'],
-      .ds-tool-summary[data-variant='subagent'] .ds-tool-summary-item[data-key='skills'] {
-        padding: 6px 8px;
-      }
-      @media (max-width: 860px) {
-        .ds-tool-summary[data-variant='subagent'] {
-          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        }
       }
       .ds-tool-summary-item {
         padding: 8px 10px;
         border-radius: 10px;
         border: 1px solid var(--ds-panel-border);
         background: var(--ds-subtle-bg);
+        width: 100%;
       }
       .ds-tool-summary-item[data-tone='ok'] {
         border-color: rgba(34, 197, 94, 0.35);
