@@ -1,6 +1,4 @@
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+import { normalizeId } from './normalize.js';
 
 function toIdSet(list) {
   return new Set((Array.isArray(list) ? list : []).map((id) => normalizeId(id)).filter(Boolean));

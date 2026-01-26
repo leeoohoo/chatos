@@ -1,22 +1,12 @@
-import path from 'path';
-
 import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
-
-export function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-export function normalizeWorkspaceRoot(value) {
-  const trimmed = typeof value === 'string' ? value.trim() : '';
-  if (!trimmed) return '';
-  return path.resolve(trimmed);
-}
+import { normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './normalize.js';
 
 export { buildUserMessageContent };
 export { getMcpPromptNameForServer, normalizePromptLanguage };
 export { normalizeMcpServerName } from '../../packages/common/mcp-utils.js';
+export { normalizeAgentMode, normalizeId, normalizeWorkspaceRoot };
 
 export function buildSystemPrompt({
   agent,
@@ -28,6 +18,7 @@ export function buildSystemPrompt({
   autoMcpPrompts = true,
 } = {}) {
   const agentRecord = agent && typeof agent === 'object' ? agent : {};
+  const inlineAgentPrompt = typeof agentRecord?.prompt === 'string' ? agentRecord.prompt.trim() : '';
   const promptById = new Map((Array.isArray(prompts) ? prompts : []).map((p) => [p.id, p]));
   const promptByName = new Map(
     (Array.isArray(prompts) ? prompts : [])
@@ -111,6 +102,9 @@ export function buildSystemPrompt({
   }
 
   const blocks = [];
+  if (inlineAgentPrompt) {
+    blocks.push(inlineAgentPrompt);
+  }
   if (promptSections.length > 0) {
     blocks.push(promptSections.join('\n\n'));
   }

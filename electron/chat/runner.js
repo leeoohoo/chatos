@@ -4,15 +4,17 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 import { createRestrictedSubAgentManager } from './subagent-restriction.js';
 import { resolveAllowedTools } from './tool-selection.js';
+import { createMcpRuntimeHelpers } from './mcp-runtime-helpers.js';
+import { createMcpNotificationHandler } from './mcp-notifications.js';
+import { createUiAppRegistryHelpers } from './ui-app-registry.js';
+import { buildSystemPrompt, normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './runner-helpers.js';
 import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { appendPromptBlock } from '../../packages/common/prompt-utils.js';
 import { applySecretsToProcessEnv } from '../../packages/common/secrets-env.js';
-import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
 import { extractTraceMeta } from '../../packages/common/trace-utils.js';
 import { resolveEngineModule } from '../../src/engine-loader.js';
 import { resolveEngineRoot } from '../../src/engine-paths.js';
-import { getRegistryCenter } from '../backend/registry-center.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,15 +72,6 @@ async function loadEngineDeps() {
   return engineDepsPromise;
 }
 
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeAgentMode(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  return raw === 'flow' ? 'flow' : 'custom';
-}
-
 function uniqueIds(list) {
   const out = [];
   const seen = new Set();
@@ -89,12 +82,6 @@ function uniqueIds(list) {
     out.push(value);
   });
   return out;
-}
-
-function normalizeWorkspaceRoot(value) {
-  const trimmed = typeof value === 'string' ? value.trim() : '';
-  if (!trimmed) return '';
-  return path.resolve(trimmed);
 }
 
 function applyRuntimeSettingsToEnv(runtimeConfig) {
@@ -523,110 +510,6 @@ function readRegistrySnapshot(services) {
   }
 }
 
-function buildSystemPrompt({ agent, prompts, subagents, mcpServers, language, extraPromptNames, autoMcpPrompts = true } = {}) {
-  const agentRecord = agent && typeof agent === 'object' ? agent : {};
-  const inlineAgentPrompt = typeof agentRecord?.prompt === 'string' ? agentRecord.prompt.trim() : '';
-  const promptById = new Map((Array.isArray(prompts) ? prompts : []).map((p) => [p.id, p]));
-  const promptByName = new Map(
-    (Array.isArray(prompts) ? prompts : [])
-      .filter((p) => p?.name)
-      .map((p) => [String(p.name).trim().toLowerCase(), p])
-  );
-  const promptSections = (Array.isArray(agentRecord.promptIds) ? agentRecord.promptIds : [])
-    .map((id) => promptById.get(id))
-    .map((p) => (typeof p?.content === 'string' ? p.content.trim() : ''))
-    .filter(Boolean);
-  const selectedPromptNames = new Set(
-    (Array.isArray(agentRecord.promptIds) ? agentRecord.promptIds : [])
-      .map((id) => promptById.get(id))
-      .map((p) => String(p?.name || '').trim().toLowerCase())
-      .filter(Boolean)
-  );
-
-  const extraPromptSections = [];
-  const addedExtra = new Set();
-  (Array.isArray(extraPromptNames) ? extraPromptNames : []).forEach((name) => {
-    const key = String(name || '').trim().toLowerCase();
-    if (!key || selectedPromptNames.has(key) || addedExtra.has(key)) return;
-    const record = promptByName.get(key);
-    const content = typeof record?.content === 'string' ? record.content.trim() : '';
-    if (!content) return;
-    extraPromptSections.push(content);
-    addedExtra.add(key);
-  });
-
-  const enabledSubagents = new Map(
-    (Array.isArray(subagents) ? subagents : [])
-      .filter((s) => s?.enabled !== false && s?.id)
-      .map((s) => [s.id, s])
-  );
-  const selectedSubagents = (Array.isArray(agentRecord.subagentIds) ? agentRecord.subagentIds : [])
-    .map((id) => enabledSubagents.get(id))
-    .filter(Boolean);
-  const skills = Array.isArray(agentRecord.skills) ? agentRecord.skills.map((s) => String(s).trim()).filter(Boolean) : [];
-
-  const mcpById = new Map((Array.isArray(mcpServers) ? mcpServers : []).filter((s) => s?.id).map((s) => [s.id, s]));
-  const serverAllowed = (server) => {
-    if (isExternalOnlyMcpServerName(server?.name) && !allowExternalOnlyMcpServers()) {
-      return false;
-    }
-    return true;
-  };
-  const selectedMcp = (Array.isArray(agentRecord.mcpServerIds) ? agentRecord.mcpServerIds : [])
-    .map((id) => mcpById.get(id))
-    .filter((srv) => srv && srv.enabled !== false && serverAllowed(srv));
-
-  const mcpPromptTexts = [];
-  if (autoMcpPrompts && selectedMcp.length > 0) {
-    const lang = normalizePromptLanguage(language);
-    selectedMcp.forEach((server) => {
-      const preferredName = getMcpPromptNameForServer(server?.name, lang).toLowerCase();
-      const fallbackName = getMcpPromptNameForServer(server?.name).toLowerCase();
-      const candidates = preferredName === fallbackName ? [preferredName] : [preferredName, fallbackName];
-      for (const name of candidates) {
-        if (selectedPromptNames.has(name)) continue;
-        if (addedExtra.has(name)) continue;
-        const record = promptByName.get(name);
-        const content = typeof record?.content === 'string' ? record.content.trim() : '';
-        if (!content) continue;
-        mcpPromptTexts.push(content);
-        break;
-      }
-    });
-  }
-
-  const capabilityLines = [];
-  if (selectedSubagents.length > 0) {
-    const names = selectedSubagents.map((s) => s.name || s.id).filter(Boolean).slice(0, 12);
-    capabilityLines.push(`- 可用子代理: ${names.join(', ')}`);
-  }
-  if (skills.length > 0) {
-    capabilityLines.push(`- 偏好 skills: ${skills.slice(0, 24).join(', ')}`);
-  }
-  if (selectedMcp.length > 0) {
-    const names = selectedMcp.map((s) => s.name || s.id).filter(Boolean).slice(0, 12);
-    capabilityLines.push(`- 可用 MCP servers: ${names.join(', ')}`);
-  }
-
-  const blocks = [];
-  if (inlineAgentPrompt) {
-    blocks.push(inlineAgentPrompt);
-  }
-  if (promptSections.length > 0) {
-    blocks.push(promptSections.join('\n\n'));
-  }
-  if (extraPromptSections.length > 0) {
-    blocks.push(extraPromptSections.join('\n\n'));
-  }
-  if (mcpPromptTexts.length > 0) {
-    blocks.push(mcpPromptTexts.join('\n\n'));
-  }
-  if (capabilityLines.length > 0) {
-    blocks.push(['【能力范围】', ...capabilityLines].join('\n'));
-  }
-  return blocks.join('\n\n').trim();
-}
-
 export function createChatRunner({
   adminServices,
   defaultPaths,
@@ -654,6 +537,10 @@ export function createChatRunner({
   const MCP_INIT_TIMEOUT = Symbol('mcp_init_timeout');
   const eventLogPath =
     typeof defaultPaths?.events === 'string' && defaultPaths.events.trim() ? defaultPaths.events.trim() : '';
+  const { computeMcpSignature, buildRuntimeMcpServers, resolveMcpConfigPath, readMcpConfigMtimeMs } =
+    createMcpRuntimeHelpers({ defaultPaths });
+  const { resolveUiAppAi, refreshUiAppsTrust, isUiAppTrusted, resolveUiAppRegistryAccess } =
+    createUiAppRegistryHelpers({ uiApps, adminServices });
   const resolveMcpSessionId = (params) => {
     const explicit = normalizeId(params?.sessionId);
     if (explicit) return explicit;
@@ -663,321 +550,13 @@ export function createChatRunner({
     }
     return '';
   };
-  const normalizeProgressKind = (params) => {
-    const raw = typeof params?.kind === 'string' ? params.kind.trim().toLowerCase() : '';
-    if (raw) return raw;
-    const fallback = typeof params?.type === 'string' ? params.type.trim().toLowerCase() : '';
-    return fallback;
-  };
-  const pickToolCallId = (params) => {
-    if (!params || typeof params !== 'object') return '';
-    return normalizeId(params.toolCallId || params.tool_call_id || params.callId || params.call_id);
-  };
-  const normalizeStepsPayload = (params) => {
-    if (!params || typeof params !== 'object') return [];
-    if (Array.isArray(params.steps)) return params.steps.filter(Boolean);
-    if (params.step && typeof params.step === 'object') return [params.step];
-    return [];
-  };
-  const resolveProgressDone = (params) => {
-    if (params?.done === true) return true;
-    if (typeof params?.stage === 'string' && params.stage.trim().toLowerCase() === 'done') return true;
-    const status = typeof params?.status === 'string' ? params.status.trim().toLowerCase() : '';
-    return ['completed', 'failed', 'aborted', 'cancelled', 'canceled', 'error'].includes(status);
-  };
-  const resolveProgressJobId = (params) =>
-    normalizeId(params?.job_id || params?.jobId || params?.jobID || '');
-  const handleMcpNotification = (notification) => {
-    if (!notification) return;
-    const params = notification?.params && typeof notification.params === 'object' ? notification.params : null;
-    const runId = typeof params?.runId === 'string' ? params.runId : '';
-    const payload = {
-      server: notification.serverName || '',
-      method: notification.method || '',
-      params,
-    };
-    const type = notification.method === 'notifications/message' ? 'mcp_log' : 'mcp_stream';
-    if (eventLogPath) {
-      appendEventLog(eventLogPath, type, payload, runId);
-    }
-    if (type === 'mcp_stream') {
-      const sessionId = resolveMcpSessionId(params);
-      if (sessionId) {
-        if (
-          payload.server === 'subagent_router' &&
-          payload.method === 'notifications/progress' &&
-          store?.subagentStreams?.upsert
-        ) {
-          const callId = pickToolCallId(params);
-          const kind = normalizeProgressKind(params);
-          if (callId && (!kind || kind === 'subagent_step' || kind === 'subagent_progress')) {
-            const steps = normalizeStepsPayload(params);
-            const done = resolveProgressDone(params);
-            const jobId = resolveProgressJobId(params);
-            const status = typeof params?.status === 'string' ? params.status : done ? 'completed' : '';
-            if (steps.length > 0 || done || jobId) {
-              try {
-                store.subagentStreams.upsert({
-                  sessionId,
-                  toolCallId: callId,
-                  jobId,
-                  status,
-                  done,
-                  steps,
-                });
-              } catch {
-                // ignore persistence errors
-              }
-            }
-          }
-        }
-        sendEvent({
-          type: 'mcp_stream',
-          sessionId,
-          payload: {
-            ...payload,
-            receivedAt: new Date().toISOString(),
-          },
-        });
-      } else {
-        const debug = {
-          server: payload.server,
-          method: payload.method,
-          runId,
-          rpcId: params?.rpcId,
-          windowId: params?.windowId,
-          requestId: params?.requestId,
-          status: params?.status,
-        };
-        if (eventLogPath) {
-          appendEventLog(eventLogPath, 'mcp_stream_unrouted', debug, runId);
-        }
-        try {
-          console.warn('[mcp] stream notification missing sessionId', debug);
-        } catch {
-          // ignore
-        }
-      }
-    }
-  };
-
-  const resolveUiAppAi = uiApps && typeof uiApps.getAiContribution === 'function' ? uiApps.getAiContribution.bind(uiApps) : null;
-  let registry = null;
-  try {
-    const registryDb = adminServices?.mcpServers?.db || null;
-    registry = registryDb ? getRegistryCenter({ db: registryDb }) : null;
-  } catch {
-    registry = null;
-  }
-  let uiAppsTrustMap = new Map();
-  const refreshUiAppsTrust = async () => {
-    uiAppsTrustMap = new Map();
-    if (!uiApps || typeof uiApps.listRegistry !== 'function') return;
-    try {
-      const snapshot = await uiApps.listRegistry();
-      const plugins = Array.isArray(snapshot?.plugins) ? snapshot.plugins : [];
-      uiAppsTrustMap = new Map(
-        plugins
-          .map((plugin) => [normalizeId(plugin?.id), plugin?.trusted === true])
-          .filter(([id]) => id)
-      );
-    } catch {
-      uiAppsTrustMap = new Map();
-    }
-  };
-  const isUiAppTrusted = (pluginId) => {
-    const pid = normalizeId(pluginId);
-    if (!pid) return false;
-    return uiAppsTrustMap.get(pid) === true;
-  };
-  const normalizeRegistryName = (value) => String(value || '').trim().toLowerCase();
-  const resolveUiAppRegistryAccess = (pluginId, appId) => {
-    if (!registry) return null;
-    const pid = normalizeId(pluginId);
-    const aid = normalizeId(appId);
-    if (!pid || !aid) return null;
-    const appKey = `${pid}.${aid}`;
-    let servers = [];
-    let prompts = [];
-    try {
-      servers = registry.getMcpServersForApp(appKey) || [];
-    } catch {
-      servers = [];
-    }
-    try {
-      prompts = registry.getPromptsForApp(appKey) || [];
-    } catch {
-      prompts = [];
-    }
-    const serversByName = new Map(
-      servers
-        .filter((srv) => srv?.name)
-        .map((srv) => [normalizeRegistryName(srv.name), srv])
-    );
-    const promptsByName = new Map(
-      prompts
-        .filter((p) => p?.name)
-        .map((p) => [normalizeRegistryName(p.name), p])
-    );
-    const serversById = new Map(
-      servers
-        .filter((srv) => srv?.id)
-        .map((srv) => [String(srv.id), srv])
-    );
-    const promptsById = new Map(
-      prompts
-        .filter((p) => p?.id)
-        .map((p) => [String(p.id), p])
-    );
-    const serverIds = new Set(Array.from(serversById.keys()));
-    const promptIds = new Set(Array.from(promptsById.keys()));
-    return {
-      appKey,
-      servers,
-      prompts,
-      serversByName,
-      promptsByName,
-      serversById,
-      promptsById,
-      serverIds,
-      promptIds,
-    };
-  };
-
-  const computeMcpSignature = ({ servers, skipServers, baseDir, mode } = {}) => {
-    const toJson = (value) => {
-      if (!value || typeof value !== 'object') return '';
-      try {
-        return JSON.stringify(value);
-      } catch {
-        return '';
-      }
-    };
-    const list = Array.isArray(servers) ? servers : [];
-    const items = list
-      .map((entry) => {
-        const name = typeof entry?.name === 'string' ? entry.name.trim().toLowerCase() : '';
-        const url = typeof entry?.url === 'string' ? entry.url.trim() : '';
-        if (!name || !url) return null;
-        const enabled = entry?.enabled !== false ? '1' : '0';
-        const apiKeyEnv =
-          typeof entry?.api_key_env === 'string'
-            ? entry.api_key_env.trim()
-            : typeof entry?.apiKeyEnv === 'string'
-              ? entry.apiKeyEnv.trim()
-              : '';
-        const tags = Array.isArray(entry?.tags)
-          ? entry.tags.map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean).sort().join(',')
-          : '';
-        const auth = entry?.auth && typeof entry.auth === 'object' ? toJson(entry.auth) : '';
-        const callMeta =
-          entry?.callMeta && typeof entry.callMeta === 'object'
-            ? toJson(entry.callMeta)
-            : entry?.call_meta && typeof entry.call_meta === 'object'
-              ? toJson(entry.call_meta)
-              : '';
-        return `${name}\u0000${url}\u0000${enabled}\u0000${apiKeyEnv}\u0000${tags}\u0000${auth}\u0000${callMeta}`;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b));
-    const skips = Array.isArray(skipServers)
-      ? skipServers
-          .map((value) => String(value || '').trim().toLowerCase())
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b))
-      : [];
-    const base = typeof baseDir === 'string' && baseDir.trim() ? path.resolve(baseDir.trim()) : '';
-    const modeTag = typeof mode === 'string' && mode.trim() ? mode.trim() : 'config';
-    return `${modeTag}\u0000${base}\u0001${items.join('\u0001')}\u0002${skips.join('\u0001')}`;
-  };
-
-  const normalizeRuntimeServerEntry = (entry) => {
-    if (!entry || typeof entry !== 'object') return null;
-    const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
-    const url = typeof entry?.url === 'string' ? entry.url.trim() : '';
-    if (!name || !url) return null;
-    const tags = Array.isArray(entry?.tags)
-      ? entry.tags.map((tag) => String(tag || '').trim()).filter(Boolean)
-      : [];
-    const apiKeyEnv =
-      typeof entry?.api_key_env === 'string'
-        ? entry.api_key_env.trim()
-        : typeof entry?.apiKeyEnv === 'string'
-          ? entry.apiKeyEnv.trim()
-          : '';
-    const auth = entry?.auth && typeof entry.auth === 'object' ? entry.auth : entry?.auth;
-    const callMeta =
-      entry?.callMeta && typeof entry.callMeta === 'object'
-        ? entry.callMeta
-        : entry?.call_meta && typeof entry.call_meta === 'object'
-          ? entry.call_meta
-          : undefined;
-    const appId =
-      typeof entry?.app_id === 'string'
-        ? entry.app_id.trim()
-        : typeof entry?.appId === 'string'
-          ? entry.appId.trim()
-          : '';
-    return {
-      name,
-      url,
-      description: typeof entry?.description === 'string' ? entry.description : '',
-      tags,
-      enabled: entry?.enabled !== false,
-      ...(apiKeyEnv ? { api_key_env: apiKeyEnv } : null),
-      ...(auth ? { auth } : null),
-      ...(callMeta ? { callMeta } : null),
-      ...(appId ? { app_id: appId } : null),
-    };
-  };
-
-  const buildRuntimeMcpServers = ({ selectedIds, servers, extraServers } = {}) => {
-    const selected = new Set(
-      (Array.isArray(selectedIds) ? selectedIds : []).map((id) => normalizeId(id)).filter(Boolean)
-    );
-    const byId = new Map(
-      (Array.isArray(servers) ? servers : [])
-        .filter((srv) => normalizeId(srv?.id))
-        .map((srv) => [normalizeId(srv.id), srv])
-    );
-    const seen = new Set();
-    const out = [];
-    const add = (entry) => {
-      const normalized = normalizeRuntimeServerEntry(entry);
-      if (!normalized) return;
-      const key = normalized.name.toLowerCase();
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      out.push(normalized);
-    };
-    if (selected.size > 0) {
-      selected.forEach((id) => {
-        const entry = byId.get(id);
-        if (entry) add(entry);
-      });
-    }
-    (Array.isArray(extraServers) ? extraServers : []).forEach(add);
-    return out;
-  };
-
-  const resolveMcpConfigPath = () => {
-    const explicit = typeof defaultPaths?.mcpConfig === 'string' ? defaultPaths.mcpConfig.trim() : '';
-    if (explicit) return explicit;
-    const anchor = typeof defaultPaths?.models === 'string' ? defaultPaths.models.trim() : '';
-    if (!anchor) return '';
-    return path.join(path.dirname(anchor), 'mcp.config.json');
-  };
-
-  const readMcpConfigMtimeMs = () => {
-    const configPath = resolveMcpConfigPath();
-    if (!configPath) return null;
-    try {
-      const stat = fs.statSync(configPath);
-      return Number.isFinite(stat?.mtimeMs) ? stat.mtimeMs : null;
-    } catch {
-      return null;
-    }
-  };
+  const handleMcpNotification = createMcpNotificationHandler({
+    eventLogPath,
+    appendEventLog,
+    sendEvent,
+    store,
+    resolveMcpSessionId,
+  });
 
   const dispose = async () => {
     for (const entry of activeRuns.values()) {

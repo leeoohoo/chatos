@@ -1,5 +1,6 @@
 import { ZodError } from 'zod';
 
+import { normalizeId } from './normalize.js';
 import { chatAgentSchema, chatMessageSchema, chatSessionSchema, chatSubagentStreamSchema } from './schemas.js';
 
 function formatZodError(err) {
@@ -21,10 +22,6 @@ function parsePartial(schema, payload) {
   } catch (err) {
     throw new Error(formatZodError(err));
   }
-}
-
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
 }
 
 function normalizeStepKey(step) {

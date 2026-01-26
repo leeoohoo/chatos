@@ -3,25 +3,11 @@ import path from 'path';
 
 import { createChatRunner } from './runner.js';
 import { createChatStore } from './store.js';
+import { normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './normalize.js';
 import { normalizeImageAttachments } from '../../packages/common/chat-utils.js';
 
-function normalizeId(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeAgentMode(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  return raw === 'flow' ? 'flow' : 'custom';
-}
-
-function resolveWorkspaceRoot(value) {
-  const trimmed = typeof value === 'string' ? value.trim() : '';
-  if (!trimmed) return '';
-  return path.resolve(trimmed);
-}
-
 function validateWorkspaceRoot(value) {
-  const resolved = resolveWorkspaceRoot(value);
+  const resolved = normalizeWorkspaceRoot(value);
   if (!resolved) return '';
   let stats = null;
   try {
@@ -38,10 +24,6 @@ function validateWorkspaceRoot(value) {
   return resolved;
 }
 
-function normalizeWorkspaceRootInput(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 function normalizeAgentPayload(payload) {
   const next = payload && typeof payload === 'object' ? { ...payload } : {};
   if (Object.prototype.hasOwnProperty.call(next, 'mode')) {
@@ -51,8 +33,7 @@ function normalizeAgentPayload(payload) {
     next.landConfigId = normalizeId(next.landConfigId);
   }
   if (Object.prototype.hasOwnProperty.call(next, 'workspaceRoot')) {
-    const root = normalizeWorkspaceRootInput(next.workspaceRoot);
-    next.workspaceRoot = root ? validateWorkspaceRoot(root) : '';
+    next.workspaceRoot = validateWorkspaceRoot(next.workspaceRoot);
   }
   return next;
 }
