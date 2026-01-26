@@ -3,6 +3,7 @@ import fs from 'fs';
 import { createRequire } from 'module';
 import { createLogger } from '../../logger.js';
 import { resolveAppStateDir, resolveStateDirPath, STATE_DIR_NAMES } from '../../../shared/state-paths.js';
+import { normalizeKey } from '../../../shared/text-utils.js';
 import { resolveBoolEnv } from '../../../../common/env-utils.js';
 
 const log = createLogger('MCP');
@@ -48,7 +49,7 @@ function normalizeCommandPath(token, baseDir) {
 export function isUiAppMcpServer(entry, options = {}) {
   const tags = Array.isArray(entry?.tags) ? entry.tags : [];
   const tagged = tags
-    .map((tag) => String(tag || '').trim().toLowerCase())
+    .map((tag) => normalizeKey(tag))
     .filter(Boolean)
     .some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
   if (tagged) return true;

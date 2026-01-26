@@ -4,6 +4,7 @@ import { loadMcpConfig } from '../mcp.js';
 import { mapAllSettledWithConcurrency, resolveConcurrency } from './runtime/concurrency.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../shared/host-app.js';
 import { createRuntimeLogger } from '../../shared/runtime-log.js';
+import { normalizeKey } from '../../shared/text-utils.js';
 import { normalizeToolName } from './runtime/identity-utils.js';
 import { connectMcpServer } from './runtime/server-connection.js';
 import { appendRunPid, buildRuntimeCallMeta, registerRemoteTool } from './runtime/tool-runtime.js';
@@ -62,7 +63,7 @@ async function initializeMcpRuntime(
     const seen = new Set();
     const out = [];
     [...(Array.isArray(servers) ? servers : []), ...extraServers].forEach((entry) => {
-      const key = String(entry?.name || '').trim().toLowerCase();
+      const key = normalizeKey(entry?.name);
       if (!key || seen.has(key)) return;
       seen.add(key);
       out.push(entry);
@@ -75,11 +76,11 @@ async function initializeMcpRuntime(
     (entry) => entry && entry.enabled !== false && (allowExternalOnly || !isExternalOnlyMcpServerName(entry.name))
   );
   const skip = new Set(
-    Array.isArray(options.skipServers) ? options.skipServers.map((s) => String(s || '').toLowerCase()) : []
+    Array.isArray(options.skipServers) ? options.skipServers.map((s) => normalizeKey(s)).filter(Boolean) : []
   );
   const filteredServers =
     skip.size > 0
-      ? enabledServers.filter((entry) => !skip.has(String(entry?.name || '').toLowerCase()))
+      ? enabledServers.filter((entry) => !skip.has(normalizeKey(entry?.name)))
       : enabledServers;
   const baseDirResolved = baseDir || process.cwd();
   const connectTargets = filteredServers.filter((entry) => entry && entry.url);

@@ -15,6 +15,7 @@ import {
 import { syncAdminToFiles } from '../shared/data/sync.js';
 import { getHostApp } from '../shared/host-app.js';
 import { getMcpPromptNamesForServer } from '../shared/mcp-utils.js';
+import { normalizeKey } from '../shared/text-utils.js';
 import {
   ensureAppStateDir,
   resolveStateDirFile,
@@ -101,7 +102,7 @@ function maybePurgeUiAppsSyncedAdminData({ stateDir, services } = {}) {
     // ignore marker fs errors
   }
 
-  const normalizeTag = (value) => String(value || '').trim().toLowerCase();
+  const normalizeTag = (value) => normalizeKey(value);
   const isUiAppTagged = (record) => {
     const tags = Array.isArray(record?.tags) ? record.tags : [];
     return tags.map(normalizeTag).filter(Boolean).some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
@@ -127,7 +128,7 @@ function maybePurgeUiAppsSyncedAdminData({ stateDir, services } = {}) {
       }
     });
     keys.forEach((key) => {
-      getMcpPromptNamesForServer(key).forEach((name) => promptNames.add(String(name || '').trim().toLowerCase()));
+      getMcpPromptNamesForServer(key).forEach((name) => promptNames.add(normalizeKey(name)));
     });
   };
 
@@ -163,7 +164,7 @@ function maybePurgeUiAppsSyncedAdminData({ stateDir, services } = {}) {
     }
     (Array.isArray(prompts) ? prompts : []).forEach((prompt) => {
       const id = prompt?.id;
-      const key = String(prompt?.name || '').trim().toLowerCase();
+      const key = normalizeKey(prompt?.name);
       if (!id || !key || !promptNames.has(key)) return;
       try {
         if (services.prompts.remove(id)) {

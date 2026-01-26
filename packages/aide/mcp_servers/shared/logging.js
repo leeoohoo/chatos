@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { capJsonlFile } from '../../shared/log-utils.js';
+import { normalizeKey } from '../../shared/text-utils.js';
 import { ensureDir } from './fs-utils.js';
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
@@ -25,7 +26,7 @@ function clampNumber(value, min, max, fallback) {
 }
 
 function shouldRedactKey(key, extraKeys = []) {
-  const normalized = String(key || '').trim().toLowerCase();
+  const normalized = normalizeKey(key);
   if (!normalized) return false;
   if (extraKeys.some((entry) => normalized.includes(entry))) return true;
   return SENSITIVE_KEYS.some((entry) => normalized.includes(entry));

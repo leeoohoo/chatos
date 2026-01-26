@@ -10,6 +10,7 @@ import { resolveAppStateDir, resolveAppStatePath, resolveFileChangesPath, STATE_
 import { createToolResponder } from './shared/tool-helpers.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir } from './shared/fs-utils.js';
+import { booleanFromArg } from './shared/flags.js';
 import { applyTextEdits, normalizeTextEdits } from './lsp/utils/text-edits.js';
 import { formatBytes, fromFileUri, guessLanguageId, hashContent, safeStat, toFileUri, toLspPosition } from './lsp/utils/document-utils.js';
 
@@ -1136,14 +1137,6 @@ function waitForExit(proc, timeoutMs) {
       resolve();
     });
   });
-}
-
-function booleanFromArg(value) {
-  if (value === true) return true;
-  const text = String(value || '').trim().toLowerCase();
-  if (!text) return false;
-  if (text === '1' || text === 'true' || text === 'yes' || text === 'y') return true;
-  return false;
 }
 
 function renderJson(value) {

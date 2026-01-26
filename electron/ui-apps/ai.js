@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { getMcpPromptNameForServer } from '../../packages/common/mcp-utils.js';
+import { normalizeKey, uniqueStrings } from '../../packages/common/text-utils.js';
+import { readPromptSource, resolvePathWithinPlugin } from './prompt-source.js';
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -153,17 +155,6 @@ export function resolveUiAppsAi(pluginDir, pluginIdRaw, app, errors, context = {
     if (/[\\\s"]/g.test(raw)) return JSON.stringify(raw);
     return raw;
   };
-  const resolvePathWithinPlugin = (relPath, label) => {
-    const rel = typeof relPath === 'string' ? relPath.trim() : '';
-    if (!rel) return '';
-    const resolved = path.resolve(pluginDir, rel);
-    const relative = path.relative(pluginDir, resolved);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new Error(`${label} must be within plugin directory`);
-    }
-    return resolved;
-  };
-
   const resolveMcpUrl = () => {
     const rawUrl = typeof ai?.mcp?.url === 'string' ? ai.mcp.url.trim() : '';
     if (rawUrl) return rawUrl;
@@ -171,7 +162,7 @@ export function resolveUiAppsAi(pluginDir, pluginIdRaw, app, errors, context = {
     if (!entryRel) return '';
     let entryAbs = '';
     try {
-      entryAbs = resolvePathWithinPlugin(entryRel, 'ai.mcp.entry');
+      entryAbs = resolvePathWithinPlugin(pluginDir, entryRel, 'ai.mcp.entry');
     } catch (err) {
       errors.push({
         dir: pluginDir,
@@ -250,60 +241,15 @@ export function syncUiAppsAiContributes({ adminServices, maxPromptBytes }, plugi
   if (!services?.mcpServers || !services?.prompts) return false;
 
   const now = () => new Date().toISOString();
-  const uniqStrings = (list) => {
-    const out = [];
-    const seen = new Set();
-    (Array.isArray(list) ? list : []).forEach((item) => {
-      const v = String(item || '').trim();
-      if (!v || seen.has(v)) return;
-      seen.add(v);
-      out.push(v);
-    });
-    return out;
-  };
-
-  const normalizePromptNameKey = (name) => String(name || '').trim().toLowerCase();
-  const normalizeServerKey = (name) => String(name || '').trim().toLowerCase();
-
   const existingServers = services.mcpServers.list ? services.mcpServers.list() : [];
   const serverByName = new Map(
-    (Array.isArray(existingServers) ? existingServers : []).filter((srv) => srv?.name).map((srv) => [normalizeServerKey(srv.name), srv])
+    (Array.isArray(existingServers) ? existingServers : []).filter((srv) => srv?.name).map((srv) => [normalizeKey(srv.name), srv])
   );
 
   const existingPrompts = services.prompts.list ? services.prompts.list() : [];
   const promptByName = new Map(
-    (Array.isArray(existingPrompts) ? existingPrompts : []).filter((p) => p?.name).map((p) => [normalizePromptNameKey(p.name), p])
+    (Array.isArray(existingPrompts) ? existingPrompts : []).filter((p) => p?.name).map((p) => [normalizeKey(p.name), p])
   );
-
-  const resolvePathWithinPlugin = (pluginDir, rel, label) => {
-    const relPath = typeof rel === 'string' ? rel.trim() : '';
-    if (!relPath) return null;
-    const resolved = path.resolve(pluginDir, relPath);
-    const relative = path.relative(pluginDir, resolved);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new Error(`${label} must be within plugin directory`);
-    }
-    return resolved;
-  };
-
-  const readPromptSource = (pluginDir, source, label) => {
-    if (!source) return '';
-    const content = typeof source?.content === 'string' ? source.content : '';
-    if (content && content.trim()) return content.trim();
-    const relPath = typeof source?.path === 'string' ? source.path : '';
-    if (!relPath) return '';
-    const resolved = resolvePathWithinPlugin(pluginDir, relPath, label);
-    if (!resolved) return '';
-    const stat = fs.statSync(resolved);
-    if (!stat.isFile()) {
-      throw new Error(`${label} must be a file: ${relPath}`);
-    }
-    if (Number.isFinite(maxPromptBytes) && stat.size > maxPromptBytes) {
-      throw new Error(`${label} too large (${stat.size} bytes): ${relPath}`);
-    }
-    const raw = fs.readFileSync(resolved, 'utf8');
-    return String(raw || '').trim();
-  };
 
   let changed = false;
 
@@ -319,7 +265,7 @@ export function syncUiAppsAiContributes({ adminServices, maxPromptBytes }, plugi
 
       const mcp = ai?.mcp && typeof ai.mcp === 'object' ? ai.mcp : null;
       if (mcp?.name && mcp?.url) {
-        const desiredTags = uniqStrings([
+        const desiredTags = uniqueStrings([
           ...(Array.isArray(mcp.tags) ? mcp.tags : []),
           'uiapp',
           `uiapp:${pluginId}`,
@@ -337,7 +283,7 @@ export function syncUiAppsAiContributes({ adminServices, maxPromptBytes }, plugi
           updatedAt: now(),
         };
 
-        const key = normalizeServerKey(desired.name);
+        const key = normalizeKey(desired.name);
         const existing = serverByName.get(key) || null;
         if (!existing) {
           try {
@@ -397,7 +343,12 @@ export function syncUiAppsAiContributes({ adminServices, maxPromptBytes }, plugi
         variants.forEach((variant) => {
           let content = '';
           try {
-            content = readPromptSource(pluginDir, variant.source, variant.label);
+            content = readPromptSource({
+              pluginDir,
+              source: variant.source,
+              label: variant.label,
+              maxPromptBytes,
+            });
           } catch (err) {
             errors.push({
               dir: pluginDir,
@@ -414,7 +365,7 @@ export function syncUiAppsAiContributes({ adminServices, maxPromptBytes }, plugi
             content,
             updatedAt: now(),
           };
-          const key = normalizePromptNameKey(desired.name);
+          const key = normalizeKey(desired.name);
           const existing = promptByName.get(key) || null;
           if (!existing) {
             try {

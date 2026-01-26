@@ -3,6 +3,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { performance } from 'perf_hooks';
 import { resolveAppStateDir } from '../../../shared/state-paths.js';
+import { normalizeKey } from '../../../shared/text-utils.js';
 import { normalizeSessionId } from './identity-utils.js';
 import { resolveMcpStreamTimeoutMs } from './stream-utils.js';
 import { sleepWithSignal } from './async-utils.js';
@@ -14,7 +15,7 @@ const DEFAULT_ASYNC_POLL_MS = 1000;
 const uiPromptCache = new Map();
 
 function normalizeAsyncToolName(value) {
-  return String(value || '').trim().toLowerCase();
+  return normalizeKey(value);
 }
 
 export function normalizeAsyncTaskConfig(raw, toolName) {
@@ -26,7 +27,7 @@ export function normalizeAsyncTaskConfig(raw, toolName) {
   if (tools.length > 0 && toolKey && !tools.includes(toolKey)) return null;
   const taskIdKey = typeof raw.taskIdKey === 'string' ? raw.taskIdKey.trim() : 'taskId';
   if (!taskIdKey) return null;
-  const resultSource = typeof raw.resultSource === 'string' ? raw.resultSource.trim().toLowerCase() : 'ui_prompts';
+  const resultSource = typeof raw.resultSource === 'string' ? normalizeKey(raw.resultSource) : 'ui_prompts';
   const uiPromptFile = typeof raw.uiPromptFile === 'string' ? raw.uiPromptFile.trim() : UI_PROMPTS_FILE_DEFAULT;
   const pollIntervalMs = Number.isFinite(Number(raw.pollIntervalMs))
     ? Math.max(200, Math.min(5000, Number(raw.pollIntervalMs)))

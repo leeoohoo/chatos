@@ -2,11 +2,12 @@ import React, { useMemo } from 'react';
 import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 
 import { EntityManager } from '../../../components/EntityManager.jsx';
+import { normalizeKey } from '../../../../text-utils.js';
 
 const { Paragraph } = Typography;
 
 function isGptModelId(modelId) {
-  const id = String(modelId || '').trim().toLowerCase();
+  const id = normalizeKey(modelId);
   return id.startsWith('gpt-');
 }
 
@@ -22,7 +23,7 @@ function ModelsManager({
   const providerOptions = useMemo(() => {
     const shouldShowAzure =
       developerMode ||
-      (Array.isArray(data) && data.some((record) => String(record?.provider || '').trim().toLowerCase() === 'azure'));
+      (Array.isArray(data) && data.some((record) => normalizeKey(record?.provider) === 'azure'));
     return [
       { label: 'OpenAI (兼容)', value: 'openai' },
       { label: 'DeepSeek (兼容)', value: 'deepseek' },

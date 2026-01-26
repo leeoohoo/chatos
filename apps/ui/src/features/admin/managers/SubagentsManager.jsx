@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Form, Input, Row, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
 import { formatStateDirLabel } from 'aide-ui/lib/state-paths.js';
+import { normalizeKey } from 'text-utils.js';
 
 const { Text, Paragraph } = Typography;
 const SUBAGENT_INSTALL_HINT =
@@ -305,7 +306,7 @@ function SubagentsManager({
 
   const pluginRows = useMemo(() => {
     const filter = String(pluginFilter || 'all');
-    const query = String(pluginSearch || '').trim().toLowerCase();
+    const query = normalizeKey(pluginSearch);
     let list = Array.isArray(mergedPlugins) ? mergedPlugins : [];
     if (filter === 'installed') {
       list = list.filter((entry) => entry.installed);
@@ -314,7 +315,11 @@ function SubagentsManager({
     }
     if (!query) return list;
     return list.filter((entry) => {
-      const hay = `${entry?.id || ''} ${entry?.name || ''} ${entry?.description || ''} ${entry?.category || ''} ${(entry?.tags || []).join(' ')}`.toLowerCase().trim();
+      const hay = normalizeKey(
+        `${entry?.id || ''} ${entry?.name || ''} ${entry?.description || ''} ${entry?.category || ''} ${(
+          entry?.tags || []
+        ).join(' ')}`
+      );
       return hay.includes(query);
     });
   }, [mergedPlugins, pluginFilter, pluginSearch]);

@@ -5,6 +5,7 @@ import {
   normalizeMcpServerName,
   normalizePromptLanguage,
 } from '../../shared/mcp-utils.js';
+import { normalizeKey } from '../../shared/text-utils.js';
 
 export function buildMcpPromptBundles({ prompts = [], mcpServers = [], language } = {}) {
   const lang = normalizePromptLanguage(language);
@@ -15,7 +16,7 @@ export function buildMcpPromptBundles({ prompts = [], mcpServers = [], language 
     if (!isMcpPromptName(prompt.name)) return;
     const content = typeof prompt.content === 'string' ? prompt.content.trim() : '';
     if (!content) return;
-    const name = String(prompt.name || '').trim().toLowerCase();
+    const name = normalizeKey(prompt.name);
     if (!name) return;
     promptMap.set(name, content);
   });
@@ -31,8 +32,8 @@ export function buildMcpPromptBundles({ prompts = [], mcpServers = [], language 
     const missingPromptNames = [];
     servers.forEach((server) => {
       if (!predicate(server)) return;
-      const preferredName = getMcpPromptNameForServer(server.name, lang).toLowerCase();
-      const fallbackName = getMcpPromptNameForServer(server.name).toLowerCase();
+      const preferredName = normalizeKey(getMcpPromptNameForServer(server.name, lang));
+      const fallbackName = normalizeKey(getMcpPromptNameForServer(server.name));
       const candidates = preferredName === fallbackName ? [preferredName] : [preferredName, fallbackName];
       let resolved = '';
       let usedName = preferredName;

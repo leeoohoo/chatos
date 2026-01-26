@@ -1,5 +1,6 @@
 import { normalizeId } from './normalize.js';
 import { getRegistryCenter } from '../backend/registry-center.js';
+import { normalizeKey } from '../../packages/common/text-utils.js';
 
 export function createUiAppRegistryHelpers({ uiApps, adminServices } = {}) {
   const resolveUiAppAi =
@@ -36,7 +37,6 @@ export function createUiAppRegistryHelpers({ uiApps, adminServices } = {}) {
     return uiAppsTrustMap.get(pid) === true;
   };
 
-  const normalizeRegistryName = (value) => String(value || '').trim().toLowerCase();
   const resolveUiAppRegistryAccess = (pluginId, appId) => {
     if (!registry) return null;
     const pid = normalizeId(pluginId);
@@ -58,12 +58,14 @@ export function createUiAppRegistryHelpers({ uiApps, adminServices } = {}) {
     const serversByName = new Map(
       servers
         .filter((srv) => srv?.name)
-        .map((srv) => [normalizeRegistryName(srv.name), srv])
+        .map((srv) => [normalizeKey(srv.name), srv])
+        .filter(([key]) => key)
     );
     const promptsByName = new Map(
       prompts
         .filter((p) => p?.name)
-        .map((p) => [normalizeRegistryName(p.name), p])
+        .map((p) => [normalizeKey(p.name), p])
+        .filter(([key]) => key)
     );
     const serversById = new Map(
       servers

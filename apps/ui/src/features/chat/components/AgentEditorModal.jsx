@@ -4,7 +4,7 @@ import { FolderOpenOutlined } from '@ant-design/icons';
 
 import { api, hasApi } from '../../../lib/api.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from 'mcp-utils.js';
-import { normalizeId } from 'text-utils.js';
+import { normalizeId, normalizeKey, uniqueIds } from 'text-utils.js';
 
 const { Text } = Typography;
 
@@ -77,18 +77,6 @@ export function AgentEditorModal({
     }),
     []
   );
-
-  const uniqueIds = (list) => {
-    const out = [];
-    const seen = new Set();
-    (Array.isArray(list) ? list : []).forEach((item) => {
-      const v = normalizeId(item);
-      if (!v || seen.has(v)) return;
-      seen.add(v);
-      out.push(v);
-    });
-    return out;
-  };
 
   const modelOptions = useMemo(
     () =>
@@ -518,7 +506,7 @@ export function AgentEditorModal({
     });
   }, [open, isFlowMode, form]);
   const filterOptionBySearch = (input, option) => {
-    const needle = String(input || '').trim().toLowerCase();
+    const needle = normalizeKey(input);
     if (!needle) return true;
     const raw =
       option?.searchText ||
@@ -530,7 +518,7 @@ export function AgentEditorModal({
       option?.label ||
       option?.data?.label ||
       '';
-    return String(raw || '').toLowerCase().includes(needle);
+    return normalizeKey(raw).includes(needle);
   };
   const renderMcpOption = (option) => {
     const data = option?.data && typeof option.data === 'object' ? option.data : {};

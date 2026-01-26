@@ -2,28 +2,23 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Button, Modal, Popconfirm, Space, Switch, Tag, Typography, message } from 'antd';
 
 import { EntityManager } from '../../../components/EntityManager.jsx';
+import { isMcpPromptName as isMcpPromptNameBase } from '../../../../mcp-utils.js';
+import { RESERVED_PROMPT_NAMES } from '../../../../prompt-utils.js';
+import { normalizeKey } from '../../../../text-utils.js';
 
 const { Paragraph, Text } = Typography;
 
 function PromptsManager({ data, onCreate, onUpdate, onDelete, loading, developerMode = false }) {
   const [restoringId, setRestoringId] = useState(null);
   const [showBuiltins, setShowBuiltins] = useState(false);
-  const normalizePromptName = useCallback((value) => String(value || '').trim().toLowerCase(), []);
+  const normalizePromptName = useCallback((value) => normalizeKey(value), []);
   const isMcpPromptName = useCallback(
-    (value) => {
-      const name = normalizePromptName(value);
-      return name.startsWith('mcp_');
-    },
-    [normalizePromptName]
-  );
-  const reservedPromptNames = useMemo(
-    () =>
-      new Set(['internal', 'internal_main', 'internal_subagent', 'default', 'user_prompt', 'subagent_user_prompt']),
+    (value) => isMcpPromptNameBase(value),
     []
   );
   const isReservedPromptName = useCallback(
-    (value) => reservedPromptNames.has(normalizePromptName(value)),
-    [normalizePromptName, reservedPromptNames]
+    (value) => RESERVED_PROMPT_NAMES.has(normalizePromptName(value)),
+    [normalizePromptName]
   );
   const showLocked = developerMode || showBuiltins;
   const visible = useMemo(() => {

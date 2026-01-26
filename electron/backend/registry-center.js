@@ -1,3 +1,5 @@
+import { normalizeString, uniqueStrings } from '../../packages/common/text-utils.js';
+
 function normalizeKey(value) {
   return String(value || '')
     .trim()
@@ -6,28 +8,12 @@ function normalizeKey(value) {
     .replace(/^_+|_+$/g, '');
 }
 
-function normalizeId(value) {
-  return String(value || '').trim();
-}
-
 function makeCompositeId(providerAppId, providerLocalId) {
   const provider = normalizeKey(providerAppId);
-  const local = normalizeId(providerLocalId);
+  const local = normalizeString(providerLocalId);
   if (!provider) throw new Error('providerAppId is required');
   if (!local) throw new Error('provider local id is required');
   return `${provider}::${local}`;
-}
-
-function uniqStrings(list) {
-  const out = [];
-  const seen = new Set();
-  (Array.isArray(list) ? list : []).forEach((item) => {
-    const v = String(item || '').trim();
-    if (!v || seen.has(v)) return;
-    seen.add(v);
-    out.push(v);
-  });
-  return out;
 }
 
 function sortByCreatedAtDesc(items) {
@@ -91,10 +77,10 @@ export class RegistryCenter {
     const providerAppId = normalizeKey(providerAppIdRaw);
     if (!providerAppId) throw new Error('providerAppId is required');
 
-    const providerServerId = normalizeId(serverConfig?.id || serverConfig?.name);
+    const providerServerId = normalizeString(serverConfig?.id || serverConfig?.name);
     if (!providerServerId) throw new Error('server id is required');
     const id = makeCompositeId(providerAppId, providerServerId);
-    const url = normalizeId(serverConfig?.url);
+    const url = normalizeString(serverConfig?.url);
     if (!url) throw new Error('server url is required');
 
     this.registerApp(providerAppId, { name: providerAppId });
@@ -104,10 +90,10 @@ export class RegistryCenter {
       id,
       provider_app_id: providerAppId,
       provider_server_id: providerServerId,
-      name: normalizeId(serverConfig?.name || providerServerId) || providerServerId,
+      name: normalizeString(serverConfig?.name || providerServerId) || providerServerId,
       url,
       description: typeof serverConfig?.description === 'string' ? serverConfig.description : '',
-      tags: uniqStrings(serverConfig?.tags),
+      tags: uniqueStrings(serverConfig?.tags),
       enabled: typeof serverConfig?.enabled === 'boolean' ? serverConfig.enabled : true,
       auth: serverConfig?.auth || undefined,
     };
@@ -122,11 +108,11 @@ export class RegistryCenter {
     const providerAppId = normalizeKey(providerAppIdRaw);
     if (!providerAppId) throw new Error('providerAppId is required');
 
-    const providerPromptId = normalizeId(promptConfig?.id || promptConfig?.name);
+    const providerPromptId = normalizeString(promptConfig?.id || promptConfig?.name);
     if (!providerPromptId) throw new Error('prompt id is required');
     const id = makeCompositeId(providerAppId, providerPromptId);
 
-    const name = normalizeId(promptConfig?.name || providerPromptId) || providerPromptId;
+    const name = normalizeString(promptConfig?.name || providerPromptId) || providerPromptId;
     const content = typeof promptConfig?.content === 'string' ? promptConfig.content : '';
     if (!content.trim()) throw new Error('prompt content is required');
 
@@ -140,7 +126,7 @@ export class RegistryCenter {
       name,
       title: typeof promptConfig?.title === 'string' ? promptConfig.title : '',
       content,
-      tags: uniqStrings(promptConfig?.tags),
+      tags: uniqueStrings(promptConfig?.tags),
     };
 
     if (existing) {
@@ -151,7 +137,7 @@ export class RegistryCenter {
 
   grantMcpServerAccess(appIdRaw, serverIdRaw) {
     const appId = normalizeKey(appIdRaw);
-    const serverId = normalizeId(serverIdRaw);
+    const serverId = normalizeString(serverIdRaw);
     if (!appId) throw new Error('appId is required');
     if (!serverId) throw new Error('serverId is required');
 
@@ -168,7 +154,7 @@ export class RegistryCenter {
 
   revokeMcpServerAccess(appIdRaw, serverIdRaw) {
     const appId = normalizeKey(appIdRaw);
-    const serverId = normalizeId(serverIdRaw);
+    const serverId = normalizeString(serverIdRaw);
     if (!appId) throw new Error('appId is required');
     if (!serverId) throw new Error('serverId is required');
     const id = `${appId}::${serverId}`;
@@ -177,7 +163,7 @@ export class RegistryCenter {
 
   hasMcpServerAccess(appIdRaw, serverIdRaw) {
     const appId = normalizeKey(appIdRaw);
-    const serverId = normalizeId(serverIdRaw);
+    const serverId = normalizeString(serverIdRaw);
     if (!appId || !serverId) return false;
     const id = `${appId}::${serverId}`;
     return Boolean(this.db.get(TABLES.mcpGrants, id));
@@ -185,7 +171,7 @@ export class RegistryCenter {
 
   grantPromptAccess(appIdRaw, promptIdRaw) {
     const appId = normalizeKey(appIdRaw);
-    const promptId = normalizeId(promptIdRaw);
+    const promptId = normalizeString(promptIdRaw);
     if (!appId) throw new Error('appId is required');
     if (!promptId) throw new Error('promptId is required');
 
@@ -202,7 +188,7 @@ export class RegistryCenter {
 
   revokePromptAccess(appIdRaw, promptIdRaw) {
     const appId = normalizeKey(appIdRaw);
-    const promptId = normalizeId(promptIdRaw);
+    const promptId = normalizeString(promptIdRaw);
     if (!appId) throw new Error('appId is required');
     if (!promptId) throw new Error('promptId is required');
     const id = `${appId}::${promptId}`;
@@ -211,7 +197,7 @@ export class RegistryCenter {
 
   hasPromptAccess(appIdRaw, promptIdRaw) {
     const appId = normalizeKey(appIdRaw);
-    const promptId = normalizeId(promptIdRaw);
+    const promptId = normalizeString(promptIdRaw);
     if (!appId || !promptId) return false;
     const id = `${appId}::${promptId}`;
     return Boolean(this.db.get(TABLES.promptGrants, id));
@@ -225,7 +211,7 @@ export class RegistryCenter {
     const granted = grants.filter((g) => g?.app_id === targetAppId).map((g) => g?.server_id).filter(Boolean);
     const allowed =
       Array.isArray(allowedServerIds) && allowedServerIds.length > 0
-        ? new Set(allowedServerIds.map((id) => normalizeId(id)).filter(Boolean))
+        ? new Set(allowedServerIds.map((id) => normalizeString(id)).filter(Boolean))
         : null;
     const grantedSet = new Set(granted.filter(Boolean));
 
@@ -246,7 +232,7 @@ export class RegistryCenter {
     const granted = grants.filter((g) => g?.app_id === targetAppId).map((g) => g?.prompt_id).filter(Boolean);
     const allowed =
       Array.isArray(allowedPromptIds) && allowedPromptIds.length > 0
-        ? new Set(allowedPromptIds.map((id) => normalizeId(id)).filter(Boolean))
+        ? new Set(allowedPromptIds.map((id) => normalizeString(id)).filter(Boolean))
         : null;
     const grantedSet = new Set(granted.filter(Boolean));
 

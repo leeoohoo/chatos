@@ -3,6 +3,7 @@ import path from 'path';
 import YAML from 'yaml';
 import { resolveSessionRoot } from '../shared/session-root.js';
 import { resolveAuthDir, resolveStateDirPath } from '../shared/state-paths.js';
+import { normalizeKey } from '../shared/text-utils.js';
 
 class ConfigError extends Error {
   constructor(message) {
@@ -91,7 +92,7 @@ function createAppConfigFromModels(modelsList = [], secretsList = []) {
   if (!Array.isArray(modelsList) || modelsList.length === 0) {
     throw new ConfigError('No models configured');
   }
-  const normalizeSecretName = (value) => String(value || '').trim().toLowerCase();
+  const normalizeSecretName = (value) => normalizeKey(value);
   const secretValueByName = new Map();
   (Array.isArray(secretsList) ? secretsList : []).forEach((secret) => {
     const name = normalizeSecretName(secret?.name);

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { normalizeTags } from './utils.js';
+import { normalizeKey } from '../../shared/text-utils.js';
 
 export async function confirmTaskCreation({
   createTtyPrompt,
@@ -146,7 +147,7 @@ export async function confirmTaskCreation({
         const current = out.priority && out.priority.trim() ? out.priority.trim() : 'medium';
         const pRaw = await tty.ask(`priority (high/medium/low) [${current}]: `, { signal });
         if (pRaw == null) return null;
-        const p = String(pRaw ?? '').trim().toLowerCase();
+        const p = normalizeKey(pRaw);
         if (!p) {
           out.priority = current;
           break;
@@ -162,7 +163,7 @@ export async function confirmTaskCreation({
         const current = out.status && out.status.trim() ? out.status.trim() : 'todo';
         const sRaw = await tty.ask(`status (todo/doing/blocked/done) [${current}]: `, { signal });
         if (sRaw == null) return null;
-        const s = String(sRaw ?? '').trim().toLowerCase();
+        const s = normalizeKey(sRaw);
         if (!s) {
           out.status = current;
           break;
@@ -205,7 +206,7 @@ export async function confirmTaskCreation({
 
     const first = await tty.ask('操作 (y/N/e): ', { signal });
     if (first == null) return null;
-    const action = String(first ?? '').trim().toLowerCase();
+    const action = normalizeKey(first);
     if (action === 'y' || action === 'yes') {
       return await confirmWithRemark(tasks);
     }

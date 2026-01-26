@@ -1,10 +1,6 @@
-function normalizeHostApp(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
+import { normalizeHostApp } from './state-core/utils.js';
+
+export { normalizeHostApp };
 
 export function getHostApp(env = process.env) {
   return normalizeHostApp(env?.MODEL_CLI_HOST_APP);

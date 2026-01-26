@@ -4,6 +4,9 @@ import os from 'os';
 import YAML from 'yaml';
 import { resolveSessionRoot } from '../shared/session-root.js';
 import { resolveAuthDir } from '../shared/state-paths.js';
+import { normalizePromptLanguage } from '../shared/mcp-utils.js';
+import { RESERVED_PROMPT_NAMES } from '../shared/prompt-utils.js';
+import { normalizeKey } from '../shared/text-utils.js';
 
 const DEFAULT_PROMPTS = {
   daily_coding: `你是终端内的资深全栈开发助手，帮助我实现功能、解释思路，输出风格：
@@ -41,17 +44,8 @@ const DEFAULT_SYSTEM_PROMPT = `<assistant_role>
   </behaviors>
 </assistant_role>`;
 
-const RESERVED_PROMPT_NAMES = new Set([
-  'internal',
-  'internal_main',
-  'internal_subagent',
-  'default',
-  'user_prompt',
-  'subagent_user_prompt',
-]);
-
 function normalizePromptName(value) {
-  return String(value || '').trim().toLowerCase();
+  return normalizeKey(value);
 }
 
 function isReservedPromptName(name) {
@@ -332,11 +326,6 @@ function loadSystemPromptConfig(configPath) {
 }
 
 function loadSystemPromptFromDb(promptsList = [], options = {}) {
-  const normalizePromptLanguage = (value) => {
-    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (raw === 'zh' || raw === 'en') return raw;
-    return '';
-  };
   const language = normalizePromptLanguage(options?.language);
   const promptList = Array.isArray(promptsList) ? promptsList : [];
   const resolveUseInMain = (_prompt) => true;

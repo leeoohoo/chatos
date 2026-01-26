@@ -4,6 +4,7 @@ import { Button, Space, Typography, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 
 import { copyPlainText } from '../lib/clipboard.js';
+import { normalizeKey } from '../../text-utils.js';
 
 const { Text } = Typography;
 
@@ -12,7 +13,7 @@ const MAX_AUTO_DETECT_CHARS = 20_000;
 
 function normalizeHighlightLanguage(language) {
   if (!language) return null;
-  const value = String(language).trim().toLowerCase();
+  const value = normalizeKey(language);
   if (!value) return null;
   if (value === 'text') return 'plaintext';
   if (value === 'shell') return 'bash';

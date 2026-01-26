@@ -20,7 +20,9 @@ import { isContextLengthError } from '../../packages/common/error-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { appendPromptBlock } from '../../packages/common/prompt-utils.js';
 import { applySecretsToProcessEnv } from '../../packages/common/secrets-env.js';
+import { normalizeKey, uniqueIds } from '../../packages/common/text-utils.js';
 import { extractTraceMeta } from '../../packages/common/trace-utils.js';
+import { readRegistrySnapshot } from '../../packages/common/admin-data/registry-utils.js';
 import { resolveEngineModule } from '../../src/engine-loader.js';
 import { resolveEngineRoot } from '../../src/engine-paths.js';
 
@@ -78,18 +80,6 @@ async function loadEngineDeps() {
     };
   })();
   return engineDepsPromise;
-}
-
-function uniqueIds(list) {
-  const out = [];
-  const seen = new Set();
-  (Array.isArray(list) ? list : []).forEach((item) => {
-    const value = normalizeId(item);
-    if (!value || seen.has(value)) return;
-    seen.add(value);
-    out.push(value);
-  });
-  return out;
 }
 
 function applyRuntimeSettingsToEnv(runtimeConfig) {
@@ -274,23 +264,6 @@ function buildChatSessionFromMessages({
     }
   });
   return chatSession;
-}
-
-function readRegistrySnapshot(services) {
-  const db = services?.mcpServers?.db || services?.prompts?.db || null;
-  if (!db || typeof db.list !== 'function') {
-    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
-  }
-  try {
-    return {
-      mcpServers: db.list('registryMcpServers') || [],
-      prompts: db.list('registryPrompts') || [],
-      mcpGrants: db.list('mcpServerGrants') || [],
-      promptGrants: db.list('promptGrants') || [],
-    };
-  } catch {
-    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
-  }
 }
 
 export function createChatRunner({
@@ -623,7 +596,8 @@ export function createChatRunner({
     const serverByName = new Map(
       (Array.isArray(mcpServers) ? mcpServers : [])
         .filter((srv) => srv?.name && srv?.id)
-        .map((srv) => [String(srv.name).trim().toLowerCase(), srv])
+        .map((srv) => [normalizeKey(srv.name), srv])
+        .filter(([key]) => key)
     );
     const promptById = new Map(
       (Array.isArray(prompts) ? prompts : [])
@@ -633,7 +607,8 @@ export function createChatRunner({
     const promptByName = new Map(
       (Array.isArray(prompts) ? prompts : [])
         .filter((p) => p?.name)
-        .map((p) => [String(p.name).trim().toLowerCase(), p])
+        .map((p) => [normalizeKey(p.name), p])
+        .filter(([key]) => key)
     );
     const isFlowMode = agentMode === 'flow';
     let landSelection = null;
@@ -727,9 +702,7 @@ export function createChatRunner({
             const adminServer = serverById.get(id);
             if (adminServer) {
               if (registryAccess) {
-                const allowedByName = registryAccess.serversByName.get(
-                  String(adminServer?.name || '').trim().toLowerCase()
-                );
+                const allowedByName = registryAccess.serversByName.get(normalizeKey(adminServer?.name));
                 if (allowedByName) {
                   explicitAllowedIds.push(id);
                 }
@@ -773,8 +746,9 @@ export function createChatRunner({
             });
           }
         } else {
-          const srv = serverByName.get(serverName.toLowerCase());
-          const registryAllowed = registryAccess?.serversByName?.get(serverName.toLowerCase()) || null;
+          const serverKey = normalizeKey(serverName);
+          const srv = serverByName.get(serverKey);
+          const registryAllowed = registryAccess?.serversByName?.get(serverKey) || null;
           if (srv?.id) {
             if (registryAccess && !registryAllowed) {
               deniedUiAppServers.push(serverName);
@@ -851,9 +825,7 @@ export function createChatRunner({
             const adminPrompt = promptById.get(id);
             if (adminPrompt) {
               if (registryAccess) {
-                const allowedByName = registryAccess.promptsByName.get(
-                  String(adminPrompt?.name || '').trim().toLowerCase()
-                );
+                const allowedByName = registryAccess.promptsByName.get(normalizeKey(adminPrompt?.name));
                 if (allowedByName) {
                   explicitAllowedPromptIds.push(id);
                 } else {
@@ -902,7 +874,7 @@ export function createChatRunner({
             deniedUiAppPrompts.push(preferredName);
             continue;
           }
-          const allowedName = String(allowedPrompt?.name || '').trim().toLowerCase() || preferredName;
+          const allowedName = normalizeKey(allowedPrompt?.name) || preferredName;
           const localPrompt = promptByName.get(allowedName);
           const localContent = typeof localPrompt?.content === 'string' ? localPrompt.content.trim() : '';
           if (localContent) {

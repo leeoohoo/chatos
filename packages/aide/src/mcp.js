@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as colors from './colors.js';
+import { normalizeHostApp } from '../shared/host-app.js';
+import { normalizeKey } from '../shared/text-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,35 +14,23 @@ function resolveMcpPath(configPath) {
   return path.join(baseDir, 'mcp.config.json');
 }
 
-function normalizeHostAppName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-function normalizeTag(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
 function isUiAppServer(entry) {
   const tags = Array.isArray(entry?.tags) ? entry.tags : [];
   return tags
-    .map(normalizeTag)
+    .map(normalizeKey)
     .filter(Boolean)
     .some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
 }
 
 function filterServersForRuntime(servers) {
   const list = Array.isArray(servers) ? servers : [];
-  const host = normalizeHostAppName(process.env.MODEL_CLI_HOST_APP || 'chatos');
+  const host = normalizeHostApp(process.env.MODEL_CLI_HOST_APP || 'chatos');
   if (!host) return list;
   return list.filter((entry) => {
     const uiapp = isUiAppServer(entry);
     // UI Apps 的 MCP servers 仅供 ChatOS(host=chatos) 使用，避免被 AIDE 等独立 host 误接入。
     if (uiapp && host !== 'chatos') return false;
-    const explicit = normalizeHostAppName(entry?.app_id || entry?.appId);
+    const explicit = normalizeHostApp(entry?.app_id || entry?.appId);
     const resolved = explicit || (uiapp ? 'chatos' : host);
     return resolved === host;
   });
@@ -68,10 +58,10 @@ function loadMcpConfig(configPath) {
       });
       writeMcpFile(target, allServers);
     } else {
-      const existing = new Set(allServers.map((entry) => String(entry.name || '').toLowerCase()));
+      const existing = new Set(allServers.map((entry) => normalizeKey(entry.name)).filter(Boolean));
       const added = [];
       defaults.forEach((entry) => {
-        const key = String(entry.name || '').toLowerCase();
+        const key = normalizeKey(entry.name);
         if (!key || existing.has(key)) return;
         allServers.push(entry);
         existing.add(key);
@@ -271,11 +261,12 @@ function shouldRefreshLegacyServers(servers, baseDir, defaults = []) {
   }
   const builtinNames = new Set(
     (Array.isArray(defaults) ? defaults : [])
-      .map((entry) => String(entry?.name || '').trim().toLowerCase())
+      .map((entry) => normalizeKey(entry?.name))
       .filter(Boolean)
   );
   return servers.some((entry) => {
-    if (builtinNames.size > 0 && !builtinNames.has(String(entry?.name || '').trim().toLowerCase())) {
+    const key = normalizeKey(entry?.name);
+    if (builtinNames.size > 0 && !builtinNames.has(key)) {
       return false;
     }
     const scriptPath = resolveScriptPath(entry.url, baseDir);
@@ -365,14 +356,10 @@ function shellSplit(input) {
   return tokens;
 }
 
-function normalizeServerKey(name) {
-  return String(name || '').trim().toLowerCase();
-}
-
 function refreshWithDefaultsPreservingUserConfig({ existing = [], defaults = [], baseDir = '' } = {}) {
   const existingMap = new Map();
   existing.forEach((entry) => {
-    const key = normalizeServerKey(entry?.name);
+    const key = normalizeKey(entry?.name);
     if (!key || existingMap.has(key)) return;
     existingMap.set(key, entry);
   });
@@ -380,7 +367,7 @@ function refreshWithDefaultsPreservingUserConfig({ existing = [], defaults = [],
   const used = new Set();
   const merged = [];
   defaults.forEach((def) => {
-    const key = normalizeServerKey(def?.name);
+    const key = normalizeKey(def?.name);
     const prev = key ? existingMap.get(key) : null;
     if (!prev) {
       merged.push(def);
@@ -409,7 +396,7 @@ function refreshWithDefaultsPreservingUserConfig({ existing = [], defaults = [],
 
   // Preserve any non-built-in servers that were present in the user's config.
   existing.forEach((entry) => {
-    const key = normalizeServerKey(entry?.name);
+    const key = normalizeKey(entry?.name);
     if (!key || used.has(key)) return;
     merged.push(entry);
   });

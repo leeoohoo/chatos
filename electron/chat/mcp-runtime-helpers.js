@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { normalizeId } from './normalize.js';
+import { normalizeKey } from '../../packages/common/text-utils.js';
 
 export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
   const computeMcpSignature = ({ servers, skipServers, baseDir, mode } = {}) => {
@@ -15,7 +16,7 @@ export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
     const list = Array.isArray(servers) ? servers : [];
     const items = list
       .map((entry) => {
-        const name = typeof entry?.name === 'string' ? entry.name.trim().toLowerCase() : '';
+        const name = normalizeKey(entry?.name);
         const url = typeof entry?.url === 'string' ? entry.url.trim() : '';
         if (!name || !url) return null;
         const enabled = entry?.enabled !== false ? '1' : '0';
@@ -26,7 +27,7 @@ export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
               ? entry.apiKeyEnv.trim()
               : '';
         const tags = Array.isArray(entry?.tags)
-          ? entry.tags.map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean).sort().join(',')
+          ? entry.tags.map((tag) => normalizeKey(tag)).filter(Boolean).sort().join(',')
           : '';
         const auth = entry?.auth && typeof entry.auth === 'object' ? toJson(entry.auth) : '';
         const callMeta =
@@ -41,7 +42,7 @@ export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
       .sort((a, b) => a.localeCompare(b));
     const skips = Array.isArray(skipServers)
       ? skipServers
-          .map((value) => String(value || '').trim().toLowerCase())
+          .map((value) => normalizeKey(value))
           .filter(Boolean)
           .sort((a, b) => a.localeCompare(b))
       : [];
@@ -104,7 +105,7 @@ export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
     const add = (entry) => {
       const normalized = normalizeRuntimeServerEntry(entry);
       if (!normalized) return;
-      const key = normalized.name.toLowerCase();
+      const key = normalizeKey(normalized.name);
       if (!key || seen.has(key)) return;
       seen.add(key);
       out.push(normalized);

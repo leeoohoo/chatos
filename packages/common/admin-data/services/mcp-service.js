@@ -1,6 +1,8 @@
 import { BaseService } from './base-service.js';
 import { mcpServerSchema } from '../schema.js';
-import { getHostApp } from '../../host-app.js';
+import { getHostApp, normalizeHostApp } from '../../host-app.js';
+import { normalizeMcpServerName } from '../../mcp-utils.js';
+import { normalizeKey } from '../../text-utils.js';
 
 export class McpService extends BaseService {
   constructor(db) {
@@ -10,17 +12,13 @@ export class McpService extends BaseService {
   }
 
   #normalizeAppId(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+    return normalizeHostApp(value);
   }
 
   #isUiAppServer(record) {
     const tags = Array.isArray(record?.tags) ? record.tags : [];
     return tags
-      .map((tag) => String(tag || '').trim().toLowerCase())
+      .map((tag) => normalizeKey(tag))
       .filter(Boolean)
       .some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
   }
@@ -58,11 +56,7 @@ export class McpService extends BaseService {
   }
 
   normalizeName(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+    return normalizeMcpServerName(value);
   }
 
   #matchesApp(record) {

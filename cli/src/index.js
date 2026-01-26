@@ -28,6 +28,8 @@ import { ensureAppStateDir, resolveAppStateDir } from '../../packages/aide/share
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/aide/shared/host-app.js';
 import { appendPromptBlock } from '../../packages/aide/shared/prompt-utils.js';
 import { createRuntimeLogger } from '../../packages/aide/shared/runtime-log.js';
+import { normalizeKey } from '../../packages/aide/shared/text-utils.js';
+import { readRegistrySnapshot } from '../../packages/common/admin-data/registry-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -361,23 +363,6 @@ function runListModels() {
   console.log(renderModelsTable(config));
 }
 
-function readRegistrySnapshot(services) {
-  const db = services?.mcpServers?.db || services?.prompts?.db || null;
-  if (!db || typeof db.list !== 'function') {
-    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
-  }
-  try {
-    return {
-      mcpServers: db.list('registryMcpServers') || [],
-      prompts: db.list('registryPrompts') || [],
-      mcpGrants: db.list('mcpServerGrants') || [],
-      promptGrants: db.list('promptGrants') || [],
-    };
-  } catch {
-    return { mcpServers: [], prompts: [], mcpGrants: [], promptGrants: [] };
-  }
-}
-
 async function runChat(options) {
   let resolvedOptions = { ...options };
   // Ensure status exists early so UI can enqueue control commands while initialization is running.
@@ -473,21 +458,20 @@ async function runChat(options) {
   try {
     // 使用会话根（默认主目录或显式指定的 MODEL_CLI_SESSION_ROOT）作为 MCP 状态根，
     // 工作目录仍由 mcp.config 中的 --root 结合当前工作目录解析。
-    const normalizeServerKey = (value) => String(value || '').trim().toLowerCase();
     const selectedServerKeys = landSelection
       ? new Set(
           [
             ...(landSelection.main?.selectedServers || []),
             ...(landSelection.sub?.selectedServers || []),
           ]
-            .map((entry) => normalizeServerKey(entry?.server?.name))
+            .map((entry) => normalizeKey(entry?.server?.name))
             .filter(Boolean)
         )
       : null;
     const skipServers = landSelection
       ? Array.isArray(mcpSummary?.servers)
         ? mcpSummary.servers
-            .filter((srv) => srv?.name && !selectedServerKeys.has(normalizeServerKey(srv.name)))
+            .filter((srv) => srv?.name && !selectedServerKeys.has(normalizeKey(srv.name)))
             .map((srv) => srv.name)
         : []
       : [];

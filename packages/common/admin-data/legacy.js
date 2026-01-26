@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import YAML from 'yaml';
 import { DEFAULT_RUNTIME_SETTINGS } from './schema.js';
 import { getHostApp } from '../host-app.js';
+import { normalizeKey } from '../text-utils.js';
 
 export function safeRead(filePath) {
   try {
@@ -353,7 +354,7 @@ export function buildAdminSeed(defaultPaths = {}) {
     seed.mcpServers = parseMcpServers(raw).map((item) => {
       const tags = Array.isArray(item?.tags) ? item.tags : [];
       const isUiApp = tags
-        .map((tag) => String(tag || '').trim().toLowerCase())
+        .map((tag) => normalizeKey(tag))
         .filter(Boolean)
         .some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
       const inferredAppId = String(item?.app_id || '').trim() || (isUiApp ? 'chatos' : hostApp);

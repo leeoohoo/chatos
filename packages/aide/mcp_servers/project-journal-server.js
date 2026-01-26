@@ -688,14 +688,6 @@ function normalizeStringArray(value) {
   return out;
 }
 
-function normalizeHostApp(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 function createWriteQueue() {
   let chain = Promise.resolve();
   return (fn) => {

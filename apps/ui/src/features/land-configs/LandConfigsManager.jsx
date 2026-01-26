@@ -4,35 +4,19 @@ import { PlusOutlined } from '@ant-design/icons';
 
 import { api, hasApi } from '../../lib/api.js';
 import { useUiAppsRegistry } from '../apps/hooks/useUiAppsRegistry.js';
+import { getMcpPromptNameForServer, normalizeMcpServerName } from 'mcp-utils.js';
+import { RESERVED_PROMPT_NAMES } from 'prompt-utils.js';
+import { normalizeKey } from 'text-utils.js';
 
 const { Title, Paragraph, Text } = Typography;
 
-const RESERVED_PROMPT_NAMES = new Set([
-  'internal',
-  'internal_main',
-  'internal_subagent',
-  'default',
-  'user_prompt',
-  'subagent_user_prompt',
-]);
-
-function normalizeKey(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function normalizeServerName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 function resolveMcpPromptNames(serverName) {
-  const normalized = normalizeServerName(serverName);
+  const normalized = normalizeMcpServerName(serverName);
   if (!normalized) return { zh: '', en: '' };
-  const base = `mcp_${normalized}`;
-  return { zh: base, en: `${base}__en` };
+  return {
+    zh: getMcpPromptNameForServer(normalized),
+    en: getMcpPromptNameForServer(normalized, 'en'),
+  };
 }
 
 function toAppKey(pluginId, appId) {

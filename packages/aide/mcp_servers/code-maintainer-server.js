@@ -13,6 +13,7 @@ import { ensureAppDbPath, resolveFileChangesPath } from '../shared/state-paths.j
 import { createToolResponder } from './shared/tool-helpers.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir } from './shared/fs-utils.js';
+import { booleanFromArg, resolveBoolFlag } from './shared/flags.js';
 
 const fsp = fs.promises;
 
@@ -430,23 +431,6 @@ function isBinaryBuffer(buffer, sampleSize = 512) {
     if (byte === 0) return true;
   }
   return false;
-}
-
-function booleanFromArg(value) {
-  if (value === true) return true;
-  const text = String(value || '').trim().toLowerCase();
-  if (!text) return false;
-  if (text === '1' || text === 'true' || text === 'yes' || text === 'y') return true;
-  return false;
-}
-
-function resolveBoolFlag(value, fallback = false) {
-  if (typeof value === 'boolean') return value;
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
 }
 
 function printHelp() {

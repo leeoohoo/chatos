@@ -2,6 +2,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Button, Popconfirm, Space, Switch, Tag, Typography, message } from 'antd';
 
 import { EntityManager } from '../../../components/EntityManager.jsx';
+import { getMcpPromptNameForServer, normalizeMcpServerName } from '../../../../mcp-utils.js';
+import { normalizeKey } from '../../../../text-utils.js';
 
 const { Paragraph, Text } = Typography;
 
@@ -26,23 +28,16 @@ function McpServersManager({
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw)) return { kind: 'url', label: 'URL', color: 'default' };
     return { kind: 'cmd', label: 'CMD', color: 'blue' };
   }, []);
-  const normalizeServerName = useCallback(
-    (value) =>
-      String(value || '')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '_')
-        .replace(/^_+|_+$/g, ''),
-    []
-  );
   const getPromptNames = useCallback(
     (value) => {
-      const normalizedName = normalizeServerName(value);
-      if (!normalizedName) return { zh: '', en: '' };
-      const base = `mcp_${normalizedName}`;
-      return { zh: base, en: `${base}__en` };
+      const normalized = normalizeMcpServerName(value);
+      if (!normalized) return { zh: '', en: '' };
+      return {
+        zh: getMcpPromptNameForServer(value),
+        en: getMcpPromptNameForServer(value, 'en'),
+      };
     },
-    [normalizeServerName]
+    []
   );
   const normalizePromptText = useCallback((value) => {
     if (typeof value !== 'string') return '';
@@ -85,7 +80,7 @@ function McpServersManager({
   const promptMap = useMemo(() => {
     const map = new Map();
     (Array.isArray(prompts) ? prompts : []).forEach((prompt) => {
-      const name = String(prompt?.name || '').trim().toLowerCase();
+      const name = normalizeKey(prompt?.name);
       if (!name) return;
       map.set(name, prompt);
     });
@@ -95,8 +90,8 @@ function McpServersManager({
     const list = Array.isArray(data) ? data : [];
     return list.map((item) => {
       const { zh: promptZhName, en: promptEnName } = getPromptNames(item?.name);
-      const promptZh = promptZhName ? promptMap.get(promptZhName.toLowerCase()) : null;
-      const promptEn = promptEnName ? promptMap.get(promptEnName.toLowerCase()) : null;
+      const promptZh = promptZhName ? promptMap.get(normalizeKey(promptZhName)) : null;
+      const promptEn = promptEnName ? promptMap.get(normalizeKey(promptEnName)) : null;
       const timeoutPreset = normalizeTimeoutPreset(item?.timeout_ms);
       const timeoutCustom = normalizeTimeoutCustom(item?.timeout_ms);
       const maxTimeoutPreset = normalizeTimeoutPreset(item?.max_timeout_ms);
@@ -136,8 +131,8 @@ function McpServersManager({
   const canManagePrompts = Boolean(promptActions?.create && promptActions?.update);
   const resolvePromptRecord = useCallback(
     (name, fallback) => {
-      const primaryKey = typeof name === 'string' ? name.trim().toLowerCase() : '';
-      const fallbackKey = typeof fallback === 'string' ? fallback.trim().toLowerCase() : '';
+      const primaryKey = normalizeKey(name);
+      const fallbackKey = normalizeKey(fallback);
       if (primaryKey && promptMap.has(primaryKey)) return promptMap.get(primaryKey);
       if (fallbackKey && promptMap.has(fallbackKey)) return promptMap.get(fallbackKey);
       return null;

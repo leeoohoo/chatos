@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { normalizeKey } from '../text-utils.js';
 
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const DEFAULT_LOCK_STALE_MS = 30_000;
@@ -714,7 +715,7 @@ export function createDb({
   if (!resolvedDriver || !resolvedDriver.type) {
     throw new Error('DB driver is required: pass { driver }');
   }
-  const driverType = String(resolvedDriver.type || '').trim().toLowerCase();
+  const driverType = normalizeKey(resolvedDriver.type);
   if (driverType === 'sql.js' || driverType === 'sqljs') {
     return createSqlJsDb({ SQL: resolvedDriver.SQL || SQL, dbPath, seed, migrateFromJson, legacyJsonPath, lock });
   }

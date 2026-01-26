@@ -7,6 +7,8 @@ import { resolveUiAppsAi, syncUiAppsAiContributes } from './ai.js';
 import { getRegistryCenter } from '../backend/registry-center.js';
 import { createRuntimeLogger } from '../../packages/common/state-core/runtime-log.js';
 import { resolveBoolEnv } from '../shared/env-utils.js';
+import { uniqueStrings } from '../../packages/common/text-utils.js';
+import { readPromptSource } from './prompt-source.js';
 
 const DEFAULT_MANIFEST_FILE = 'plugin.json';
 const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
@@ -231,48 +233,28 @@ class UiAppsManager {
     const ai = app?.ai && typeof app.ai === 'object' ? app.ai : null;
     if (!ai) return null;
 
-    const resolvePathWithinPlugin = (rel, label) => {
-      const relPath = typeof rel === 'string' ? rel.trim() : '';
-      if (!relPath) return null;
-      const resolved = path.resolve(pluginDir, relPath);
-      const relative = path.relative(pluginDir, resolved);
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-        throw new Error(`${label} must be within plugin directory`);
-      }
-      return resolved;
-    };
-
-    const readPromptSource = (source, label) => {
-      if (!source || typeof source !== 'object') return '';
-      const content = typeof source?.content === 'string' ? source.content : '';
-      if (content && content.trim()) return content.trim();
-      const relPath = typeof source?.path === 'string' ? source.path : '';
-      if (!relPath) return '';
-      const resolved = resolvePathWithinPlugin(relPath, label);
-      if (!resolved) return '';
-      const stat = fs.statSync(resolved);
-      if (!stat.isFile()) {
-        throw new Error(`${label} must be a file: ${relPath}`);
-      }
-      if (stat.size > this.maxPromptBytes) {
-        throw new Error(`${label} too large (${stat.size} bytes): ${relPath}`);
-      }
-      const raw = fs.readFileSync(resolved, 'utf8');
-      return String(raw || '').trim();
-    };
-
     const mcp = ai?.mcp && typeof ai.mcp === 'object' ? ai.mcp : null;
     const mcpPrompt = ai?.mcpPrompt && typeof ai.mcpPrompt === 'object' ? ai.mcpPrompt : null;
     let zh = '';
     let en = '';
     if (mcpPrompt) {
       try {
-        zh = readPromptSource(mcpPrompt.zh, 'ai.mcpPrompt.zh');
+        zh = readPromptSource({
+          pluginDir,
+          source: mcpPrompt.zh,
+          label: 'ai.mcpPrompt.zh',
+          maxPromptBytes: this.maxPromptBytes,
+        });
       } catch {
         zh = '';
       }
       try {
-        en = readPromptSource(mcpPrompt.en, 'ai.mcpPrompt.en');
+        en = readPromptSource({
+          pluginDir,
+          source: mcpPrompt.en,
+          label: 'ai.mcpPrompt.en',
+          maxPromptBytes: this.maxPromptBytes,
+        });
       } catch {
         en = '';
       }
@@ -521,48 +503,6 @@ class UiAppsManager {
     }
     if (!registry) return;
 
-    const uniqStrings = (list) => {
-      const out = [];
-      const seen = new Set();
-      (Array.isArray(list) ? list : []).forEach((item) => {
-        const v = String(item || '').trim();
-        if (!v || seen.has(v)) return;
-        seen.add(v);
-        out.push(v);
-      });
-      return out;
-    };
-
-    const resolvePathWithinPlugin = (pluginDir, rel, label) => {
-      const relPath = typeof rel === 'string' ? rel.trim() : '';
-      if (!relPath) return null;
-      const resolved = path.resolve(pluginDir, relPath);
-      const relative = path.relative(pluginDir, resolved);
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-        throw new Error(`${label} must be within plugin directory`);
-      }
-      return resolved;
-    };
-
-    const readPromptSource = (pluginDir, source, label) => {
-      if (!source) return '';
-      const content = typeof source?.content === 'string' ? source.content : '';
-      if (content && content.trim()) return content.trim();
-      const relPath = typeof source?.path === 'string' ? source.path : '';
-      if (!relPath) return '';
-      const resolved = resolvePathWithinPlugin(pluginDir, relPath, label);
-      if (!resolved) return '';
-      const stat = fs.statSync(resolved);
-      if (!stat.isFile()) {
-        throw new Error(`${label} must be a file: ${relPath}`);
-      }
-      if (stat.size > this.maxPromptBytes) {
-        throw new Error(`${label} too large (${stat.size} bytes): ${relPath}`);
-      }
-      const raw = fs.readFileSync(resolved, 'utf8');
-      return String(raw || '').trim();
-    };
-
     pluginsInternal.forEach((plugin) => {
       const pluginId = typeof plugin?.id === 'string' ? plugin.id.trim() : '';
       const pluginDir = typeof plugin?.pluginDir === 'string' ? plugin.pluginDir : '';
@@ -588,7 +528,7 @@ class UiAppsManager {
 
         const mcp = ai?.mcp && typeof ai.mcp === 'object' ? ai.mcp : null;
         if (mcp?.name && mcp?.url) {
-          const desiredTags = uniqStrings([
+          const desiredTags = uniqueStrings([
             ...(Array.isArray(mcp.tags) ? mcp.tags : []),
             'uiapp',
             `uiapp:${pluginId}`,
@@ -651,10 +591,15 @@ class UiAppsManager {
           ].filter((v) => v?.source && v?.name);
 
           variants.forEach((variant) => {
-            let content = '';
-            try {
-              content = readPromptSource(pluginDir, variant.source, variant.label);
-            } catch (err) {
+          let content = '';
+          try {
+            content = readPromptSource({
+              pluginDir,
+              source: variant.source,
+              label: variant.label,
+              maxPromptBytes: this.maxPromptBytes,
+            });
+          } catch (err) {
               errors.push({
                 dir: pluginDir,
                 source: 'registry',

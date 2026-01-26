@@ -18,21 +18,14 @@ import { resolveSessionRoot } from '../shared/session-root.js';
 import { createToolResponder } from './shared/tool-helpers.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
+import { resolveBoolFlag } from './shared/flags.js';
+import { normalizeKey } from '../shared/text-utils.js';
 
 const execAsync = promisify(exec);
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
   printHelp();
   process.exit(0);
-}
-
-function resolveBoolFlag(value, fallback = false) {
-  if (typeof value === 'boolean') return value;
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
 }
 
 function normalizeShellSafetyMode(value) {
@@ -609,7 +602,7 @@ function analyzeShellCommand(commandText = '') {
 }
 
 function isSafeGitPreviewCommand(commandText) {
-  const cmd = String(commandText || '').trim().toLowerCase();
+  const cmd = normalizeKey(commandText);
   if (!cmd) return false;
   if (cmd.startsWith('git ') || cmd === 'git') return false;
   if (/\bgit\s+/.test(cmd)) return false;
@@ -626,7 +619,7 @@ async function canPreviewGitDiff(workingDir) {
       maxBuffer: 512 * 1024,
       shell: defaultShell,
     });
-    if (!String(stdout || '').trim().toLowerCase().includes('true')) {
+    if (!normalizeKey(stdout).includes('true')) {
       return false;
     }
   } catch {

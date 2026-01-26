@@ -1,6 +1,7 @@
 import { buildUserMessageContent } from '../../packages/common/chat-utils.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from '../../packages/common/mcp-utils.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../packages/common/host-app.js';
+import { normalizeKey } from '../../packages/common/text-utils.js';
 import { normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './normalize.js';
 
 export { buildUserMessageContent };
@@ -22,8 +23,8 @@ export function buildSystemPrompt({
   const promptById = new Map((Array.isArray(prompts) ? prompts : []).map((p) => [p.id, p]));
   const promptByName = new Map(
     (Array.isArray(prompts) ? prompts : [])
-      .filter((p) => p?.name)
-      .map((p) => [String(p.name).trim().toLowerCase(), p])
+      .map((p) => [normalizeKey(p?.name), p])
+      .filter(([key]) => key)
   );
   const promptSections = (Array.isArray(agentRecord.promptIds) ? agentRecord.promptIds : [])
     .map((id) => promptById.get(id))
@@ -32,14 +33,14 @@ export function buildSystemPrompt({
   const selectedPromptNames = new Set(
     (Array.isArray(agentRecord.promptIds) ? agentRecord.promptIds : [])
       .map((id) => promptById.get(id))
-      .map((p) => String(p?.name || '').trim().toLowerCase())
+      .map((p) => normalizeKey(p?.name))
       .filter(Boolean)
   );
 
   const extraPromptSections = [];
   const addedExtra = new Set();
   (Array.isArray(extraPromptNames) ? extraPromptNames : []).forEach((name) => {
-    const key = String(name || '').trim().toLowerCase();
+    const key = normalizeKey(name);
     if (!key || selectedPromptNames.has(key) || addedExtra.has(key)) return;
     const record = promptByName.get(key);
     const content = typeof record?.content === 'string' ? record.content.trim() : '';
@@ -73,8 +74,8 @@ export function buildSystemPrompt({
   if (autoMcpPrompts && selectedMcp.length > 0) {
     const lang = normalizePromptLanguage(language);
     selectedMcp.forEach((server) => {
-      const preferredName = getMcpPromptNameForServer(server?.name, lang).toLowerCase();
-      const fallbackName = getMcpPromptNameForServer(server?.name).toLowerCase();
+      const preferredName = normalizeKey(getMcpPromptNameForServer(server?.name, lang));
+      const fallbackName = normalizeKey(getMcpPromptNameForServer(server?.name));
       const candidates = preferredName === fallbackName ? [preferredName] : [preferredName, fallbackName];
       for (const name of candidates) {
         if (selectedPromptNames.has(name)) continue;

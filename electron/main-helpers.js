@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { normalizeHostApp } from '../packages/common/host-app.js';
 import { getMcpPromptNamesForServer } from '../packages/common/mcp-utils.js';
+import { normalizeKey } from '../packages/common/text-utils.js';
 
 export function ensureAllSubagentsInstalled({ installedSubagentsPath, pluginsDirList, enableAllSubagents = false }) {
   if (!installedSubagentsPath) return;
@@ -84,14 +86,8 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
   const stateDirPath = typeof stateDir === 'string' ? stateDir : '';
   const services = adminServices;
   if (!stateDirPath || !services?.mcpServers || !services?.prompts) return { removedServers: 0, removedPrompts: 0 };
-  const normalizeHost = (value) =>
-    String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
   const sourceEnv = env && typeof env === 'object' ? env : process.env;
-  const resolvedHost = normalizeHost(hostApp) || normalizeHost(sourceEnv.MODEL_CLI_HOST_APP);
+  const resolvedHost = normalizeHostApp(hostApp) || normalizeHostApp(sourceEnv.MODEL_CLI_HOST_APP);
   if (resolvedHost !== 'chatos') return { removedServers: 0, removedPrompts: 0 };
 
   const markerPath = path.join(stateDirPath, '.uiapps-ai-sync-purged.json');
@@ -103,7 +99,7 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
     // ignore marker fs errors
   }
 
-  const normalizeTag = (value) => String(value || '').trim().toLowerCase();
+  const normalizeTag = (value) => normalizeKey(value);
   const isUiAppTagged = (record) => {
     const tags = Array.isArray(record?.tags) ? record.tags : [];
     return tags.map(normalizeTag).filter(Boolean).some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
@@ -129,7 +125,7 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
       }
     });
     keys.forEach((key) => {
-      getMcpPromptNamesForServer(key).forEach((name) => promptNames.add(String(name || '').trim().toLowerCase()));
+      getMcpPromptNamesForServer(key).forEach((name) => promptNames.add(normalizeKey(name)));
     });
   };
 
@@ -165,7 +161,7 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
     }
     (Array.isArray(prompts) ? prompts : []).forEach((prompt) => {
       const id = prompt?.id;
-      const key = String(prompt?.name || '').trim().toLowerCase();
+      const key = normalizeKey(prompt?.name);
       if (!id || !key || !promptNames.has(key)) return;
       try {
         if (services.prompts.remove(id)) {

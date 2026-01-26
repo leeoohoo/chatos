@@ -1,14 +1,10 @@
 import { getMcpPromptNameForServer, normalizeMcpServerName } from './mcp/prompt-binding.js';
+import { normalizePromptLanguage as normalizePromptLanguageBase } from '../shared/mcp-utils.js';
+import { normalizeKey } from '../shared/text-utils.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../shared/host-app.js';
 
 function normalizePromptLanguage(value, fallback = 'zh') {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (raw === 'zh' || raw === 'en') return raw;
-  return fallback;
-}
-
-function normalizeKey(value) {
-  return String(value || '').trim().toLowerCase();
+  return normalizePromptLanguageBase(value) || fallback;
 }
 
 function ensureFlow(flow) {

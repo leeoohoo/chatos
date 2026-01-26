@@ -1,3 +1,5 @@
+import { normalizeKey } from './text-utils.js';
+
 export function normalizeMcpServerName(value) {
   return String(value || '')
     .trim()
@@ -25,6 +27,5 @@ export function getMcpPromptNamesForServer(serverName) {
 }
 
 export function isMcpPromptName(name) {
-  const normalized = String(name || '').trim().toLowerCase();
-  return normalized.startsWith('mcp_');
+  return normalizeKey(name).startsWith('mcp_');
 }

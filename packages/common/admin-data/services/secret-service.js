@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { BaseService } from './base-service.js';
 import { secretSchema } from '../schema.js';
+import { normalizeKey } from '../../text-utils.js';
 
 const SECRET_KEY_ENV = 'MODEL_CLI_SECRET_KEY';
 const SECRET_ENCRYPT_DISABLE_ENV = 'MODEL_CLI_SECRET_ENCRYPT';
@@ -146,7 +147,7 @@ export class SecretService extends BaseService {
   }
 
   #normalizeName(value) {
-    return String(value || '').trim().toLowerCase();
+    return normalizeKey(value);
   }
 
   #ensureUniqueName(currentId, name) {

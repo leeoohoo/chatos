@@ -19,6 +19,7 @@ import {
 } from '../shared/state-paths.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
+import { booleanFromArg, resolveBoolFlag } from './shared/flags.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -404,23 +405,6 @@ function normalizeResponseStatus(status) {
   }
   if (!value) return 'canceled';
   return 'canceled';
-}
-
-function booleanFromArg(value) {
-  if (value === true) return true;
-  const text = String(value || '').trim().toLowerCase();
-  if (!text) return false;
-  if (text === '1' || text === 'true' || text === 'yes' || text === 'y') return true;
-  return false;
-}
-
-function resolveBoolFlag(value, fallback = false) {
-  if (typeof value === 'boolean') return value;
-  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
 }
 
 function printHelp() {

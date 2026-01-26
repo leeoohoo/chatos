@@ -3,6 +3,7 @@ import { z } from 'zod/v4';
 import { getDefaultToolMaxTimeoutMs } from './timeouts.js';
 import { normalizeSessionId } from './identity-utils.js';
 import { buildFinalTextFromChunks } from '../../../../common/chat-stream-utils.js';
+import { normalizeKey } from '../../../shared/text-utils.js';
 
 const MCP_STREAM_NOTIFICATION_METHODS = [
   'codex_app.window_run.stream',
@@ -24,8 +25,8 @@ export const resolveMcpStreamTimeoutMs = (options) => {
 };
 
 export const shouldUseFinalStreamResult = (serverName, toolName) => {
-  const srv = String(serverName || '').trim().toLowerCase();
-  const tool = String(toolName || '').trim().toLowerCase();
+  const srv = normalizeKey(serverName);
+  const tool = normalizeKey(toolName);
   if (tool === 'codex_app_window_run') return true;
   if (srv.includes('codex_app') && tool.includes('window_run')) return true;
   return false;
