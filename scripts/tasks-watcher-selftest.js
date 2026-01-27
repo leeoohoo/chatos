@@ -62,11 +62,6 @@ async function main() {
   const defaultPaths = {
     defaultsRoot: cliRoot,
     models: path.join(authDir, 'models.yaml'),
-    systemPrompt: path.join(authDir, 'system-prompt.yaml'),
-    systemDefaultPrompt: path.join(authDir, 'system-default-prompt.yaml'),
-    systemUserPrompt: path.join(authDir, 'system-user-prompt.yaml'),
-    subagentSystemPrompt: path.join(authDir, 'subagent-system-prompt.yaml'),
-    subagentUserPrompt: path.join(authDir, 'subagent-user-prompt.yaml'),
     sessionReport: path.join(authDir, 'session-report.html'),
     events: path.join(stateDir, 'events.jsonl'),
     fileChanges: path.join(stateDir, 'file-changes.jsonl'),

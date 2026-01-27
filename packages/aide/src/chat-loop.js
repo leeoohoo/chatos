@@ -51,7 +51,8 @@ export async function chatLoop(initialClient, initialModel, session, options = {
   const summaryManager = createSummaryManager(options);
   let pendingSummaryNow = false;
   const subAgentManager = createSubAgentManager({
-    internalSystemPrompt: '',
+    internalSystemPrompt:
+      typeof options.internalSubagentPrompt === 'string' ? options.internalSubagentPrompt : '',
   });
   const updateSessionReport =
     typeof options.updateSessionReport === 'function' ? options.updateSessionReport : null;
@@ -311,6 +312,8 @@ export async function chatLoop(initialClient, initialModel, session, options = {
         rl,
         toolHistory,
         promptStore,
+        promptRecords: options.promptRecords,
+        promptLanguage: options.promptLanguage,
         summaryManager,
         subAgents: subAgentManager,
         userPrompt: userPromptText,

@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { getHomeDir } from '../utils.js';
-import { loadSystemPromptConfig, DEFAULT_INTERNAL_SYSTEM_PROMPT } from '../prompts.js';
+import { DEFAULT_INTERNAL_SYSTEM_PROMPT } from '../prompts.js';
 import { importClaudeCodePlugin, indexClaudeCodeMarketplace } from './marketplace-import.js';
 import { resolveAppStateDir, resolveStateDirPath, STATE_DIR_NAMES } from '../../shared/state-paths.js';
 
@@ -55,7 +55,6 @@ class SubAgentManager {
         ? options.internalSystemPrompt.trim()
         : options.internalSystemPrompt;
     this.internalPromptResolved = options.internalSystemPrompt !== undefined;
-    this.systemPromptPath = options.systemPromptPath || null;
   }
 
   listMarketplace() {
@@ -740,12 +739,7 @@ class SubAgentManager {
     if (this.internalPromptResolved) {
       return this.internalPrompt || '';
     }
-    try {
-      const config = loadSystemPromptConfig(this.systemPromptPath);
-      this.internalPrompt = config.subagentInternal || DEFAULT_INTERNAL_SYSTEM_PROMPT;
-    } catch {
-      this.internalPrompt = DEFAULT_INTERNAL_SYSTEM_PROMPT;
-    }
+    this.internalPrompt = DEFAULT_INTERNAL_SYSTEM_PROMPT;
     this.internalPromptResolved = true;
     return this.internalPrompt || '';
   }

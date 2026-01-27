@@ -98,7 +98,7 @@ CI 构建：`.github/workflows/desktop-build.yml`（支持 `workflow_dispatch`�
 - 阈值（粗估 token）：默认 60000，可用 `MODEL_CLI_SUMMARY_TOKENS` 调整。
 - 触发后历史被裁剪为：系统 prompt + 最新总结 + 当前轮用户消息。
 - 子代理也使用同样模式裁剪。
-- 自动总结 prompt：`<stateDir>/auth/summary-prompt.yaml`（支持 `{{history}}`；可用 `/summary prompt` 查看当前内容）。
+- 自动总结 prompt：来自 admin.db 的 prompts（`summary_prompt`/`summary_prompt_user`，支持 `{{history}}`；可用 `/summary prompt` 查看）。
 
 ## 目录结构
 下列路径以 AIDE 引擎根目录为基准（默认在 `<stateDir>/aide`）：
@@ -110,13 +110,10 @@ README.en.md / README.zh.md
 ```
 
 ## 自定义系统 Prompt
-- 主程序 prompts：
-  - `<stateDir>/auth/system-prompt.yaml`（`internal_main`，内置只读）
-  - `<stateDir>/auth/system-default-prompt.yaml`（`default`，内置只读）
-  - `<stateDir>/auth/system-user-prompt.yaml`（`user_prompt`，可编辑）
-- 子代理 prompts：
-  - `<stateDir>/auth/subagent-system-prompt.yaml`（`internal_subagent`，内置只读）
-  - `<stateDir>/auth/subagent-user-prompt.yaml`（`subagent_user_prompt`，可编辑）
+- 在管理台或 admin.db 的 prompts 表维护：
+  - 主程序：`internal_main` / `default` / `user_prompt`
+  - 子代理：`internal_subagent` / `subagent_user_prompt`
+  - 英文变体：在名称后添加 `__en`
 
 ## 环境与调试
 - 推荐：在桌面 App 管理台 → `API Keys` 配置 `DEEPSEEK_API_KEY`（写入 `<stateDir>/chatos.db.sqlite`，CLI 启动时自动注入进程环境）。

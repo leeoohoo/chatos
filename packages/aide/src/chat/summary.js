@@ -1,15 +1,10 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import YAML from 'yaml';
-
 import * as colors from '../colors.js';
 import { ChatSession } from '../session.js';
 import { ModelClient } from '../client.js';
 import { estimateTokenCount, extractPlainText } from './token-utils.js';
 import { isContextLengthError } from '../../shared/error-utils.js';
-import { resolveSessionRoot } from '../../shared/session-root.js';
-import { resolveAuthDir } from '../../shared/state-paths.js';
+import { normalizePromptLanguage } from '../../shared/mcp-utils.js';
+import { normalizeKey } from '../../shared/text-utils.js';
 import { throwIfAborted } from '../client-helpers.js';
 import { computeTailStartIndex } from '../../../common/chat-tail-utils.js';
 import { extractLatestSummaryText, SUMMARY_MESSAGE_NAME } from '../../../common/chat-summary-utils.js';
@@ -34,7 +29,8 @@ function createSummaryManager(options = {}) {
   );
   const enabled = threshold > 0;
   const keepRatio = resolveKeepRatio();
-  const configPath = typeof options.configPath === 'string' ? options.configPath : null;
+  const promptRecords = Array.isArray(options.promptRecords) ? options.promptRecords : [];
+  const promptLanguage = typeof options.promptLanguage === 'string' ? options.promptLanguage : '';
   const eventLogger =
     options.eventLogger && typeof options.eventLogger.log === 'function'
       ? options.eventLogger
@@ -84,7 +80,12 @@ function createSummaryManager(options = {}) {
         return didSummarize;
       }
       const before = tokenCount;
-      const changed = await summarizeSession(session, client, modelName, { keepRatio, signal, configPath });
+      const changed = await summarizeSession(session, client, modelName, {
+        keepRatio,
+        signal,
+        promptRecords,
+        promptLanguage,
+      });
       const after = estimateTokenCount(session.messages);
       if (!changed || after >= before) {
         emitSummaryIfNeeded();
@@ -204,7 +205,10 @@ async function summarizeSession(session, client, modelName, options = {}) {
 
   const targetModel = modelName || client.getDefaultModel();
   const summarizer = new ModelClient(client.config);
-  const promptConfig = loadSummaryPromptConfig({ configPath: options?.configPath });
+  const promptConfig = loadSummaryPromptConfig({
+    prompts: options?.promptRecords,
+    language: options?.promptLanguage,
+  });
   let maxBytes = 60000;
   const minBytes = 4000;
   let summaryText = '';
@@ -272,74 +276,17 @@ function buildSummaryPrompt(messages, options = {}) {
   };
 }
 
-function loadSummaryPromptConfig({ configPath } = {}) {
-  const promptPath = resolveSummaryPromptPath(configPath);
-  try {
-    ensureSummaryPromptFile(promptPath);
-  } catch (err) {
-    return { path: promptPath, ...DEFAULT_SUMMARY_PROMPT };
-  }
-  let parsed;
-  try {
-    parsed = YAML.parse(fs.readFileSync(promptPath, 'utf8'));
-  } catch {
-    return { path: promptPath, ...DEFAULT_SUMMARY_PROMPT };
-  }
-  const resolvedSystem =
-    typeof parsed?.system === 'string'
-      ? parsed.system.trim()
-      : typeof parsed?.content === 'string'
-        ? parsed.content.trim()
-        : '';
-  const resolvedUser = typeof parsed?.user === 'string' ? parsed.user.trim() : '';
+function loadSummaryPromptConfig({ prompts, language } = {}) {
+  const promptMap = buildPromptMap(prompts);
+  const systemInfo = resolvePromptText(promptMap, 'summary_prompt', language);
+  const userInfo = resolvePromptText(promptMap, 'summary_prompt_user', language);
   return {
-    path: promptPath,
-    system: resolvedSystem || DEFAULT_SUMMARY_PROMPT.system,
-    user: resolvedUser || DEFAULT_SUMMARY_PROMPT.user,
+    path: '(admin.db)',
+    systemName: systemInfo.name,
+    userName: userInfo.name,
+    system: systemInfo.content || DEFAULT_SUMMARY_PROMPT.system,
+    user: userInfo.content || DEFAULT_SUMMARY_PROMPT.user,
   };
-}
-
-function resolveSummaryPromptPath(configPath) {
-  const envPath =
-    typeof process.env.MODEL_CLI_SUMMARY_PROMPT_PATH === 'string'
-      ? process.env.MODEL_CLI_SUMMARY_PROMPT_PATH.trim()
-      : '';
-  if (envPath) {
-    return path.resolve(expandHomePath(envPath));
-  }
-  const baseDir =
-    typeof configPath === 'string' && configPath.trim()
-      ? path.dirname(configPath)
-      : getDefaultConfigDir();
-  return path.join(baseDir, 'summary-prompt.yaml');
-}
-
-function ensureSummaryPromptFile(filePath) {
-  if (!filePath) return;
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, renderSummaryPromptYaml(DEFAULT_SUMMARY_PROMPT), 'utf8');
-}
-
-function renderSummaryPromptYaml(config) {
-  const system = typeof config?.system === 'string' ? config.system.trim() : '';
-  const user = typeof config?.user === 'string' ? config.user.trim() : '';
-  const indent = (text) =>
-    String(text || '')
-      .split('\n')
-      .map((line) => `  ${line}`)
-      .join('\n');
-  return [
-    '# Auto-summary prompt config',
-    '# Variables: {{history}}',
-    'system: |',
-    indent(system || DEFAULT_SUMMARY_PROMPT.system),
-    'user: |',
-    indent(user || DEFAULT_SUMMARY_PROMPT.user),
-    '',
-  ].join('\n');
 }
 
 function renderSummaryUserTemplate(template, { history } = {}) {
@@ -354,22 +301,32 @@ function renderSummaryUserTemplate(template, { history } = {}) {
   return `${historyText}\n\n${rawTemplate}`.trim();
 }
 
-function expandHomePath(filePath) {
-  const text = typeof filePath === 'string' ? filePath : '';
-  if (!text.startsWith('~')) {
-    return text;
-  }
-  const home = os.homedir();
-  if (!home) return text;
-  if (text === '~') return home;
-  if (text.startsWith('~/')) return path.join(home, text.slice(2));
-  return text;
+function buildPromptMap(prompts) {
+  const map = new Map();
+  (Array.isArray(prompts) ? prompts : []).forEach((prompt) => {
+    if (!prompt) return;
+    const name = normalizeKey(prompt?.name);
+    if (!name) return;
+    const content = typeof prompt?.content === 'string' ? prompt.content.trim() : '';
+    if (!content) return;
+    map.set(name, content);
+  });
+  return map;
 }
 
-function getDefaultConfigDir() {
-  const sessionRoot = resolveSessionRoot();
-  const root = sessionRoot || os.homedir() || process.cwd();
-  return resolveAuthDir(root);
+function resolvePromptText(promptMap, baseName, language) {
+  const lang = normalizePromptLanguage(language);
+  const preferred = lang === 'en' ? `${baseName}__en` : baseName;
+  const fallback = lang === 'en' ? baseName : `${baseName}__en`;
+  const preferredKey = normalizeKey(preferred);
+  if (promptMap.has(preferredKey)) {
+    return { name: preferred, content: promptMap.get(preferredKey) };
+  }
+  const fallbackKey = normalizeKey(fallback);
+  if (promptMap.has(fallbackKey)) {
+    return { name: fallback, content: promptMap.get(fallbackKey) };
+  }
+  return { name: preferred, content: '' };
 }
 
 function renderHistoryForSummary(messages, maxBytes = 60000) {
@@ -443,7 +400,6 @@ export {
   createSummaryManager,
   estimateTokenCount,
   loadSummaryPromptConfig,
-  resolveSummaryPromptPath,
   summarizeSession,
   throwIfAborted,
 };

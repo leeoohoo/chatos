@@ -324,15 +324,15 @@ export function createChatRunner({
       const agentRoot = normalizeWorkspaceRoot(agentEntry?.workspaceRoot);
       return agentRoot || sessionRoot || effectiveWorkspaceRoot || fallbackWorkspaceRoot;
     };
-    const summaryConfigPath = typeof defaultPaths?.models === 'string' ? defaultPaths.models : null;
+    const prompts = adminServices.prompts.list();
     const summaryManager = createSummaryManager({
       summaryThreshold: runtimeConfig?.summaryTokenThreshold,
-      configPath: summaryConfigPath || undefined,
+      promptRecords: prompts,
+      promptLanguage,
     });
     const summaryThreshold = summaryManager?.threshold;
     const summaryKeepRatio = summaryManager?.keepRatio;
 
-    const prompts = adminServices.prompts.list();
     const subagents = adminServices.subagents.list();
     const mcpServers = adminServices.mcpServers.list();
     const serverById = new Map(
@@ -867,7 +867,8 @@ export function createChatRunner({
       allowVisionInput,
       summaryThreshold,
       summaryKeepRatio,
-      summaryConfigPath,
+      summaryPromptRecords: mergedPrompts,
+      summaryPromptLanguage: promptLanguage,
       ChatSession,
       estimateTokenCount,
       summarizeSession,

@@ -169,11 +169,6 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     syncAdminToFiles(snapshot, {
       modelsPath: defaultPaths.models,
       subagentsPath: defaultPaths.installedSubagents,
-      promptsPath: defaultPaths.systemPrompt,
-      systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-      systemUserPromptPath: defaultPaths.systemUserPrompt,
-      subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-      subagentUserPromptPath: defaultPaths.subagentUserPrompt,
       tasksPath: defaultPaths.tasks,
     });
 

@@ -11,7 +11,7 @@ import * as colors from '../../packages/aide/src/colors.js';
 import { createLogger } from '../../packages/aide/src/logger.js';
 import { runStartupWizard } from '../../packages/aide/src/ui/index.js';
 import { initializeMcpRuntime } from '../../packages/aide/src/mcp/runtime.js';
-import { loadPromptProfilesFromDb } from '../../packages/aide/src/prompts.js';
+import { loadPromptProfilesFromDb, loadSystemPromptFromDb } from '../../packages/aide/src/prompts.js';
 import { chatLoop } from '../../packages/aide/src/chat-loop.js';
 import { buildLandConfigSelection, resolveLandConfig } from '../../packages/aide/src/land-config.js';
 import { createSubAgentManager } from '../../packages/aide/src/subagents/index.js';
@@ -304,6 +304,7 @@ async function runChat(options) {
   const landConfigRecords = services.landConfigs?.list ? services.landConfigs.list() : [];
   const promptStore = loadPromptProfilesFromDb(promptRecords);
   const promptLanguage = runtimeOptions.promptLanguage || null;
+  const systemPromptConfig = loadSystemPromptFromDb(promptRecords, { language: promptLanguage });
   const landConfigId = typeof runtimeOptions.landConfigId === 'string' ? runtimeOptions.landConfigId.trim() : '';
   const selectedLandConfig = resolveLandConfig({ landConfigs: landConfigRecords, landConfigId });
   const registrySnapshot = readRegistrySnapshot(services);
@@ -367,7 +368,7 @@ async function runChat(options) {
     return out;
   })();
   const subAgentManager = createSubAgentManager({
-    internalSystemPrompt: '',
+    internalSystemPrompt: systemPromptConfig.subagentInternal || '',
   });
   const subAgentList = subAgentManager.listAgents();
   const resolvedConfigPath = defaultPaths.models;
@@ -606,6 +607,9 @@ async function runChat(options) {
       promptStore,
       mcpService: services.mcpServers,
       runtimeMcpServers,
+      internalSubagentPrompt: systemPromptConfig.subagentInternal || '',
+      promptRecords,
+      promptLanguage,
       mainTools: filterMainTools,
       summaryThreshold: runtimeOptions.summaryThreshold,
       maxToolPasses: runtimeOptions.maxToolPasses,

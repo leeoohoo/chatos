@@ -1,9 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import YAML from 'yaml';
-import { resolveSessionRoot } from '../shared/session-root.js';
-import { resolveAuthDir } from '../shared/state-paths.js';
 import { normalizePromptLanguage } from '../shared/mcp-utils.js';
 import { RESERVED_PROMPT_NAMES } from '../shared/prompt-utils.js';
 import { normalizeKey } from '../shared/text-utils.js';
@@ -60,25 +54,21 @@ function isReservedPromptName(name) {
   return false;
 }
 
-function isMcpPromptName(name) {
-  return normalizePromptName(name).startsWith('mcp_');
+function isSummaryPromptName(name) {
+  const normalized = normalizePromptName(name);
+  if (!normalized) return false;
+  const baseNames = new Set(['summary_prompt', 'summary_prompt_user']);
+  if (baseNames.has(normalized)) return true;
+  const suffixIndex = normalized.lastIndexOf('__');
+  if (suffixIndex > 0) {
+    const base = normalized.slice(0, suffixIndex);
+    if (baseNames.has(base)) return true;
+  }
+  return false;
 }
 
-function loadPromptProfiles(configPath) {
-  const filePath = resolvePromptPath(configPath);
-  ensurePromptFile(filePath);
-  let data;
-  try {
-    const raw = fs.readFileSync(filePath, 'utf8');
-    data = YAML.parse(raw) || {};
-  } catch (err) {
-    console.error(
-      `[prompts] Failed to read ${filePath}: ${err.message}. Falling back to defaults.`
-    );
-    data = { prompts: DEFAULT_PROMPTS };
-  }
-  const prompts = normalizePromptMap(data.prompts || data || {});
-  return { path: filePath, prompts };
+function isMcpPromptName(name) {
+  return normalizePromptName(name).startsWith('mcp_');
 }
 
 function loadPromptProfilesFromDb(promptsList = []) {
@@ -89,6 +79,7 @@ function loadPromptProfilesFromDb(promptsList = []) {
     if (!name) return;
     if (isMcpPromptName(name)) return;
     if (isReservedPromptName(name)) return;
+    if (isSummaryPromptName(name)) return;
     if (typeof p.content === 'string' && p.content.trim()) {
       map[name] = p.content.trim();
     }
@@ -97,232 +88,6 @@ function loadPromptProfilesFromDb(promptsList = []) {
     map.default = DEFAULT_PROMPTS.daily_coding;
   }
   return { path: '(admin.db)', prompts: map };
-}
-
-function savePromptProfiles(filePath, prompts) {
-  const payload = { prompts: { ...prompts } };
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function resolvePromptPath(configPath) {
-  const baseDir = configPath ? path.dirname(configPath) : getDefaultConfigDir();
-  return path.join(baseDir, 'prompts.yaml');
-}
-
-function ensurePromptFile(filePath) {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const payload = { prompts: DEFAULT_PROMPTS };
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function normalizePromptMap(input) {
-  if (!input || typeof input !== 'object') {
-    return { default: DEFAULT_PROMPTS.daily_coding };
-  }
-  const result = {};
-  for (const [name, value] of Object.entries(input)) {
-    if (typeof value === 'string' && value.trim()) {
-      result[name] = value.trim();
-      continue;
-    }
-    if (value && typeof value === 'object' && typeof value.text === 'string') {
-      result[name] = value.text.trim();
-    }
-  }
-  if (Object.keys(result).length === 0) {
-    return { default: DEFAULT_PROMPTS.daily_coding };
-  }
-  return result;
-}
-
-function getDefaultConfigDir() {
-  const sessionRoot = resolveSessionRoot();
-  const root = sessionRoot || os.homedir() || process.cwd();
-  return resolveAuthDir(root);
-}
-
-function resolveSystemPromptPath(configPath) {
-  const baseDir = configPath ? path.dirname(configPath) : getDefaultConfigDir();
-  return path.join(baseDir, 'system-prompt.yaml');
-}
-
-function resolveSystemDefaultPromptPath(configPath) {
-  const baseDir = configPath ? path.dirname(configPath) : getDefaultConfigDir();
-  return path.join(baseDir, 'system-default-prompt.yaml');
-}
-
-function resolveSystemUserPromptPath(configPath) {
-  const baseDir = configPath ? path.dirname(configPath) : getDefaultConfigDir();
-  return path.join(baseDir, 'system-user-prompt.yaml');
-}
-
-function resolveSubagentSystemPromptPath(configPath) {
-  const baseDir = configPath ? path.dirname(configPath) : getDefaultConfigDir();
-  return path.join(baseDir, 'subagent-system-prompt.yaml');
-}
-
-function resolveSubagentUserPromptPath(configPath) {
-  const baseDir = configPath ? path.dirname(configPath) : getDefaultConfigDir();
-  return path.join(baseDir, 'subagent-user-prompt.yaml');
-}
-
-function ensureSystemPromptFile(filePath, internalMain = DEFAULT_INTERNAL_SYSTEM_PROMPT) {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const payload = {
-    name: 'internal_main',
-    title: 'internal_main',
-    content: internalMain,
-  };
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function ensureSystemDefaultPromptFile(filePath, defaultPrompt = DEFAULT_SYSTEM_PROMPT) {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const payload = {
-    name: 'default',
-    title: 'default',
-    content: defaultPrompt,
-  };
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function ensureSystemUserPromptFile(filePath, userPrompt = '') {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const payload = {
-    name: 'user_prompt',
-    title: 'user_prompt',
-    content: userPrompt,
-  };
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function ensureSubagentSystemPromptFile(filePath, internalSubagent = DEFAULT_INTERNAL_SYSTEM_PROMPT) {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const payload = {
-    name: 'internal_subagent',
-    title: 'internal_subagent',
-    content: internalSubagent,
-  };
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function ensureSubagentUserPromptFile(filePath, userPrompt = '') {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const payload = {
-    name: 'subagent_user_prompt',
-    title: 'subagent_user_prompt',
-    content: userPrompt,
-  };
-  fs.writeFileSync(filePath, YAML.stringify(payload), 'utf8');
-}
-
-function loadSystemPromptConfig(configPath) {
-  const filePath = resolveSystemPromptPath(configPath);
-  const defaultPath = resolveSystemDefaultPromptPath(configPath);
-  const userPromptPath = resolveSystemUserPromptPath(configPath);
-  const subagentPath = resolveSubagentSystemPromptPath(configPath);
-  const subagentUserPromptPath = resolveSubagentUserPromptPath(configPath);
-  const mainExists = fs.existsSync(filePath);
-  const defaultExists = fs.existsSync(defaultPath);
-  const userExists = fs.existsSync(userPromptPath);
-  const subagentExists = fs.existsSync(subagentPath);
-  const subagentUserExists = fs.existsSync(subagentUserPromptPath);
-
-  const extractPromptContent = (parsed, expectedName) => {
-    const name = typeof expectedName === 'string' ? expectedName.trim() : '';
-    if (!name) return '';
-    const nodes = [];
-    if (Array.isArray(parsed?.prompts)) {
-      nodes.push(...parsed.prompts);
-    } else if (parsed && typeof parsed === 'object') {
-      nodes.push(parsed);
-    }
-    const pickText = (node) => {
-      if (!node || typeof node !== 'object') return '';
-      const content =
-        typeof node.content === 'string'
-          ? node.content
-          : typeof node.prompt === 'string'
-            ? node.prompt
-            : typeof node.text === 'string'
-              ? node.text
-              : '';
-      return typeof content === 'string' ? content : '';
-    };
-    const match = nodes.find((node) => String(node?.name || node?.id || '').trim() === name) || null;
-    const content = pickText(match || nodes[0]);
-    return typeof content === 'string' ? content.trim() : '';
-  };
-
-  const readFile = (p, label) => {
-    try {
-      return YAML.parse(fs.readFileSync(p, 'utf8')) || {};
-    } catch (err) {
-      if (label) {
-        console.error(`[prompts] Failed to read ${label}: ${err.message}. Falling back to defaults.`);
-      }
-      return {};
-    }
-  };
-
-  const parsedMain = mainExists ? readFile(filePath, filePath) : {};
-  const parsedDefault = defaultExists ? readFile(defaultPath, defaultPath) : {};
-  const parsedUser = userExists ? readFile(userPromptPath, userPromptPath) : {};
-  const parsedSubagent = subagentExists ? readFile(subagentPath, subagentPath) : {};
-  const parsedSubagentUser = subagentUserExists ? readFile(subagentUserPromptPath, subagentUserPromptPath) : {};
-
-  const mainInternal = extractPromptContent(parsedMain, 'internal_main') || DEFAULT_INTERNAL_SYSTEM_PROMPT;
-  const subagentInternal = extractPromptContent(parsedSubagent, 'internal_subagent') || DEFAULT_INTERNAL_SYSTEM_PROMPT;
-  const defaultPrompt = extractPromptContent(parsedDefault, 'default') || DEFAULT_SYSTEM_PROMPT;
-  const userPrompt = extractPromptContent(parsedUser, 'user_prompt') || '';
-  const subagentUserPrompt = extractPromptContent(parsedSubagentUser, 'subagent_user_prompt') || '';
-
-  if (!mainExists) {
-    ensureSystemPromptFile(filePath, mainInternal);
-  }
-  if (!defaultExists) {
-    ensureSystemDefaultPromptFile(defaultPath, defaultPrompt);
-  }
-  if (!userExists) {
-    ensureSystemUserPromptFile(userPromptPath, userPrompt);
-  }
-  if (!subagentExists) {
-    ensureSubagentSystemPromptFile(subagentPath, subagentInternal);
-  }
-  if (!subagentUserExists) {
-    ensureSubagentUserPromptFile(subagentUserPromptPath, subagentUserPrompt);
-  }
-  return {
-    path: filePath,
-    defaultPath,
-    userPromptPath,
-    subagentPath,
-    subagentUserPromptPath,
-    mainInternal,
-    subagentInternal,
-    defaultPrompt,
-    userPrompt,
-    subagentUserPrompt,
-  };
 }
 
 function loadSystemPromptFromDb(promptsList = [], options = {}) {
@@ -366,6 +131,18 @@ function loadSystemPromptFromDb(promptsList = [], options = {}) {
     ? (resolveUseInMain(defaultRecord) ? normalizeContent(defaultRecord.content) : '')
     : DEFAULT_SYSTEM_PROMPT;
 
+  const mainUserRecord =
+    pickSystemPromptRecord('user_prompt');
+  const mainUserBase = mainUserRecord
+    ? (resolveUseInMain(mainUserRecord) ? normalizeContent(mainUserRecord.content) : '')
+    : '';
+
+  const subagentUserRecord =
+    pickSystemPromptRecord('subagent_user_prompt');
+  const subagentUserBase = subagentUserRecord
+    ? (resolveUseInSubagent(subagentUserRecord) ? normalizeContent(subagentUserRecord.content) : '')
+    : '';
+
   const mainBaseNames = new Set([
     'internal_main',
     'default',
@@ -391,6 +168,7 @@ function loadSystemPromptFromDb(promptsList = [], options = {}) {
       .filter((p) => p?.name && !excludedNames.has(p.name))
       .filter((p) => !isMcpPromptName(p.name))
       .filter((p) => !isReservedPromptName(p.name))
+      .filter((p) => !isSummaryPromptName(p.name))
       .filter((p) => enabledFn(p))
       .map((p) => ({ name: String(p.name), content: normalizeContent(p.content) }))
       .filter((p) => p.content)
@@ -398,8 +176,12 @@ function loadSystemPromptFromDb(promptsList = [], options = {}) {
       .map((p) => p.content)
       .join('\n\n');
 
-  const userPrompt = buildExtras(resolveUseInMain, mainBaseNames);
-  const subagentUserPrompt = buildExtras(resolveUseInSubagent, subagentInternalNames);
+  const userPromptExtra = buildExtras(resolveUseInMain, mainBaseNames);
+  const userPrompt = [mainUserBase, userPromptExtra].filter(Boolean).join('\n\n');
+  const subagentUserPromptExtra = buildExtras(resolveUseInSubagent, subagentInternalNames);
+  const subagentUserPrompt = [subagentUserBase, subagentUserPromptExtra]
+    .filter(Boolean)
+    .join('\n\n');
   return {
     path: '(admin.db)',
     mainInternal,
@@ -411,7 +193,17 @@ function loadSystemPromptFromDb(promptsList = [], options = {}) {
 }
 
 function composeSystemPrompt({ configPath, systemOverride, modelPrompt, systemConfig }) {
-  const config = systemConfig || loadSystemPromptConfig(configPath);
+  const config =
+    systemConfig && typeof systemConfig === 'object'
+      ? systemConfig
+      : {
+          path: '(builtin)',
+          mainInternal: DEFAULT_INTERNAL_SYSTEM_PROMPT,
+          subagentInternal: DEFAULT_INTERNAL_SYSTEM_PROMPT,
+          defaultPrompt: DEFAULT_SYSTEM_PROMPT,
+          userPrompt: '',
+          subagentUserPrompt: '',
+        };
   const sections = [];
   if (config.mainInternal) {
     sections.push(config.mainInternal.trim());
@@ -440,12 +232,7 @@ function buildUserPromptMessages(text, name = 'user_prompt') {
 }
 
 export {
-  loadPromptProfiles,
   loadPromptProfilesFromDb,
-  savePromptProfiles,
-  resolvePromptPath,
-  resolveSystemPromptPath,
-  loadSystemPromptConfig,
   loadSystemPromptFromDb,
   composeSystemPrompt,
   buildUserPromptMessages,

@@ -38,11 +38,6 @@ export function getAdminServices() {
   const defaultPaths = {
     defaultsRoot,
     models: path.join(authDir, 'models.yaml'),
-    systemPrompt: path.join(authDir, 'system-prompt.yaml'),
-    systemDefaultPrompt: path.join(authDir, 'system-default-prompt.yaml'),
-    systemUserPrompt: path.join(authDir, 'system-user-prompt.yaml'),
-    subagentSystemPrompt: path.join(authDir, 'subagent-system-prompt.yaml'),
-    subagentUserPrompt: path.join(authDir, 'subagent-user-prompt.yaml'),
     tasks: null,
     events: resolveStateDirFile(stateDir, STATE_FILE_NAMES.events),
     marketplace: path.join(projectRoot, 'subagents', 'marketplace.json'),
@@ -65,11 +60,6 @@ export function getAdminServices() {
   syncAdminToFiles(services.snapshot(), {
     modelsPath: defaultPaths.models,
     subagentsPath: defaultPaths.installedSubagents,
-    promptsPath: defaultPaths.systemPrompt,
-    systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-    systemUserPromptPath: defaultPaths.systemUserPrompt,
-    subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-    subagentUserPromptPath: defaultPaths.subagentUserPrompt,
     tasksPath: defaultPaths.tasks,
   });
   return { services, defaultPaths };

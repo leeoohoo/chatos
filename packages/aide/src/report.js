@@ -80,7 +80,7 @@ function generateConfigReport({
     ${renderTable(['Name', 'URL', 'Description'], mcpRows)}
   </section>
   <section>
-    <h2>System Prompt (file: ${escapeHtml(systemPromptPath || '')})</h2>
+    <h2>System Prompt (source: ${escapeHtml(systemPromptPath || '')})</h2>
     <pre>${escapeHtml(systemPrompt || '')}</pre>
   </section>
   <section>

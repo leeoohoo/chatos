@@ -156,11 +156,6 @@ registerLspInstallerIpc({
 const defaultPaths = {
   defaultsRoot: engineRoot,
   models: path.join(authDir, 'models.yaml'),
-  systemPrompt: path.join(authDir, 'system-prompt.yaml'),
-  systemDefaultPrompt: path.join(authDir, 'system-default-prompt.yaml'),
-  systemUserPrompt: path.join(authDir, 'system-user-prompt.yaml'),
-  subagentSystemPrompt: path.join(authDir, 'subagent-system-prompt.yaml'),
-  subagentUserPrompt: path.join(authDir, 'subagent-user-prompt.yaml'),
   sessionReport: path.join(authDir, 'session-report.html'),
   events: path.join(stateDir, 'events.jsonl'),
   fileChanges: path.join(stateDir, 'file-changes.jsonl'),
@@ -222,11 +217,6 @@ if (!app.isPackaged) {
 syncAdminToFiles(adminServices.snapshot(), {
   modelsPath: defaultPaths.models,
   subagentsPath: defaultPaths.installedSubagents,
-  promptsPath: defaultPaths.systemPrompt,
-  systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-  systemUserPromptPath: defaultPaths.systemUserPrompt,
-  subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-  subagentUserPromptPath: defaultPaths.subagentUserPrompt,
   tasksPath: null,
 });
 
@@ -274,11 +264,6 @@ registerAdminApi(ipcMain, adminServices, () => mainWindow, {
     syncAdminToFiles(snapshot, {
       modelsPath: defaultPaths.models,
       subagentsPath: defaultPaths.installedSubagents,
-      promptsPath: defaultPaths.systemPrompt,
-      systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-      systemUserPromptPath: defaultPaths.systemUserPrompt,
-      subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-      subagentUserPromptPath: defaultPaths.subagentUserPrompt,
       tasksPath: defaultPaths.tasks,
     });
     if (mainWindow) {
@@ -292,11 +277,6 @@ const syncAdminAndBroadcast = async () => {
   syncAdminToFiles(snapshot, {
     modelsPath: defaultPaths.models,
     subagentsPath: defaultPaths.installedSubagents,
-    promptsPath: defaultPaths.systemPrompt,
-    systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-    systemUserPromptPath: defaultPaths.systemUserPrompt,
-    subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-    subagentUserPromptPath: defaultPaths.subagentUserPrompt,
     tasksPath: defaultPaths.tasks,
   });
   if (mainWindow) {

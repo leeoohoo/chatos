@@ -17,7 +17,8 @@ export function createConversationManager({
   allowVisionInput,
   summaryThreshold,
   summaryKeepRatio,
-  summaryConfigPath,
+  summaryPromptRecords,
+  summaryPromptLanguage,
   ChatSession,
   estimateTokenCount,
   summarizeSession,
@@ -118,7 +119,8 @@ export function createConversationManager({
         changed = await summarizeSession(summarySession, client, modelName, {
           keepRatio,
           signal,
-          configPath: summaryConfigPath || undefined,
+          promptRecords: summaryPromptRecords,
+          promptLanguage: summaryPromptLanguage,
         });
       } catch (err) {
         if (err?.name === 'AbortError' || signal?.aborted) {

@@ -56,13 +56,10 @@ Common in-chat commands:
 - `stateRoot`: per-user state root.
 - `stateDir`: `<stateRoot>/<hostApp>` (legacy `legacyStateRoot/<hostApp>` auto-migrated).
 - Models: `<stateDir>/auth/models.yaml`
-- Main prompts:
-  - `<stateDir>/auth/system-prompt.yaml` (`internal_main`, built-in read-only)
-  - `<stateDir>/auth/system-default-prompt.yaml` (`default`, built-in read-only)
-  - `<stateDir>/auth/system-user-prompt.yaml` (`user_prompt`, editable)
-- Sub-agent prompts:
-  - `<stateDir>/auth/subagent-system-prompt.yaml` (`internal_subagent`, built-in read-only)
-  - `<stateDir>/auth/subagent-user-prompt.yaml` (`subagent_user_prompt`, editable)
+- Prompts: stored in admin DB (`<stateDir>/chatos.db.sqlite`, table `prompts`)
+  - Main: `internal_main` / `default` / `user_prompt`
+  - Sub-agents: `internal_subagent` / `subagent_user_prompt`
+  - English variants: append `__en`
 - MCP servers: stored in admin DB (`<stateDir>/chatos.db.sqlite`, table `mcpServers`); active selection via land_config.
 - Admin DB (models/MCP/prompts/tasks/land_config): `<stateDir>/chatos.db.sqlite`
 - Sub-agent install state: `<stateDir>/subagents.json`
@@ -97,9 +94,9 @@ node src/cli.js chat
 
 自动总结：超过阈值（默认 60000 估算 token 或 `MODEL_CLI_SUMMARY_TOKENS`）后，历史裁剪为「系统 prompt + 最新总结 + 当前用户消息」，子代理同样适用。
 stateDir = `<stateRoot>/<hostApp>`（旧 `legacyStateRoot/<hostApp>` 自动迁移）。
-自动总结 prompt：`<stateDir>/auth/summary-prompt.yaml`（支持 `{{history}}`；可用 `/summary prompt` 查看）。
+自动总结 prompt：来自 admin.db 的 prompts（`summary_prompt`/`summary_prompt_user`，支持 `{{history}}`；可用 `/summary prompt` 查看）。
 
-配置位置：`<stateDir>/auth/models.yaml`、`<stateDir>/auth/system-*-prompt.yaml`、`<stateDir>/auth/subagent-*-prompt.yaml`、`<stateDir>/chatos.db.sqlite`（含 MCP/land_config 等）、`<stateDir>/subagents.json`
+配置位置：`<stateDir>/auth/models.yaml`、`<stateDir>/chatos.db.sqlite`（含 prompts/MCP/land_config 等）、`<stateDir>/subagents.json`
 
 更多细节与完整指南请看 `README.en.md` / `README.zh.md`。   
 

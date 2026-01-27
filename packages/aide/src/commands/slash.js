@@ -63,13 +63,17 @@ export async function handleSlashCommand(input, context) {
       const enabled = threshold > 0;
 
       if (!sub || ['status', 'info'].includes(sub)) {
-        const promptConfig = loadSummaryPromptConfig({ configPath: context.configPath });
+        const promptConfig = loadSummaryPromptConfig({
+          prompts: context.promptRecords,
+          language: context.promptLanguage,
+        });
+        const promptNames = [promptConfig.systemName, promptConfig.userName].filter(Boolean).join(', ');
         console.log(colors.cyan('\n=== Auto Summary ==='));
         console.log(`Enabled: ${enabled ? 'yes' : 'no'}`);
         console.log(`Threshold: ~${threshold} tokens`);
         console.log(`Current: ~${sessionTokenCount} tokens`);
         console.log(`Keep ratio: ${summaryManager.keepRatio}`);
-        console.log(`Prompt: ${promptConfig.path}`);
+        console.log(`Prompt: ${promptConfig.path}${promptNames ? ` (${promptNames})` : ''}`);
         console.log(colors.dim('Commands: /summary now | /summary prompt'));
         return null;
       }
@@ -87,13 +91,21 @@ export async function handleSlashCommand(input, context) {
       }
 
       if (sub === 'prompt') {
-        const promptConfig = loadSummaryPromptConfig({ configPath: context.configPath });
+        const promptConfig = loadSummaryPromptConfig({
+          prompts: context.promptRecords,
+          language: context.promptLanguage,
+        });
+        const promptNames = [promptConfig.systemName, promptConfig.userName].filter(Boolean).join(', ');
         const action = (tokens[1] || '').toLowerCase();
         if (!action || ['show', 'view'].includes(action)) {
-          console.log(colors.cyan(`\n=== Summary Prompt (${promptConfig.path}) ===`));
+          console.log(
+            colors.cyan(
+              `\n=== Summary Prompt (${promptConfig.path}${promptNames ? ` | ${promptNames}` : ''}) ===`
+            )
+          );
           console.log(colors.dim('\n[system]\n') + promptConfig.system);
           console.log(colors.dim('\n[user]\n') + promptConfig.user);
-          console.log(colors.dim('\n(可编辑该文件；支持 {{history}} 占位符)'));
+          console.log(colors.dim('\n(请在管理台/admin.db 的 prompts 中维护；支持 {{history}} 占位符)'));
           return null;
         }
         if (action === 'path') {

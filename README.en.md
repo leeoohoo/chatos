@@ -97,7 +97,7 @@ CI: `.github/workflows/desktop-build.yml` (supports `workflow_dispatch`; pushing
 - Threshold (approx tokens): default 60000 or `MODEL_CLI_SUMMARY_TOKENS`.
 - When triggered, history is pruned to: system prompt + latest summary + current user message.
 - Sub-agents also prune with same pattern.
-- Summary prompt file: `<stateDir>/auth/summary-prompt.yaml` (supports `{{history}}`; use `/summary prompt` to view).
+- Summary prompt: stored in admin.db prompts (`summary_prompt`/`summary_prompt_user`, supports `{{history}}`; use `/summary prompt` to view).
 
 ## Structure
 Paths are relative to the AIDE engine root (desktop installs default to `<stateDir>/aide`):
@@ -109,13 +109,10 @@ README.en.md / README.zh.md
 ```
 
 ## Customize system prompt
-- Main prompts:
-  - `<stateDir>/auth/system-prompt.yaml` (`internal_main`, built-in read-only)
-  - `<stateDir>/auth/system-default-prompt.yaml` (`default`, built-in read-only)
-  - `<stateDir>/auth/system-user-prompt.yaml` (`user_prompt`, editable)
-- Sub-agent prompts:
-  - `<stateDir>/auth/subagent-system-prompt.yaml` (`internal_subagent`, built-in read-only)
-  - `<stateDir>/auth/subagent-user-prompt.yaml` (`subagent_user_prompt`, editable)
+- Manage prompts in the Admin UI or admin.db:
+  - Main: `internal_main` / `default` / `user_prompt`
+  - Sub-agents: `internal_subagent` / `subagent_user_prompt`
+  - English variants: append `__en` to the name
 
 ## Environment hints
 - Recommended: set `DEEPSEEK_API_KEY` in the Desktop UI (Admin → API Keys). It is stored in `<stateDir>/chatos.db.sqlite`.

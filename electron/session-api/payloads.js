@@ -5,9 +5,9 @@ import {
   parseInstalledPlugins,
   parseJsonSafe,
   parseModels,
-  parsePrompts,
   safeRead,
 } from '../../packages/aide/shared/data/legacy.js';
+import { loadSystemPromptFromDb } from '../../packages/aide/src/prompts.js';
 import { parseJsonLines, readTasksFromDbFile } from '../session-api-helpers.js';
 
 export function createSessionPayloadReaders({
@@ -23,36 +23,25 @@ export function createSessionPayloadReaders({
   const readConfigPayload = () => {
     const snapshot = adminServices.snapshot();
     const modelsList = snapshot.models || parseModels(safeRead(defaultPaths.models));
-    const systemPromptMainInternal = safeRead(defaultPaths.systemPrompt);
-    const systemDefaultPrompt = safeRead(defaultPaths.systemDefaultPrompt);
-    const systemUserPrompt = safeRead(defaultPaths.systemUserPrompt);
-    const subagentSystemPromptInternal = safeRead(defaultPaths.subagentSystemPrompt);
-    const subagentUserPrompt = safeRead(defaultPaths.subagentUserPrompt);
-    const promptsMainInternal = parsePrompts(systemPromptMainInternal);
-    const promptsDefault = parsePrompts(systemDefaultPrompt);
-    const promptsUser = parsePrompts(systemUserPrompt);
-    const promptsSubInternal = parsePrompts(subagentSystemPromptInternal);
-    const promptsSubUser = parsePrompts(subagentUserPrompt);
+    const runtimeConfig = adminServices.settings?.getRuntimeConfig
+      ? adminServices.settings.getRuntimeConfig()
+      : null;
+    const promptLanguage = runtimeConfig?.promptLanguage || null;
+    const systemPromptConfig = loadSystemPromptFromDb(snapshot.prompts || [], {
+      language: promptLanguage,
+    });
+    const promptPathLabel = '(admin.db)';
+    const systemPromptMainInternal = systemPromptConfig.mainInternal || '';
+    const systemDefaultPrompt = systemPromptConfig.defaultPrompt || '';
+    const systemUserPrompt = systemPromptConfig.userPrompt || '';
+    const subagentSystemPromptInternal = systemPromptConfig.subagentInternal || '';
+    const subagentUserPrompt = systemPromptConfig.subagentUserPrompt || '';
     const prompts = {
-      internal_main: promptsMainInternal.internal_main || '',
-      default:
-        systemDefaultPrompt && systemDefaultPrompt.trim()
-          ? promptsDefault.default || ''
-          : promptsMainInternal.default || '',
-      user_prompt:
-        systemUserPrompt && systemUserPrompt.trim()
-          ? promptsUser.user_prompt || ''
-          : promptsMainInternal.user_prompt || '',
-      internal_subagent:
-        subagentSystemPromptInternal && subagentSystemPromptInternal.trim()
-          ? promptsSubInternal.internal_subagent || ''
-          : promptsMainInternal.internal_subagent || '',
-      subagent_user_prompt:
-        subagentUserPrompt && subagentUserPrompt.trim()
-          ? promptsSubUser.subagent_user_prompt || ''
-          : promptsSubInternal.subagent_user_prompt ||
-            promptsMainInternal.subagent_user_prompt ||
-            '',
+      internal_main: systemPromptMainInternal,
+      default: systemDefaultPrompt,
+      user_prompt: systemUserPrompt,
+      internal_subagent: subagentSystemPromptInternal,
+      subagent_user_prompt: subagentUserPrompt,
     };
     const mcpServers = snapshot.mcpServers || [];
     const marketplacePaths = [defaultPaths.marketplace, defaultPaths.marketplaceUser].filter(Boolean);
@@ -94,15 +83,15 @@ export function createSessionPayloadReaders({
       modelsPath: defaultPaths.models,
       models: safeRead(defaultPaths.models),
       modelsList,
-      systemPromptPath: defaultPaths.systemPrompt,
+      systemPromptPath: promptPathLabel,
       systemPrompt: systemPromptMainInternal,
-      systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
+      systemDefaultPromptPath: promptPathLabel,
       systemDefaultPrompt,
-      systemUserPromptPath: defaultPaths.systemUserPrompt,
+      systemUserPromptPath: promptPathLabel,
       systemUserPrompt,
-      subagentSystemPromptPath: defaultPaths.subagentSystemPrompt,
+      subagentSystemPromptPath: promptPathLabel,
       subagentSystemPrompt: subagentSystemPromptInternal,
-      subagentUserPromptPath: defaultPaths.subagentUserPrompt,
+      subagentUserPromptPath: promptPathLabel,
       subagentUserPrompt,
       prompts,
       mcpServers,
