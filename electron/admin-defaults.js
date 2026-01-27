@@ -4,6 +4,7 @@ import {
   buildAdminSeed,
   extractVariables,
   loadBuiltinPromptFiles,
+  parseMcpServers,
   parseModelsWithDefault,
   safeRead,
 } from '../packages/aide/shared/data/legacy.js';
@@ -147,6 +148,14 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
       safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'models.yaml')) ||
       safeRead(defaultPaths.models);
     return parseModelsWithDefault(raw).entries;
+  }
+
+  function readDefaultMcpServers() {
+    const defaultsRoot = path.resolve(defaultPaths.defaultsRoot || '');
+    const raw =
+      safeRead(path.join(defaultsRoot, 'shared', 'defaults', 'mcp-servers.json')) ||
+      safeRead(defaultPaths.mcpServers);
+    return parseMcpServers(raw);
   }
 
   function refreshModelsFromDefaults() {
