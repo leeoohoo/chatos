@@ -1,3 +1,5 @@
+import { parseArgs } from '../cli-utils.js';
+
 function serializeAgent(agent) {
   const pluginCategory = agent.pluginCategory || agent.category || agent.pluginId;
   const pluginDescription = agent.pluginDescription || '';
@@ -187,33 +189,6 @@ function withSubagentGuardrails(systemPrompt) {
     'Tooling guard: sub-agents cannot call mcp_subagent_router_* or other sub-agent routing tools (ignore any earlier instructions suggesting that). Complete the task directly with available project/shell/task tools.';
   const prompt = typeof systemPrompt === 'string' ? systemPrompt.trim() : '';
   return [prompt, guardrail].filter(Boolean).join('\n\n');
-}
-
-function parseArgs(input) {
-  const result = { _: [] };
-  for (let i = 0; i < input.length; i += 1) {
-    const token = input[i];
-    if (!token.startsWith('-')) {
-      result._.push(token);
-      continue;
-    }
-    const isLong = token.startsWith('--');
-    const key = isLong ? token.slice(2) : token.slice(1);
-    if (!key) continue;
-    const [name, inline] = key.split('=');
-    if (inline !== undefined) {
-      result[name] = inline;
-      continue;
-    }
-    const next = input[i + 1];
-    if (next && !next.startsWith('-')) {
-      result[name] = next;
-      i += 1;
-    } else {
-      result[name] = true;
-    }
-  }
-  return result;
 }
 
 function jsonTextResponse(payload, options = {}) {

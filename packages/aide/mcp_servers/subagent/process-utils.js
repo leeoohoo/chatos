@@ -1,33 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-import { resolveTerminalsDir } from '../../shared/state-paths.js';
-
-export function appendRunPid({ pid, kind, name, runId, sessionRoot } = {}) {
-  const resolvedRunId = typeof runId === 'string' ? runId.trim() : '';
-  if (!resolvedRunId) return;
-  const root = typeof sessionRoot === 'string' && sessionRoot.trim() ? sessionRoot.trim() : '';
-  const num = Number(pid);
-  if (!root || !Number.isFinite(num) || num <= 0) return;
-  const dir = resolveTerminalsDir(root);
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  const pidsPath = path.join(dir, `${resolvedRunId}.pids.jsonl`);
-  const payload = {
-    ts: new Date().toISOString(),
-    runId: resolvedRunId,
-    pid: num,
-    kind: typeof kind === 'string' && kind.trim() ? kind.trim() : 'process',
-    name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
-  };
-  try {
-    fs.appendFileSync(pidsPath, `${JSON.stringify(payload)}\n`, 'utf8');
-  } catch {
-    // ignore
-  }
-}
+export { appendRunPid } from '../../shared/run-pids.js';
 
 export function registerProcessShutdownHooks({ isWorkerMode, jobStore, getJobStore } = {}) {
   if (process.env.SUBAGENT_WORKER === '1' || isWorkerMode) {

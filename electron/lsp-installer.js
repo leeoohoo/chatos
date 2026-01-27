@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
+import { clampNumber } from '../packages/common/number-utils.js';
 
 function logWith(logger, level, message, meta, err) {
   if (!logger) return;
@@ -638,10 +639,3 @@ export function createLspInstaller({ rootDir, env, logger } = {}) {
   return { getCatalog, install };
 }
 
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) {
-    return Math.min(Math.max(parsed, min), max);
-  }
-  return fallback;
-}

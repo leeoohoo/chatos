@@ -18,6 +18,8 @@ import {
   removeDedupeEntry,
   flushDedupeStore,
 } from './shared/dedupe-store.js';
+import { buildDedupeKey } from './shared/dedupe-utils.js';
+import { createWriteQueue } from './shared/write-queue.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -105,7 +107,7 @@ function registerTools() {
       const result = await enqueueJournalWrite(() => {
         const runId = pickRunId(input?.runId);
         const sessionId = pickSessionId(input?.sessionId);
-        const dedupeKey = buildJournalDedupeKey(input?.dedupe_key, {
+        const dedupeKey = buildDedupeKey(input?.dedupe_key, {
           scope: 'exec_log',
           runId,
           sessionId,
@@ -291,7 +293,7 @@ function registerTools() {
     },
     async (input) => {
       const result = await enqueueJournalWrite(() => {
-        const dedupeKey = buildJournalDedupeKey(input?.dedupe_key, { scope: 'iteration' });
+        const dedupeKey = buildDedupeKey(input?.dedupe_key, { scope: 'iteration' });
         if (dedupeKey) {
           const existing = readDedupeEntry(journalDedupeStore, dedupeKey);
           if (existing) {
@@ -686,29 +688,6 @@ function normalizeStringArray(value) {
     if (!out.includes(normalized)) out.push(normalized);
   });
   return out;
-}
-
-function createWriteQueue() {
-  let chain = Promise.resolve();
-  return (fn) => {
-    const run = chain.then(fn, fn);
-    chain = run.catch(() => {});
-    return run;
-  };
-}
-
-function buildJournalDedupeKey(rawKey, { scope, runId, sessionId } = {}) {
-  const key = safeTrim(rawKey);
-  if (!key) return '';
-  const parts = [];
-  const scopePart = safeTrim(scope);
-  if (scopePart) parts.push(scopePart);
-  const normalizedRunId = safeTrim(runId);
-  const normalizedSessionId = safeTrim(sessionId);
-  if (normalizedRunId) parts.push(`run=${normalizedRunId}`);
-  if (normalizedSessionId) parts.push(`session=${normalizedSessionId}`);
-  const prefix = parts.join('|');
-  return prefix ? `${prefix}::${key}` : key;
 }
 
 function resolveExecLogFromIds(ids) {

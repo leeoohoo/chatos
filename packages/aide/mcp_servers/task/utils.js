@@ -1,6 +1,8 @@
 import { safeTrim } from '../../shared/text-utils.js';
+import { buildDedupeKey } from '../shared/dedupe-utils.js';
+import { createWriteQueue } from '../shared/write-queue.js';
 
-export { safeTrim };
+export { safeTrim, createWriteQueue };
 
 export function normalizeTaskPriority(value) {
   const v = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -71,25 +73,8 @@ export function renderTaskSummary(task, prefix = '') {
   return `${header}${body}`;
 }
 
-export function createWriteQueue() {
-  let chain = Promise.resolve();
-  return (fn) => {
-    const run = chain.then(fn, fn);
-    chain = run.catch(() => {});
-    return run;
-  };
-}
-
 export function buildTaskDedupeKey(rawKey, { runId, sessionId } = {}) {
-  const key = safeTrim(rawKey);
-  if (!key) return '';
-  const scopeParts = [];
-  const normalizedRunId = safeTrim(runId);
-  const normalizedSessionId = safeTrim(sessionId);
-  if (normalizedRunId) scopeParts.push(`run=${normalizedRunId}`);
-  if (normalizedSessionId) scopeParts.push(`session=${normalizedSessionId}`);
-  const scope = scopeParts.join('|');
-  return scope ? `${scope}::${key}` : key;
+  return buildDedupeKey(rawKey, { runId, sessionId });
 }
 
 export function dedupeTasksById(tasks) {

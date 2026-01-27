@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { clampNumber } from '../packages/common/number-utils.js';
 
 function isPathInsideRoot(rootDir, targetPath) {
   const relative = path.relative(rootDir, targetPath);
@@ -22,12 +23,6 @@ function readFilePrefixUtf8(filePath, maxBytes) {
       // ignore
     }
   }
-}
-
-function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(max, Math.max(min, num));
 }
 
 export function createWorkspaceOps({ maxViewFileBytes = 512 * 1024, maxListDirEntries = 600 } = {}) {

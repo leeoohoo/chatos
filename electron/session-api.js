@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { createDb } from '../packages/aide/shared/data/storage.js';
 import { syncAdminToFiles } from '../packages/aide/shared/data/sync.js';
+import { clampNumber } from '../packages/common/number-utils.js';
 import { safeTrim } from '../packages/common/text-utils.js';
 import {
   normalizeChoiceLimits,
@@ -730,10 +731,4 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     startTasksWatcher,
     startUiPromptsWatcher,
   };
-}
-
-function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(Math.max(num, min), max);
 }

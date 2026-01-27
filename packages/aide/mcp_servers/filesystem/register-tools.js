@@ -1,38 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { createToolResponder } from '../shared/tool-helpers.js';
+import { clampNumber } from '../../shared/number-utils.js';
+import { formatBytes, hashContent, isBinaryBuffer } from '../shared/file-utils.js';
 
 const fsp = fs.promises;
-
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) {
-    return Math.min(Math.max(parsed, min), max);
-  }
-  return fallback;
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) {
-    return 'n/a';
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes;
-  let unitIndex = -1;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
-}
-
-function hashContent(content) {
-  return crypto.createHash('sha256').update(content).digest('hex');
-}
 
 function detectLineEnding(content) {
   return content.includes('\r\n') ? '\r\n' : '\n';
@@ -54,19 +26,6 @@ function safeLiteralReplace(str, oldString, newString) {
     return str;
   }
   return str.replaceAll(oldString, () => newString);
-}
-
-function isBinary(data, sampleSize = 512) {
-  if (!data) {
-    return false;
-  }
-  const sample = data.length > sampleSize ? data.subarray(0, sampleSize) : data;
-  for (const byte of sample) {
-    if (byte === 0) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function countOccurrences(haystack, needle) {
@@ -245,7 +204,7 @@ async function searchInTree(startDir, needle, options = {}) {
         continue;
       }
       const buffer = await fsp.readFile(current);
-      if (isBinary(buffer)) {
+      if (isBinaryBuffer(buffer)) {
         continue;
       }
       const content = buffer.toString('utf8');
@@ -418,7 +377,7 @@ export function registerFilesystemTools({
         throw new Error(`File too large (${formatBytes(stats.size)}), exceeds limit ${formatBytes(safeMaxFileBytes)}.`);
       }
       const buffer = await fsp.readFile(target);
-      if (isBinary(buffer)) {
+      if (isBinaryBuffer(buffer)) {
         throw new Error('Target appears to be a binary file; read_file only supports UTF-8 text.');
       }
       const content = buffer.toString('utf8');
@@ -602,7 +561,7 @@ ${note}`,
       let fileExists = false;
       try {
         const currentBuffer = await fsp.readFile(target);
-        if (isBinary(currentBuffer)) {
+        if (isBinaryBuffer(currentBuffer)) {
           throw new Error('Target appears to be a binary file; edit_file only supports UTF-8 text.');
         }
         currentContentRaw = currentBuffer.toString('utf8');
@@ -731,7 +690,7 @@ ${note}`,
       // Concurrency safety: verify file content didn't change while waiting for confirmation.
       if (!isCreateNewFile) {
         const onDisk = await fsp.readFile(target);
-        if (isBinary(onDisk)) {
+        if (isBinaryBuffer(onDisk)) {
           throw new Error('Target appears to be a binary file; aborting edit.');
         }
         const onDiskRaw = onDisk.toString('utf8');

@@ -14,13 +14,13 @@ import { capJsonlFile } from '../shared/log-utils.js';
 import {
   ensureAppDbPath,
   resolveFileChangesPath,
-  resolveTerminalsDir,
   resolveUiPromptsPath,
 } from '../shared/state-paths.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir, ensureFileExists } from './shared/fs-utils.js';
 import { booleanFromArg, resolveBoolFlag } from './shared/flags.js';
 import { normalizeSymlinkPolicy } from '../shared/runtime-settings-utils.js';
+import { appendRunPid as appendRunPidShared } from '../shared/run-pids.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -82,31 +82,7 @@ function logProgress(message) {
 }
 
 function appendRunPid({ pid, kind, name } = {}) {
-  const rid = typeof runId === 'string' ? runId.trim() : '';
-  const rootDir = typeof sessionRoot === 'string' && sessionRoot.trim() ? sessionRoot.trim() : '';
-  const num = Number(pid);
-  if (!rid || !rootDir || !Number.isFinite(num) || num <= 0) {
-    return;
-  }
-  const dir = resolveTerminalsDir(rootDir);
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  const pidsPath = path.join(dir, `${rid}.pids.jsonl`);
-  const payload = {
-    ts: new Date().toISOString(),
-    runId: rid,
-    pid: num,
-    kind: typeof kind === 'string' && kind.trim() ? kind.trim() : 'process',
-    name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
-  };
-  try {
-    fs.appendFileSync(pidsPath, `${JSON.stringify(payload)}\n`, 'utf8');
-  } catch {
-    // ignore
-  }
+  appendRunPidShared({ runId, sessionRoot, pid, kind, name });
 }
 
 const fsOps = createFilesystemOps({

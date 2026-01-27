@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { pathToFileURL } from 'url';
 import { clampNumber } from '../../cli-utils.js';
+import { formatBytes, hashContent } from '../../shared/file-utils.js';
 
 const fsp = fs.promises;
 
@@ -79,23 +79,4 @@ export function toLspPosition({ line, character }) {
   return { line: l, character: c };
 }
 
-export function hashContent(content) {
-  return crypto.createHash('sha256').update(content).digest('hex');
-}
-
-export function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) {
-    return 'n/a';
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes;
-  let unitIndex = -1;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]} (${bytes} B)`;
-}
+export { hashContent, formatBytes };

@@ -3,6 +3,7 @@ import crypto from 'crypto';
 
 import { createTtyPrompt } from '../tty-prompt.js';
 import { capJsonlFile } from '../../shared/log-utils.js';
+import { clampNumber } from '../../shared/number-utils.js';
 
 const promptLogMaxBytes = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES, 0, 100 * 1024 * 1024, 5 * 1024 * 1024);
 const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
@@ -236,10 +237,3 @@ export function createPromptFileChangeConfirm({
     return { status, requestId, remark };
   };
 }
-
-function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(Math.max(num, min), max);
-}
-

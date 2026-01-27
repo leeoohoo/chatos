@@ -1,8 +1,6 @@
-export function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(Math.max(num, min), max);
-}
+import { clampNumber } from '../shared/number-utils.js';
+
+export { clampNumber };
 
 export function parseArgs(input) {
   const args = Array.isArray(input) ? input : [];

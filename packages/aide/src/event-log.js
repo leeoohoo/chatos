@@ -1,21 +1,12 @@
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { ensureRunId } from '../../common/run-id.js';
 
 function ensureDir(filePath) {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-}
-
-function ensureRunId() {
-  const existing = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
-  if (existing) return existing;
-  const short = crypto.randomUUID().split('-')[0];
-  const generated = `run-${Date.now().toString(36)}-${short}`;
-  process.env.MODEL_CLI_RUN_ID = generated;
-  return generated;
 }
 
 export function createEventLogger(filePath, options = {}) {

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { capJsonlFile } from '../../shared/log-utils.js';
 import { normalizeKey } from '../../shared/text-utils.js';
+import { clampNumber } from '../../shared/number-utils.js';
 import { ensureDir } from './fs-utils.js';
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
@@ -16,14 +17,6 @@ const SENSITIVE_KEYS = [
   'auth',
   'authorization',
 ];
-
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) {
-    return Math.min(Math.max(parsed, min), max);
-  }
-  return fallback;
-}
 
 function shouldRedactKey(key, extraKeys = []) {
   const normalized = normalizeKey(key);

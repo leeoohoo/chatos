@@ -4,6 +4,7 @@ import readline from 'readline';
 import { StringDecoder } from 'string_decoder';
 import * as colors from '../colors.js';
 import { terminalPlatform } from '../terminal/platform/index.js';
+import { appendRunPid } from '../../shared/run-pids.js';
 import { resolveTerminalsDir } from '../../shared/state-paths.js';
 
 function createTerminalControl({ runId, sessionRoot, rl, onStop, onAction } = {}) {
@@ -225,29 +226,6 @@ function createTerminalControl({ runId, sessionRoot, rl, onStop, onAction } = {}
   };
 
   return { writeStatus, close };
-}
-
-function appendRunPid({ runId, sessionRoot, pid, kind } = {}) {
-  const rid = typeof runId === 'string' ? runId.trim() : '';
-  const root = typeof sessionRoot === 'string' && sessionRoot.trim() ? sessionRoot.trim() : '';
-  const num = Number(pid);
-  if (!rid || !root || !Number.isFinite(num) || num <= 0) {
-    return;
-  }
-  const dir = resolveTerminalsDir(root);
-  ensureDir(dir);
-  const pidsPath = path.join(dir, `${rid}.pids.jsonl`);
-  const payload = {
-    ts: new Date().toISOString(),
-    runId: rid,
-    pid: num,
-    kind: typeof kind === 'string' && kind.trim() ? kind.trim() : 'process',
-  };
-  try {
-    fs.appendFileSync(pidsPath, `${JSON.stringify(payload)}\n`, 'utf8');
-  } catch {
-    // ignore pid registry failures
-  }
 }
 
 function hardKillCurrentRunFromSignal() {

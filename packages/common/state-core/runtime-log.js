@@ -1,8 +1,9 @@
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { resolveAppStateDir } from './state-paths.js';
 import { capJsonlFile } from './log-utils.js';
+import { clampNumber } from '../number-utils.js';
+import { ensureRunId } from '../run-id.js';
 
 function ensureDir(filePath) {
   const dir = path.dirname(filePath);
@@ -12,21 +13,6 @@ function ensureDir(filePath) {
   } catch {
     // ignore
   }
-}
-
-function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(Math.max(num, min), max);
-}
-
-function ensureRunId(env) {
-  const existing = typeof env.MODEL_CLI_RUN_ID === 'string' ? env.MODEL_CLI_RUN_ID.trim() : '';
-  if (existing) return existing;
-  const short = crypto.randomUUID().split('-')[0];
-  const generated = `run-${Date.now().toString(36)}-${short}`;
-  env.MODEL_CLI_RUN_ID = generated;
-  return generated;
 }
 
 function formatError(err, includeStack) {
