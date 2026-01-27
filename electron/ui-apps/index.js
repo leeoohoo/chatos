@@ -544,6 +544,7 @@ class UiAppsManager {
               tags: desiredTags,
               enabled: typeof mcp.enabled === 'boolean' ? mcp.enabled : true,
               auth: mcp.auth || undefined,
+              callMeta: mcp.callMeta || mcp.call_meta || undefined,
             });
             if (serverRecord?.id) {
               if (allowGrants) {

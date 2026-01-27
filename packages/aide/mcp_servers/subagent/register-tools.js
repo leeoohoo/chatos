@@ -168,6 +168,7 @@ export function registerSubagentTools(context = {}) {
         caller_model: z.string().optional().describe('Optional caller model for fallback'),
         query: z.string().optional().describe('Keyword search for names/descriptions/skills/commands'),
         command_id: z.string().optional().describe('Optional command ID/name; will run that command if present'),
+        mcp_allow_prefixes: z.array(z.string()).optional().describe('Optional MCP tool allowlist prefixes'),
       }),
     },
     async (
@@ -180,6 +181,7 @@ export function registerSubagentTools(context = {}) {
         caller_model: callerModel,
         query,
         command_id: commandId,
+        mcp_allow_prefixes: mcpAllowPrefixes,
       },
       extra
     ) => {
@@ -194,6 +196,7 @@ export function registerSubagentTools(context = {}) {
           callerModel,
           query,
           commandId,
+          mcpAllowPrefixes,
           trace: extra?._meta,
           progress,
         });
@@ -257,6 +260,7 @@ export function registerSubagentTools(context = {}) {
         caller_model: z.string().optional().describe('Optional caller model for fallback'),
         query: z.string().optional().describe('Keyword search for names/descriptions/skills/commands'),
         command_id: z.string().optional().describe('Optional command ID/name; will run that command if present'),
+        mcp_allow_prefixes: z.array(z.string()).optional().describe('Optional MCP tool allowlist prefixes'),
       }),
     },
     async (
@@ -269,6 +273,7 @@ export function registerSubagentTools(context = {}) {
         caller_model: callerModel,
         query,
         command_id: commandId,
+        mcp_allow_prefixes: mcpAllowPrefixes,
       },
       extra
     ) => {
@@ -282,6 +287,7 @@ export function registerSubagentTools(context = {}) {
         callerModel,
         query,
         commandId,
+        mcpAllowPrefixes,
         trace: extra?._meta,
       });
       if (progress) {

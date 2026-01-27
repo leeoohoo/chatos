@@ -101,6 +101,7 @@ export function AgentEditorModal({
     () =>
       (Array.isArray(mcpServers) ? mcpServers : [])
         .filter((srv) => normalizeId(srv?.id) && normalizeId(srv?.name))
+        .filter((srv) => normalizeKey(srv?.name) !== 'subagent_router')
         .map((srv) => ({
           value: srv.id,
           label: srv.name,

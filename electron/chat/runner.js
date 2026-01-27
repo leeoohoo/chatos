@@ -512,6 +512,16 @@ export function createChatRunner({
         .map((p) => [normalizeKey(p.name), p])
         .filter(([key]) => key)
     );
+    const subagentRouterIds = new Set(
+      (Array.isArray(mcpServers) ? mcpServers : [])
+        .filter((srv) => normalizeKey(srv?.name) === 'subagent_router')
+        .map((srv) => normalizeId(srv?.id))
+        .filter(Boolean)
+    );
+    const filterSubagentRouterIds = (ids) =>
+      (Array.isArray(ids) ? ids : [])
+        .map((id) => normalizeId(id))
+        .filter((id) => id && !subagentRouterIds.has(id));
     const isFlowMode = agentMode === 'flow';
     let landSelection = null;
     if (isFlowMode) {
@@ -887,12 +897,11 @@ export function createChatRunner({
       });
     }
 
+    const filteredAgentMcpIds = filterSubagentRouterIds(agentRecord?.mcpServerIds);
+    const filteredDerivedMcpIds = filterSubagentRouterIds(derivedMcpServerIds);
     effectiveAgent = {
       ...agentRecord,
-      mcpServerIds: uniqueIds([
-        ...(Array.isArray(agentRecord.mcpServerIds) ? agentRecord.mcpServerIds : []),
-        ...derivedMcpServerIds,
-      ]),
+      mcpServerIds: uniqueIds([...filteredAgentMcpIds, ...filteredDerivedMcpIds]),
       promptIds: uniqueIds([
         ...(Array.isArray(agentRecord.promptIds) ? agentRecord.promptIds : []),
         ...derivedPromptIds,
@@ -1417,6 +1426,9 @@ export function createChatRunner({
 
         await summarizeConversation({ force: false, signal: controller.signal });
 
+        const toolContext = Array.isArray(subagentMcpAllowPrefixes)
+          ? { subagentMcpAllowPrefixes }
+          : null;
         const runChat = async () =>
           client.chat(modelRecord.name, chatSession, {
             stream: true,
@@ -1430,6 +1442,7 @@ export function createChatRunner({
             onAssistantStep,
             onToolCall,
             onToolResult,
+            ...(toolContext ? { toolContext } : null),
           });
 
         const runChatOnce = async () => {

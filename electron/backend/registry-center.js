@@ -86,6 +86,11 @@ export class RegistryCenter {
     this.registerApp(providerAppId, { name: providerAppId });
 
     const existing = this.db.get(TABLES.mcpServers, id);
+    const callMetaRaw = serverConfig?.callMeta ?? serverConfig?.call_meta;
+    const callMeta =
+      callMetaRaw && typeof callMetaRaw === 'object' && !Array.isArray(callMetaRaw)
+        ? callMetaRaw
+        : undefined;
     const record = {
       id,
       provider_app_id: providerAppId,
@@ -96,6 +101,7 @@ export class RegistryCenter {
       tags: uniqueStrings(serverConfig?.tags),
       enabled: typeof serverConfig?.enabled === 'boolean' ? serverConfig.enabled : true,
       auth: serverConfig?.auth || undefined,
+      ...(callMeta ? { callMeta } : null),
     };
 
     if (existing) {

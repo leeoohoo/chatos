@@ -9,6 +9,7 @@ export async function runSubagentChatLoop({
   onToolCall,
   onToolResult,
   handleModelError,
+  toolsOverride,
 } = {}) {
   if (!runState?.client) {
     throw new Error('Missing subagent client.');
@@ -24,6 +25,8 @@ export async function runSubagentChatLoop({
       const controller = new AbortController();
       corrections?.setActiveController?.(controller);
       try {
+        const resolvedToolsOverride =
+          typeof toolsOverride === 'function' ? toolsOverride(runState) : toolsOverride;
         // eslint-disable-next-line no-await-in-loop
         response = await runState.client.chat(runState.targetModel, session, {
           stream: true,
@@ -33,6 +36,7 @@ export async function runSubagentChatLoop({
           onAssistantStep,
           onToolCall,
           onToolResult,
+          ...(Array.isArray(resolvedToolsOverride) ? { toolsOverride: resolvedToolsOverride } : null),
         });
         break;
       } catch (err) {

@@ -273,6 +273,7 @@ export function registerRemoteTool(
 ) {
   const serverName = serverEntry?.name || 'server';
   const normalizedServer = String(serverName || '').toLowerCase();
+  const normalizedTool = String(tool?.name || '').toLowerCase();
   const reconnect = typeof options?.reconnect === 'function' ? options.reconnect : null;
   let activeClient = client;
   let activeStreamTracker = streamTracker;
@@ -306,8 +307,14 @@ export function registerRemoteTool(
         const mergedArgs = {
           ...(args && typeof args === 'object' ? args : {}),
         };
+        const subagentAllowPrefixes = Array.isArray(toolContext?.subagentMcpAllowPrefixes)
+          ? toolContext.subagentMcpAllowPrefixes.map((prefix) => String(prefix || '').trim()).filter(Boolean)
+          : null;
         if (callerModel && !mergedArgs.caller_model) {
           mergedArgs.caller_model = callerModel;
+        }
+        if (subagentAllowPrefixes && subagentAllowPrefixes.length > 0) {
+          mergedArgs.mcp_allow_prefixes = subagentAllowPrefixes;
         }
         let jobId = null;
         try {
@@ -462,10 +469,11 @@ export function registerRemoteTool(
             stream: false,
           };
         }
-        if (useFinalStream && (!baseCallMeta || !Object.prototype.hasOwnProperty.call(baseCallMeta, 'stream'))) {
-          return { ...(baseCallMeta || {}), stream: true };
+        const baseMeta = baseCallMeta || null;
+        if (useFinalStream && (!baseMeta || !Object.prototype.hasOwnProperty.call(baseMeta, 'stream'))) {
+          return { ...(baseMeta || {}), stream: true };
         }
-        return baseCallMeta;
+        return baseMeta;
       };
       const cancelToolName = resolveCancelToolName(serverEntry, tool.name, availableTools);
       const cancelOptions = {

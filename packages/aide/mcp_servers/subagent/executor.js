@@ -9,6 +9,20 @@ import { applyModelErrorResult, createRunState } from './run-state.js';
 import { createSubagentStepTracker } from './step-tracker.js';
 import { STEP_REASONING_LIMIT, STEP_TEXT_LIMIT, normalizeStepText } from './step-utils.js';
 import { normalizeSkills, withSubagentGuardrails, withTaskTracking } from './utils.js';
+import { filterSubagentTools } from '../../src/subagents/tooling.js';
+
+function normalizeAllowPrefixes(value) {
+  if (!Array.isArray(value)) return null;
+  const normalized = value.map((prefix) => String(prefix || '').trim()).filter(Boolean);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function buildToolsOverride(runState, allowMcpPrefixes) {
+  if (!allowMcpPrefixes || !runState?.config?.getModel) return null;
+  const settings = runState.config.getModel(runState.targetModel);
+  const tools = Array.isArray(settings?.tools) ? settings.tools : [];
+  return filterSubagentTools(tools, { allowMcpPrefixes });
+}
 
 export function createSubagentExecutor({
   manager,
@@ -51,6 +65,7 @@ export function createSubagentExecutor({
     callerModel,
     query,
     commandId,
+    mcpAllowPrefixes,
     trace,
     progress,
   } = {}) {
@@ -104,6 +119,10 @@ export function createSubagentExecutor({
       targetModel: modelSelection.targetModel,
       fallbackModel: modelSelection.fallbackModel,
     });
+    const allowMcpPrefixes = normalizeAllowPrefixes(mcpAllowPrefixes);
+    const resolveToolsOverride = allowMcpPrefixes
+      ? () => buildToolsOverride(runState, allowMcpPrefixes)
+      : null;
     const sessionPrompt = withSubagentGuardrails(withTaskTracking(systemPrompt, internalPrompt));
     logSubagentStart({
       eventLogger,
@@ -171,6 +190,7 @@ export function createSubagentExecutor({
       onToolCall,
       onToolResult,
       handleModelError,
+      toolsOverride: resolveToolsOverride,
     });
 
     const stats = getStats(startedAt);

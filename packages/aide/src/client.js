@@ -36,11 +36,8 @@ export class ModelClient {
     const shouldLogRequest = process.env.MODEL_CLI_LOG_REQUEST === '1';
     const toolNamesOverride = options.toolsOverride;
     const disableTools = options.disableTools === true;
-    const toolset = disableTools
-      ? []
-      : resolveToolset(
-          Array.isArray(toolNamesOverride) && toolNamesOverride.length > 0 ? toolNamesOverride : settings.tools
-        );
+    const hasToolsOverride = Array.isArray(toolNamesOverride);
+    const toolset = disableTools ? [] : resolveToolset(hasToolsOverride ? toolNamesOverride : settings.tools);
     const stream = options.stream !== false;
     const onBeforeRequest = typeof options.onBeforeRequest === 'function' ? options.onBeforeRequest : null;
 
@@ -85,6 +82,24 @@ export class ModelClient {
         }
       }
       return typeof raw === 'string' ? raw.trim() : '';
+    };
+    const resolveToolContext = ({ toolName, callId, iteration: loopIndex, model } = {}) => {
+      const raw = options?.toolContext;
+      if (typeof raw === 'function') {
+        try {
+          const value = raw({
+            session,
+            toolName,
+            callId,
+            iteration: loopIndex,
+            model,
+          });
+          return value && typeof value === 'object' ? value : null;
+        } catch {
+          return null;
+        }
+      }
+      return raw && typeof raw === 'object' ? raw : null;
     };
     while (iteration < maxToolPasses) {
       throwIfAborted(options.signal);
@@ -201,7 +216,7 @@ export class ModelClient {
                 iteration,
                 model: settings.name,
               });
-              const toolResult = await target.handler(finalArgs, {
+              const baseToolContext = {
                 model: settings.name,
                 session,
                 signal: options.signal,
@@ -209,7 +224,18 @@ export class ModelClient {
                 ...(caller ? { caller } : {}),
                 ...(toolWorkdir ? { workdir: toolWorkdir } : {}),
                 trace: toolTrace,
+              };
+              const extraToolContext = resolveToolContext({
+                toolName: target.name,
+                callId: call.id,
+                iteration,
+                model: settings.name,
               });
+              const toolContext =
+                extraToolContext && typeof extraToolContext === 'object'
+                  ? { ...extraToolContext, ...baseToolContext }
+                  : baseToolContext;
+              const toolResult = await target.handler(finalArgs, toolContext);
               const toolStructuredContent =
                 toolResult && typeof toolResult === 'object' ? toolResult.structuredContent ?? null : null;
               const toolIsError = Boolean(toolResult?.isError);
