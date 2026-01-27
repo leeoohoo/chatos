@@ -80,7 +80,7 @@ CI: `.github/workflows/desktop-build.yml` (supports `workflow_dispatch`; pushing
 ## MCP server configuration
 - `stateRoot`: per-user state root
 - `stateDir`: `<stateRoot>/<hostApp>` (legacy `legacyStateRoot/<hostApp>` auto-migrated)
-- File: `<stateDir>/auth/mcp.config.json`
+- Admin DB: `<stateDir>/chatos.db.sqlite` (table `mcpServers`); active selection is controlled by land_config.
 - In chat: `/mcp` (show), `/mcp_set` (edit), `/mcp_tools` (enable tools per model)
 - Built-in: `chrome_devtools` (disabled by default, sub-agent-only). Enable it in the UI (Admin → MCP Server 管理) if you want browser automation/debugging.
 - Endpoint formats:

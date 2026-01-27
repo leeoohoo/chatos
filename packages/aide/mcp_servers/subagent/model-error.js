@@ -11,7 +11,6 @@ export async function handleSubagentModelError({
   defaultModel,
   adminServices,
   sessionRoot,
-  mcpConfigPath,
   eventLogger,
   loadAppConfig,
   getClient,
@@ -45,7 +44,6 @@ export async function handleSubagentModelError({
       callerModel: normalizedCallerModel || null,
       dbPath: adminServices?.dbPath || null,
       sessionRoot,
-      mcpConfigPath,
       modelInfo: debugInfo,
       error: info,
     };

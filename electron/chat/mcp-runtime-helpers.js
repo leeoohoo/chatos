@@ -1,9 +1,8 @@
-import fs from 'fs';
 import path from 'path';
 import { normalizeId } from './normalize.js';
 import { normalizeKey } from '../../packages/common/text-utils.js';
 
-export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
+export function createMcpRuntimeHelpers() {
   const computeMcpSignature = ({ servers, skipServers, baseDir, mode } = {}) => {
     const toJson = (value) => {
       if (!value || typeof value !== 'object') return '';
@@ -120,29 +119,8 @@ export function createMcpRuntimeHelpers({ defaultPaths } = {}) {
     return out;
   };
 
-  const resolveMcpConfigPath = () => {
-    const explicit = typeof defaultPaths?.mcpConfig === 'string' ? defaultPaths.mcpConfig.trim() : '';
-    if (explicit) return explicit;
-    const anchor = typeof defaultPaths?.models === 'string' ? defaultPaths.models.trim() : '';
-    if (!anchor) return '';
-    return path.join(path.dirname(anchor), 'mcp.config.json');
-  };
-
-  const readMcpConfigMtimeMs = () => {
-    const configPath = resolveMcpConfigPath();
-    if (!configPath) return null;
-    try {
-      const stat = fs.statSync(configPath);
-      return Number.isFinite(stat?.mtimeMs) ? stat.mtimeMs : null;
-    } catch {
-      return null;
-    }
-  };
-
   return {
     computeMcpSignature,
     buildRuntimeMcpServers,
-    resolveMcpConfigPath,
-    readMcpConfigMtimeMs,
   };
 }

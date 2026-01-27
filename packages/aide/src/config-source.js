@@ -4,12 +4,10 @@ import { fileURLToPath } from 'url';
 import { createDb, getDefaultDbPath } from '../shared/data/storage.js';
 import { createAdminServices } from '../shared/data/services/index.js';
 import { resolveSessionRoot } from '../shared/session-root.js';
-import { loadMcpConfig } from './mcp.js';
 import {
   buildAdminSeed,
   extractVariables,
   loadBuiltinPromptFiles,
-  parseMcpServers,
   safeRead,
 } from '../shared/data/legacy.js';
 import { syncAdminToFiles } from '../shared/data/sync.js';
@@ -45,7 +43,6 @@ export function getAdminServices() {
     systemUserPrompt: path.join(authDir, 'system-user-prompt.yaml'),
     subagentSystemPrompt: path.join(authDir, 'subagent-system-prompt.yaml'),
     subagentUserPrompt: path.join(authDir, 'subagent-user-prompt.yaml'),
-    mcpConfig: path.join(authDir, 'mcp.config.json'),
     tasks: null,
     events: resolveStateDirFile(stateDir, STATE_FILE_NAMES.events),
     marketplace: path.join(projectRoot, 'subagents', 'marketplace.json'),
@@ -56,14 +53,6 @@ export function getAdminServices() {
     adminDb: resolveStateDirPath(stateDir, `${getHostApp() || 'chatos'}.db.sqlite`),
   };
   const legacySeed = readLegacyState(legacyAdminDb);
-  if (!legacySeed) {
-    // Ensure MCP config exists so admin seed matches runtime defaults.
-    try {
-      loadMcpConfig(defaultPaths.mcpConfig);
-    } catch {
-      // ignore MCP defaults bootstrap errors
-    }
-  }
   const seed = legacySeed || buildAdminSeed(defaultPaths);
   const adminDb = createDb({
     dbPath: defaultPaths.adminDb,
@@ -71,12 +60,10 @@ export function getAdminServices() {
   });
   const services = createAdminServices(adminDb);
   maybeReseedModels(adminDb, services, seed);
-  refreshBuiltinMcpServers(adminDb, services, defaultPaths);
   refreshBuiltinPrompts(adminDb, services, defaultPaths);
   maybePurgeUiAppsSyncedAdminData({ stateDir, services });
   syncAdminToFiles(services.snapshot(), {
     modelsPath: defaultPaths.models,
-    mcpConfigPath: defaultPaths.mcpConfig,
     subagentsPath: defaultPaths.installedSubagents,
     promptsPath: defaultPaths.systemPrompt,
     systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
@@ -210,40 +197,6 @@ function readLegacyState(filePath) {
     // ignore legacy read errors
   }
   return null;
-}
-
-function refreshBuiltinMcpServers(adminDb, services, defaultPaths) {
-  const now = new Date().toISOString();
-  const hostApp = getHostApp() || 'chatos';
-  try {
-    const raw =
-      safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'mcp.config.json')) ||
-      safeRead(defaultPaths.mcpConfig);
-    const defaults = parseMcpServers(raw);
-    if (!Array.isArray(defaults) || defaults.length === 0) return;
-    const existing = services.mcpServers.list() || [];
-    const map = new Map(existing.map((item) => [item.name, item]));
-    defaults.forEach((srv) => {
-      if (!srv?.name) return;
-      const prev = map.get(srv.name);
-      const payload = {
-        ...srv,
-        app_id: prev?.app_id || srv.app_id || hostApp,
-        enabled: typeof prev?.enabled === 'boolean' ? prev.enabled : srv.enabled !== false,
-        locked: true,
-        id: prev?.id || srv.id,
-        createdAt: prev?.createdAt || now,
-        updatedAt: now,
-      };
-      if (prev) {
-        adminDb.update('mcpServers', prev.id, payload);
-      } else {
-        adminDb.insert('mcpServers', payload);
-      }
-    });
-  } catch {
-    // ignore builtin refresh errors
-  }
 }
 
 function refreshBuiltinPrompts(adminDb, services, defaultPaths) {

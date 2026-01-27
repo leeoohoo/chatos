@@ -1,10 +1,4 @@
-import {
-  buildMcpConfig,
-  buildModelsYamlPayload,
-  buildSubagentsPayload,
-  writeJson,
-  writeYaml,
-} from '../../packages/common/admin-data/sync-helpers.js';
+import { buildModelsYamlPayload, buildSubagentsPayload, writeJson, writeYaml } from '../../packages/common/admin-data/sync-helpers.js';
 
 function buildPromptsYaml(prompts = []) {
   const payload = {};
@@ -21,10 +15,6 @@ export function syncAdminToFiles(snapshot, paths) {
   if (paths.modelsPath && Array.isArray(snapshot?.models)) {
     writeYaml(paths.modelsPath, buildModelsYamlPayload(snapshot.models, { mode: 'minimal' }));
     summary.modelsPath = paths.modelsPath;
-  }
-  if (paths.mcpConfigPath && Array.isArray(snapshot?.mcpServers)) {
-    writeJson(paths.mcpConfigPath, buildMcpConfig(snapshot.mcpServers, { mode: 'minimal' }));
-    summary.mcpConfigPath = paths.mcpConfigPath;
   }
   if (paths.subagentsPath && Array.isArray(snapshot?.subagents)) {
     writeJson(paths.subagentsPath, buildSubagentsPayload(snapshot.subagents, { mode: 'minimal' }));

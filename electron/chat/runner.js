@@ -42,15 +42,13 @@ export function createChatRunner({
   let mcpInitPromise = null;
   let mcpWorkspaceRoot = '';
   let mcpInitWorkspaceRoot = '';
-  let mcpConfigMtimeMs = null;
   let mcpSignature = '';
   let mcpInitSignature = '';
   const MCP_INIT_TIMEOUT_MS = 4_000;
   const MCP_INIT_TIMEOUT = Symbol('mcp_init_timeout');
   const eventLogPath =
     typeof defaultPaths?.events === 'string' && defaultPaths.events.trim() ? defaultPaths.events.trim() : '';
-  const { computeMcpSignature, buildRuntimeMcpServers, resolveMcpConfigPath, readMcpConfigMtimeMs } =
-    createMcpRuntimeHelpers({ defaultPaths });
+  const { computeMcpSignature, buildRuntimeMcpServers } = createMcpRuntimeHelpers();
   const { resolveUiAppAi, refreshUiAppsTrust, isUiAppTrusted, resolveUiAppRegistryAccess } =
     createUiAppRegistryHelpers({ uiApps, adminServices });
   const resolveMcpSessionId = (params) => {
@@ -88,7 +86,6 @@ export function createChatRunner({
     mcpInitPromise = null;
     mcpWorkspaceRoot = '';
     mcpInitWorkspaceRoot = '';
-    mcpConfigMtimeMs = null;
     mcpSignature = '';
     mcpInitSignature = '';
   };
@@ -132,21 +129,18 @@ export function createChatRunner({
     const notify = typeof emitEvent === 'function' ? emitEvent : sendEvent;
     const effectiveWorkspaceRoot =
       normalizeWorkspaceRoot(desiredWorkspaceRoot) || normalizeWorkspaceRoot(workspaceRoot) || process.cwd();
-    const configPath = resolveMcpConfigPath() || defaultPaths.models;
+    const configPath = typeof defaultPaths?.models === 'string' ? defaultPaths.models.trim() : '';
     const baseDir = configPath ? path.dirname(configPath) : process.cwd();
     const useInlineServers = Array.isArray(servers);
     const signature = computeMcpSignature({
       servers: useInlineServers ? servers : extraServers,
       skipServers,
       baseDir,
-      mode: useInlineServers ? 'inline' : 'config',
+      mode: 'inline',
     });
-    const currentMtime = useInlineServers ? null : readMcpConfigMtimeMs();
     const workspaceMatches = normalizeWorkspaceRoot(mcpWorkspaceRoot) === effectiveWorkspaceRoot;
-    const configMatches =
-      useInlineServers || currentMtime === null || mcpConfigMtimeMs === null ? true : currentMtime === mcpConfigMtimeMs;
     const signatureMatches = mcpSignature === signature;
-    if (mcpRuntime && workspaceMatches && configMatches && signatureMatches) return mcpRuntime;
+    if (mcpRuntime && workspaceMatches && signatureMatches) return mcpRuntime;
     if (
       mcpInitPromise &&
       (normalizeWorkspaceRoot(mcpInitWorkspaceRoot) !== effectiveWorkspaceRoot || mcpInitSignature !== signature)
@@ -157,7 +151,7 @@ export function createChatRunner({
         // ignore
       }
     }
-    if (mcpRuntime && (!workspaceMatches || !configMatches || !signatureMatches)) {
+    if (mcpRuntime && (!workspaceMatches || !signatureMatches)) {
       try {
         await mcpRuntime?.shutdown?.();
       } catch {
@@ -165,7 +159,6 @@ export function createChatRunner({
       }
       mcpRuntime = null;
       mcpWorkspaceRoot = '';
-      mcpConfigMtimeMs = null;
       mcpSignature = '';
     }
     if (!mcpInitPromise) {
@@ -184,12 +177,10 @@ export function createChatRunner({
             eventLogger: eventLogger || null,
           });
           mcpWorkspaceRoot = effectiveWorkspaceRoot;
-          mcpConfigMtimeMs = useInlineServers ? null : readMcpConfigMtimeMs();
           mcpSignature = signature;
         } catch (err) {
           mcpRuntime = null;
           mcpWorkspaceRoot = '';
-          mcpConfigMtimeMs = null;
           mcpSignature = '';
           notify({
             type: 'notice',

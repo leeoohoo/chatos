@@ -19,7 +19,7 @@
 
 3. 调用超时策略收敛
    - 将默认 `MODEL_CLI_MCP_TIMEOUT_MS`/`MODEL_CLI_MCP_MAX_TIMEOUT_MS` 调整到合理区间（例如 60s/5m 或与文档一致）。
-   - 在 `mcp.config.json` 对内部 server 显式设置 `timeout_ms`/`max_timeout_ms`，避免单个调用无限等待。
+   - 在 admin.db 的 `mcpServers` 或 land_config 中对内部 server 显式设置 `timeout_ms`/`max_timeout_ms`，避免单个调用无限等待。
    - 复核 `shouldDisableToolTimeout`，只保留必须无限等待的工具，其他加上上限。
 
 4. UI prompt 导致的等待

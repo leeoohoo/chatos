@@ -4,7 +4,6 @@ import {
   parseEvents,
   parseInstalledPlugins,
   parseJsonSafe,
-  parseMcpServers,
   parseModels,
   parsePrompts,
   safeRead,
@@ -55,7 +54,7 @@ export function createSessionPayloadReaders({
             promptsMainInternal.subagent_user_prompt ||
             '',
     };
-    const mcpServers = snapshot.mcpServers || parseMcpServers(safeRead(defaultPaths.mcpConfig));
+    const mcpServers = snapshot.mcpServers || [];
     const marketplacePaths = [defaultPaths.marketplace, defaultPaths.marketplaceUser].filter(Boolean);
     const marketplace = exposeSubagents
       ? (() => {
@@ -106,8 +105,6 @@ export function createSessionPayloadReaders({
       subagentUserPromptPath: defaultPaths.subagentUserPrompt,
       subagentUserPrompt,
       prompts,
-      mcpConfigPath: defaultPaths.mcpConfig,
-      mcpConfig: safeRead(defaultPaths.mcpConfig),
       mcpServers,
       marketplace,
       installedPlugins,

@@ -1,6 +1,5 @@
 import path from 'path';
 import { createLogger } from '../logger.js';
-import { loadMcpConfig } from '../mcp.js';
 import { mapAllSettledWithConcurrency, resolveConcurrency } from './runtime/concurrency.js';
 import { allowExternalOnlyMcpServers, isExternalOnlyMcpServerName } from '../../shared/host-app.js';
 import { createRuntimeLogger } from '../../shared/runtime-log.js';
@@ -28,7 +27,8 @@ async function initializeMcpRuntime(
   const hasInlineServers =
     options &&
     (Object.prototype.hasOwnProperty.call(options, 'servers') ||
-      Object.prototype.hasOwnProperty.call(options, 'serverList'));
+      Object.prototype.hasOwnProperty.call(options, 'serverList') ||
+      Object.prototype.hasOwnProperty.call(options, 'extraServers'));
   const explicitBaseDir = typeof options?.baseDir === 'string' ? options.baseDir.trim() : '';
   let servers = [];
   let baseDir = '';
@@ -42,21 +42,16 @@ async function initializeMcpRuntime(
     servers = inlineServers;
     baseDir = explicitBaseDir || (resolvedConfigPath ? path.dirname(resolvedConfigPath) : process.cwd());
   } else {
-    try {
-      const loaded = loadMcpConfig(configPath);
-      servers = loaded?.servers || [];
-      resolvedConfigPath = typeof loaded?.path === 'string' ? loaded.path : resolvedConfigPath;
-      baseDir = explicitBaseDir || (resolvedConfigPath ? path.dirname(resolvedConfigPath) : process.cwd());
-    } catch (err) {
-      log.error('读取 mcp.config.json 失败', err);
-      runtimeLogger?.error('读取 mcp.config.json 失败', { configPath }, err);
-      eventLogger?.log?.('mcp_error', {
-        stage: 'load_config',
-        path: configPath || '',
-        message: err?.message || String(err),
-      });
-      return null;
-    }
+    baseDir = explicitBaseDir || (resolvedConfigPath ? path.dirname(resolvedConfigPath) : process.cwd());
+    runtimeLogger?.warn('MCP 初始化跳过：未提供 MCP servers 列表', {
+      caller: options?.caller || '',
+    });
+    eventLogger?.log?.('mcp_warning', {
+      stage: 'load_config',
+      message: 'No MCP servers provided',
+      path: configPath || '',
+    });
+    return null;
   }
   const extraServers = Array.isArray(options?.extraServers) ? options.extraServers : [];
   const mergedServers = (() => {

@@ -1,11 +1,9 @@
 import * as colors from '../colors.js';
 import { runModelPicker, runMcpSetup, runMcpToolsConfigurator } from '../ui/index.js';
-import { loadMcpConfig, saveMcpConfig } from '../mcp.js';
 import { renderMarkdown } from '../markdown.js';
 import { estimateTokenCount, loadSummaryPromptConfig } from '../chat/summary.js';
-import { getHostApp } from '../../shared/host-app.js';
 
-import { printMcpServers, upsertMcpServer } from './mcp.js';
+import { printMcpServers } from './mcp.js';
 import { executeSubAgentCommand, handleSubagentsCommand } from './subagents.js';
 import { resolveSystemPrompt } from './system-prompt.js';
 
@@ -296,10 +294,24 @@ export async function handleSlashCommand(input, context) {
     }
     case 'mcp': {
       try {
-        const { path: mcpPath, servers } = loadMcpConfig(context.configPath);
-        printMcpServers(servers, mcpPath);
+        const mcpService = context.mcpService;
+        const allServers = mcpService?.list ? mcpService.list() : [];
+        const runtimeServers = Array.isArray(context.runtimeMcpServers) ? context.runtimeMcpServers : null;
+        const landInfo = context.landConfigInfo;
+        const landLabel =
+          landInfo && typeof landInfo === 'object'
+            ? String(landInfo.id || landInfo.name || '').trim()
+            : '';
+        const sourceLabel = context.landConfigActive
+          ? `land_config:${landLabel || 'active'}`
+          : 'admin_db';
+        const servers = runtimeServers || allServers;
+        printMcpServers(servers, sourceLabel);
+        if (context.landConfigActive && runtimeServers) {
+          console.log(colors.dim(`land_config active: ${runtimeServers.length} selected`));
+        }
       } catch (err) {
-        console.error(colors.yellow(`Failed to load MCP config: ${err.message}`));
+        console.error(colors.yellow(`Failed to load MCP servers: ${err.message}`));
       }
       return null;
     }
@@ -308,21 +320,49 @@ export async function handleSlashCommand(input, context) {
         console.log(colors.yellow('MCP configuration UI is only available in interactive terminals.'));
         return null;
       }
+      const mcpService = context.mcpService;
+      if (!mcpService?.list || !mcpService?.create || !mcpService?.update) {
+        console.log(colors.yellow('MCP configuration is managed via admin.db; this session cannot edit it.'));
+        return null;
+      }
       try {
-        const { path: mcpPath, servers, allServers } = loadMcpConfig(context.configPath);
+        const servers = mcpService.list() || [];
         const result = await runMcpSetup(context.askLine, servers, uiControl);
         if (!result) {
           console.log(colors.yellow('No changes applied to MCP configuration.'));
           return null;
         }
-        const hostApp = getHostApp() || 'chatos';
-        const serverWithApp = {
+        const payload = {
           ...(result.server || {}),
-          app_id: hostApp,
         };
-        const updated = upsertMcpServer(allServers || servers, serverWithApp, result.originalName);
-        saveMcpConfig(mcpPath, updated);
-        console.log(colors.green(`Saved MCP config (${updated.length} entries) to ${mcpPath}.`));
+        const targetName = result.originalName || payload.name;
+        const byName = new Map(
+          servers
+            .filter((entry) => entry?.name)
+            .map((entry) => [entry.name, entry])
+        );
+        const existing = targetName ? byName.get(targetName) : null;
+        const duplicate = payload.name ? byName.get(payload.name) : null;
+        if (existing?.id) {
+          mcpService.update(existing.id, payload);
+          if (
+            payload.name &&
+            payload.name !== targetName &&
+            duplicate &&
+            duplicate.id !== existing.id &&
+            !duplicate.locked
+          ) {
+            mcpService.remove(duplicate.id);
+          }
+        } else if (duplicate?.id) {
+          mcpService.update(duplicate.id, payload);
+        } else {
+          mcpService.create(payload);
+        }
+        console.log(colors.green('Saved MCP server configuration to admin.db.'));
+        if (context.landConfigActive) {
+          console.log(colors.dim('land_config 已启用，当前会话仍以 land_config 选择为准。'));
+        }
       } catch (err) {
         console.error(colors.yellow(`Failed to configure MCP: ${err.message}`));
       }

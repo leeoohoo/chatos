@@ -4,11 +4,9 @@ import {
   buildAdminSeed,
   extractVariables,
   loadBuiltinPromptFiles,
-  parseMcpServers,
   parseModelsWithDefault,
   safeRead,
 } from '../packages/aide/shared/data/legacy.js';
-import { getHostApp } from '../packages/common/host-app.js';
 
 export { resolveSessionRoot, persistSessionRoot } from '../src/session-root.js';
 
@@ -144,13 +142,6 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
     return summary;
   }
 
-  function readDefaultMcpServers() {
-    const raw =
-      safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'mcp.config.json')) ||
-      safeRead(defaultPaths.mcpConfig);
-    return parseMcpServers(raw);
-  }
-
   function readDefaultModels() {
     const raw =
       safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'models.yaml')) ||
@@ -194,32 +185,6 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
 
   function refreshBuiltinsFromDefaults() {
     const now = new Date().toISOString();
-    const hostApp = getHostApp(env) || 'chatos';
-
-    try {
-      const existingMcp = adminServices.mcpServers.list();
-      const mcpMap = new Map((existingMcp || []).map((item) => [item.name, item]));
-      readDefaultMcpServers().forEach((srv) => {
-        if (!srv?.name) return;
-        const prev = mcpMap.get(srv.name);
-        const payload = {
-          ...srv,
-          app_id: prev?.app_id || srv.app_id || hostApp,
-          enabled: typeof prev?.enabled === 'boolean' ? prev.enabled : srv.enabled !== false,
-          locked: true,
-          id: prev?.id,
-          createdAt: prev?.createdAt || now,
-          updatedAt: now,
-        };
-        if (prev) {
-          adminDb.update('mcpServers', prev.id, payload);
-        } else {
-          adminDb.insert('mcpServers', payload);
-        }
-      });
-    } catch (err) {
-      console.error('[MCP] 同步内置配置失败', err);
-    }
 
     try {
       const existingPrompts = adminServices.prompts.list();

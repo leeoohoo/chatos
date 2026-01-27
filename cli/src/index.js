@@ -13,7 +13,6 @@ import { runStartupWizard } from '../../packages/aide/src/ui/index.js';
 import { initializeMcpRuntime } from '../../packages/aide/src/mcp/runtime.js';
 import { loadPromptProfilesFromDb } from '../../packages/aide/src/prompts.js';
 import { chatLoop } from '../../packages/aide/src/chat-loop.js';
-import { loadMcpConfig } from '../../packages/aide/src/mcp.js';
 import { buildLandConfigSelection, resolveLandConfig } from '../../packages/aide/src/land-config.js';
 import { createSubAgentManager } from '../../packages/aide/src/subagents/index.js';
 import { generateConfigReport, writeReport } from '../../packages/aide/src/report.js';
@@ -348,7 +347,25 @@ async function runChat(options) {
     console.log(colors.yellow('[prompts] land_config 未启用，system prompt 为空。'));
     runtimeLogger?.warn('land_config.inactive', { systemOverride: false });
   }
-  const mcpSummary = loadMcpConfig(defaultPaths.mcpConfig);
+  const configuredMcpServers = Array.isArray(mcpServerRecords) ? mcpServerRecords : [];
+  const runtimeMcpServers = (() => {
+    if (!landSelection) return configuredMcpServers;
+    const selected = [
+      ...(landSelection.main?.selectedServers || []),
+      ...(landSelection.sub?.selectedServers || []),
+    ]
+      .map((entry) => entry?.server)
+      .filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    selected.forEach((entry) => {
+      const key = normalizeKey(entry?.name);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(entry);
+    });
+    return out;
+  })();
   const subAgentManager = createSubAgentManager({
     internalSystemPrompt: '',
   });
@@ -365,32 +382,14 @@ async function runChat(options) {
   let mcpRuntime = null;
   try {
     // 使用会话根（默认主目录或显式指定的 MODEL_CLI_SESSION_ROOT）作为 MCP 状态根，
-    // 工作目录仍由 mcp.config 中的 --root 结合当前工作目录解析。
-    const selectedServerKeys = landSelection
-      ? new Set(
-          [
-            ...(landSelection.main?.selectedServers || []),
-            ...(landSelection.sub?.selectedServers || []),
-          ]
-            .map((entry) => normalizeKey(entry?.server?.name))
-            .filter(Boolean)
-        )
-      : null;
-    const skipServers = landSelection
-      ? Array.isArray(mcpSummary?.servers)
-        ? mcpSummary.servers
-            .filter((srv) => srv?.name && !selectedServerKeys.has(normalizeKey(srv.name)))
-            .map((srv) => srv.name)
-        : []
-      : [];
+    // MCP server 的工作目录仍由 --root + 当前工作目录解析。
     mcpRuntime = await initializeMcpRuntime(
       resolvedConfigPath,
       process.env.MODEL_CLI_SESSION_ROOT,
       process.cwd(),
       {
         caller: 'main',
-        skipServers,
-        extraServers: landSelection?.extraMcpServers || [],
+        servers: runtimeMcpServers,
         eventLogger,
       }
     );
@@ -413,16 +412,14 @@ async function runChat(options) {
   const allowExternalOnly = allowExternalOnlyMcpServers();
   const allowPrefixes = landSelection
     ? Array.from(new Set((landSelection.main?.selectedServerNames || []).map((name) => `mcp_${name}_`)))
-    : Array.isArray(mcpSummary?.servers)
-      ? mcpSummary.servers
-          .filter(
-            (srv) =>
-              srv?.name &&
-              srv.enabled !== false &&
-              (allowExternalOnly || !isExternalOnlyMcpServerName(srv.name))
-          )
-          .map((srv) => `mcp_${normalizeServerName(srv.name)}_`)
-      : ['mcp_subagent_router_', 'mcp_task_manager_', 'mcp_project_files_'];
+    : configuredMcpServers
+        .filter(
+          (srv) =>
+            srv?.name &&
+            srv.enabled !== false &&
+            (allowExternalOnly || !isExternalOnlyMcpServerName(srv.name))
+        )
+        .map((srv) => `mcp_${normalizeServerName(srv.name)}_`);
   const subagentAllowPrefixes = landSelection
     ? (() => {
         const prefixes = Array.from(
@@ -473,12 +470,15 @@ async function runChat(options) {
         ? '(system_override)'
         : '(none)';
     const promptText = landConfigActive ? mainPromptWithMcp : (typeof systemOverride === 'string' ? systemOverride : '');
+    const mcpSource = landConfigActive
+      ? `land_config:${selectedLandConfig?.id || landConfigId || 'unknown'}`
+      : 'admin_db';
     const html = generateConfigReport({
       modelsPath: resolvedConfigPath,
       models: config.models,
       activeModel: targetSettings.name,
-      mcpPath: mcpSummary?.path,
-      mcpServers: mcpSummary?.servers,
+      mcpSource,
+      mcpServers: runtimeMcpServers,
       systemPromptPath: promptLabel,
       systemPrompt: promptText,
       promptProfiles: promptStore?.prompts,
@@ -604,6 +604,8 @@ async function runChat(options) {
       subagentMcpAllowPrefixes: subagentAllowPrefixes,
       allowUi: interactiveTerminal,
       promptStore,
+      mcpService: services.mcpServers,
+      runtimeMcpServers,
       mainTools: filterMainTools,
       summaryThreshold: runtimeOptions.summaryThreshold,
       maxToolPasses: runtimeOptions.maxToolPasses,

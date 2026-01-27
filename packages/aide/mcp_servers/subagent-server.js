@@ -93,11 +93,7 @@ if (landSelection) {
     );
   }
 }
-const mcpConfigPath =
-  process.env.SUBAGENT_CONFIG_PATH ||
-  args.config ||
-  defaultPaths?.mcpConfig ||
-  path.join(defaultPaths?.defaultsRoot || process.cwd(), 'shared', 'defaults', 'mcp.config.json');
+const configPath = typeof defaultPaths?.models === 'string' ? defaultPaths.models : '';
 const SESSION_ROOT = resolveSessionRoot({ preferCwd: true });
 const WORKSPACE_ROOT = process.env.MODEL_CLI_WORKSPACE_ROOT || process.env.MODEL_CLI_SESSION_ROOT || process.cwd();
 const RUN_ID = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
@@ -117,7 +113,7 @@ const runtimeConfigManager = createRuntimeConfigManager({
   ModelClient,
   initializeMcpRuntime,
   listTools,
-  mcpConfigPath,
+  configPath,
   sessionRoot: SESSION_ROOT,
   workspaceRoot: WORKSPACE_ROOT,
   eventLogger,
@@ -152,7 +148,6 @@ const executeSubAgent = createSubagentExecutor({
   sessionRoot: SESSION_ROOT,
   runId: RUN_ID,
   isWorkerMode,
-  mcpConfigPath,
   adminServices,
   userPromptMessages,
   describeModelError,
@@ -161,7 +156,6 @@ const executeSubAgent = createSubagentExecutor({
 const jobManager = createAsyncJobManager({
   performance,
   eventLogger,
-  mcpConfigPath,
   sessionRoot: SESSION_ROOT,
   workspaceRoot: WORKSPACE_ROOT,
   eventLogPath,
@@ -231,5 +225,4 @@ if (isWorkerMode) {
     process.exit(1);
   });
 }
-
 

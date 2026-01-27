@@ -81,7 +81,7 @@ CI 构建：`.github/workflows/desktop-build.yml`（支持 `workflow_dispatch`�
 ## MCP 服务配置
 - `stateRoot`：用户状态根目录
 - `stateDir`：`<stateRoot>/<hostApp>`（旧 `legacyStateRoot/<hostApp>` 自动迁移）
-- 配置文件：`<stateDir>/auth/mcp.config.json`
+- 管理数据库：`<stateDir>/chatos.db.sqlite`（表 `mcpServers`；生效选择由 land_config 控制）
 - 聊天内管理：`/mcp`（查看）、`/mcp_set`（编辑）、`/mcp_tools`（为当前模型启用工具）
 - 内置：`chrome_devtools`（默认禁用、仅子代理可用）。如需浏览器自动化/调试，请在 UI（Admin → MCP Server 管理）里启用。
 - 端点格式：

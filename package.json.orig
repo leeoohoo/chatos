@@ -21,8 +21,6 @@
     "apps/ui/index.html",
     "apps/ui/src/**/*",
     "scripts/**/*",
-    "mcp_config_restore.json",
-    "mcp_config_update.json",
     "README.md",
     "README.en.md",
     "README.zh.md"
@@ -64,8 +62,6 @@
       "packages/**/*",
       "apps/ui/dist/**/*",
       "ui_apps/plugins/**/*",
-      "mcp_config_restore.json",
-      "mcp_config_update.json",
       "!**/*.map",
       "!packages/aide/**/node_modules/**",
       "!packages/aide/**/.git/**",

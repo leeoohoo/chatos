@@ -168,7 +168,6 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     const snapshot = adminServices.snapshot();
     syncAdminToFiles(snapshot, {
       modelsPath: defaultPaths.models,
-      mcpConfigPath: defaultPaths.mcpConfig,
       subagentsPath: defaultPaths.installedSubagents,
       promptsPath: defaultPaths.systemPrompt,
       systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,

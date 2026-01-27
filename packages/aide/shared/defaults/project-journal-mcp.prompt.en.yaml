@@ -42,10 +42,9 @@ prompt: |
         mcp_project_journal_add_exec_log({
           "tag": "feat",
           "tags": ["mcp", "logging"],
-          "summary": "Added a Project Journal MCP server and registered it in default MCP config.",
+          "summary": "Added a Project Journal MCP server and registered it in admin DB / land_config.",
           "files": [
             "mcp_servers/project-journal-server.js",
-            "shared/defaults/mcp.config.json",
             "shared/defaults/project-journal-mcp.prompt.en.yaml"
           ],
           "highlights": [
@@ -71,7 +70,7 @@ prompt: |
           "summary": "A terminal AI chat client for multiple models (with an Electron UI).",
           "background": "Used for local development and debugging: MCP servers + sub-agents + UI floating-island prompts.",
           "git_url": "https://example.com/your/repo.git",
-          "main_config": "Key paths: src/cli.js, electron/main.js, shared/defaults/mcp.config.json",
+          "main_config": "Key paths: src/cli.js, electron/main.js, <stateDir>/chatos.db.sqlite (mcpServers/land_config)",
           "notes": "Put relatively stable notes here."
         })
       </example>

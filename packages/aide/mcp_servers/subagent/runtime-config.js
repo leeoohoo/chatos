@@ -1,3 +1,5 @@
+import { normalizeKey } from '../../shared/text-utils.js';
+
 function buildConfigSignature(models = [], secrets = []) {
   const modelParts = (Array.isArray(models) ? models : [])
     .filter((m) => m && typeof m === 'object')
@@ -30,7 +32,7 @@ export function createRuntimeConfigManager(options = {}) {
     ModelClient,
     initializeMcpRuntime,
     listTools,
-    mcpConfigPath,
+    configPath,
     sessionRoot,
     workspaceRoot,
     eventLogger,
@@ -96,29 +98,26 @@ export function createRuntimeConfigManager(options = {}) {
     }
     mcpRuntimePromise = (async () => {
       try {
-        const skip = new Set(['subagent_router']); // Prevent recursive self-connection.
-        try {
-          const servers = adminServices?.mcpServers?.list?.() || [];
+        const servers = (() => {
           if (landSelection) {
-            const allowed = new Set(
-              (landSelection.sub?.selectedServers || [])
-                .map((entry) => String(entry?.server?.name || '').toLowerCase())
-                .filter(Boolean)
-            );
-            servers.forEach((srv) => {
-              if (!srv?.name) return;
-              if (!allowed.has(String(srv.name || '').toLowerCase())) {
-                skip.add(srv.name);
-              }
-            });
+            return (landSelection.sub?.selectedServers || [])
+              .map((entry) => entry?.server)
+              .filter(Boolean);
           }
-        } catch {
-          // ignore admin snapshot errors
-        }
-        return await initializeMcpRuntime(mcpConfigPath, sessionRoot, workspaceRoot, {
+          return adminServices?.mcpServers?.list?.() || [];
+        })();
+        const seen = new Set();
+        const resolved = [];
+        servers.forEach((entry) => {
+          const key = normalizeKey(entry?.name);
+          if (!key || seen.has(key)) return;
+          if (key === 'subagent_router') return; // Prevent recursive self-connection.
+          seen.add(key);
+          resolved.push(entry);
+        });
+        return await initializeMcpRuntime(configPath, sessionRoot, workspaceRoot, {
           caller: 'subagent',
-          skipServers: Array.from(skip),
-          extraServers: landSelection?.extraMcpServers || [],
+          servers: resolved,
           eventLogger,
         });
       } catch (err) {

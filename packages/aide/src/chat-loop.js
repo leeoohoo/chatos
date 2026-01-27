@@ -318,6 +318,8 @@ export async function chatLoop(initialClient, initialModel, session, options = {
         subagentMcpAllowPrefixes: options.subagentMcpAllowPrefixes,
         eventLogger,
         updateSessionReport,
+        mcpService: options.mcpService,
+        runtimeMcpServers: options.runtimeMcpServers,
       });
       if (slashResult?.type === 'reconfigure') {
         client = slashResult.client;

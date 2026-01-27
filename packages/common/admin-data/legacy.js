@@ -347,27 +347,6 @@ export function buildAdminSeed(defaultPaths = {}) {
     }
   }
 
-  if (defaultPaths.mcpConfig) {
-    const raw =
-      safeRead(defaultPaths.mcpConfig) ||
-      safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'mcp.config.json'));
-    seed.mcpServers = parseMcpServers(raw).map((item) => {
-      const tags = Array.isArray(item?.tags) ? item.tags : [];
-      const isUiApp = tags
-        .map((tag) => normalizeKey(tag))
-        .filter(Boolean)
-        .some((tag) => tag === 'uiapp' || tag.startsWith('uiapp:'));
-      const inferredAppId = String(item?.app_id || '').trim() || (isUiApp ? 'chatos' : hostApp);
-      return {
-        ...item,
-        app_id: inferredAppId,
-        locked: item.locked === true,
-        id: item?.id || crypto.randomUUID(),
-        createdAt: now,
-        updatedAt: now,
-      };
-    });
-  }
 
   if (defaultPaths.installedSubagents) {
     const defaultList =

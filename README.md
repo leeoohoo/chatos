@@ -63,8 +63,8 @@ Common in-chat commands:
 - Sub-agent prompts:
   - `<stateDir>/auth/subagent-system-prompt.yaml` (`internal_subagent`, built-in read-only)
   - `<stateDir>/auth/subagent-user-prompt.yaml` (`subagent_user_prompt`, editable)
-- MCP servers: `<stateDir>/auth/mcp.config.json`
-- Admin DB (models/MCP/prompts/tasks): `<stateDir>/chatos.db.sqlite`
+- MCP servers: stored in admin DB (`<stateDir>/chatos.db.sqlite`, table `mcpServers`); active selection via land_config.
+- Admin DB (models/MCP/prompts/tasks/land_config): `<stateDir>/chatos.db.sqlite`
 - Sub-agent install state: `<stateDir>/subagents.json`
 
 ## Troubleshooting
@@ -99,7 +99,7 @@ node src/cli.js chat
 stateDir = `<stateRoot>/<hostApp>`（旧 `legacyStateRoot/<hostApp>` 自动迁移）。
 自动总结 prompt：`<stateDir>/auth/summary-prompt.yaml`（支持 `{{history}}`；可用 `/summary prompt` 查看）。
 
-配置位置：`<stateDir>/auth/models.yaml`、`<stateDir>/auth/system-*-prompt.yaml`、`<stateDir>/auth/subagent-*-prompt.yaml`、`<stateDir>/auth/mcp.config.json`、`<stateDir>/chatos.db.sqlite`、`<stateDir>/subagents.json`
+配置位置：`<stateDir>/auth/models.yaml`、`<stateDir>/auth/system-*-prompt.yaml`、`<stateDir>/auth/subagent-*-prompt.yaml`、`<stateDir>/chatos.db.sqlite`（含 MCP/land_config 等）、`<stateDir>/subagents.json`
 
 更多细节与完整指南请看 `README.en.md` / `README.zh.md`。   
 

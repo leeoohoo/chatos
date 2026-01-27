@@ -23,7 +23,7 @@ function generateConfigReport({
   modelsPath,
   models,
   activeModel,
-  mcpPath,
+  mcpSource,
   mcpServers,
   systemPromptPath,
   systemPrompt,
@@ -76,7 +76,7 @@ function generateConfigReport({
     ${renderTable(['Name', 'Provider', 'Model ID', 'Tools', 'System Prompt'], modelRows)}
   </section>
   <section>
-    <h2>MCP Servers (config: ${escapeHtml(mcpPath || '')})</h2>
+    <h2>MCP Servers (source: ${escapeHtml(mcpSource || '')})</h2>
     ${renderTable(['Name', 'URL', 'Description'], mcpRows)}
   </section>
   <section>

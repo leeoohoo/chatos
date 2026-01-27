@@ -42,10 +42,9 @@ prompt: |
         mcp_project_journal_add_exec_log({
           "tag": "feat",
           "tags": ["mcp", "logging"],
-          "summary": "新增项目实施记录 MCP server，并注册到默认 MCP 配置。",
+          "summary": "新增项目实施记录 MCP server，并注册到 admin.db / land_config。",
           "files": [
             "mcp_servers/project-journal-server.js",
-            "shared/defaults/mcp.config.json",
             "shared/defaults/project-journal-mcp.prompt.zh.yaml"
           ],
           "highlights": [
@@ -71,7 +70,7 @@ prompt: |
           "summary": "一个用于多模型的终端 AI Chat 客户端（含 Electron UI）。",
           "background": "用于本地开发与调试：MCP servers + 子代理体系 + UI 浮动岛交互。",
           "git_url": "https://example.com/your/repo.git",
-          "main_config": "关键路径：src/cli.js、electron/main.js、shared/defaults/mcp.config.json",
+          "main_config": "关键路径：src/cli.js、electron/main.js、<stateDir>/chatos.db.sqlite（mcpServers/land_config）",
           "notes": "不常变化的注意事项写这里。"
         })
       </example>

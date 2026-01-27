@@ -24,7 +24,6 @@ export function createAsyncJobManager(options = {}) {
   const {
     performance,
     eventLogger,
-    mcpConfigPath,
     sessionRoot,
     workspaceRoot,
     eventLogPath,
@@ -106,7 +105,6 @@ export function createAsyncJobManager(options = {}) {
       const env = {
         ...process.env,
         SUBAGENT_JOB_DATA: JSON.stringify(current.params || {}),
-        SUBAGENT_CONFIG_PATH: mcpConfigPath,
         SUBAGENT_WORKER: '1',
         MODEL_CLI_SESSION_ROOT: resolvedSessionRoot,
         MODEL_CLI_WORKSPACE_ROOT: resolvedWorkspaceRoot,
