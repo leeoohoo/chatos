@@ -2,15 +2,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ensureUiAppsPluginTrustRecord } from './trust-store.js';
+import { ensureDir } from '../../packages/common/state-core/utils.js';
+import { logWith } from '../shared/logger-utils.js';
 
 const DEFAULT_PLUGINS_DIRNAME = 'ui_apps/plugins';
-
-function logWith(logger, level, message, meta, err) {
-  if (!logger) return;
-  const fn = typeof logger[level] === 'function' ? logger[level] : logger.info;
-  if (typeof fn !== 'function') return;
-  fn(message, meta, err);
-}
 
 function isDirectory(dirPath) {
   const normalized = typeof dirPath === 'string' ? dirPath.trim() : '';
@@ -32,11 +27,6 @@ function isFile(filePath) {
   }
 }
 
-function ensureDir(dirPath) {
-  const normalized = typeof dirPath === 'string' ? dirPath.trim() : '';
-  if (!normalized) return;
-  fs.mkdirSync(normalized, { recursive: true });
-}
 
 function rmForce(targetPath) {
   const normalized = typeof targetPath === 'string' ? targetPath.trim() : '';

@@ -1,12 +1,4 @@
-import fs from 'fs';
-
-export function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
+export { ensureDir } from '../../../packages/common/state-core/utils.js';
 
 export function escapeShell(text) {
   return `'${String(text || '').replace(/'/g, `'\\''`)}'`;

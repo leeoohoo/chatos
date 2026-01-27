@@ -1,36 +1,20 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { parseJsonSafe, safeRead } from '../packages/aide/shared/data/legacy.js';
+import { safeRead } from '../packages/aide/shared/data/legacy.js';
 import { getHostApp } from '../packages/common/host-app.js';
 import { appendEventLog as appendEventLogCore } from '../packages/common/event-log-utils.js';
 import { resolveAppStateDir } from '../packages/common/state-core/state-paths.js';
 import { createRuntimeLogger } from '../packages/common/state-core/runtime-log.js';
 import { normalizeUiTerminalMode } from '../packages/common/runtime-settings-utils.js';
 
-import { isPidAlive, listProcessTreePidsFromPs, tryKillPid, tryKillProcessGroup } from './terminal-manager/process-utils.js';
+import { isPidAlive, listProcessTreePidsFromPs, tryKillPid, tryKillProcessGroup } from './shared/process-utils.js';
+import { resolveCliEntrypointPath } from './shared/cli-entrypoint.js';
 import { isPendingSystemTerminalLaunch, launchCliInSystemTerminal } from './terminal-manager/system-terminal.js';
 import { createTerminalDispatch } from './terminal-manager/dispatch.js';
-
-function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
-
-function parseRuns(content = '') {
-  const lines = content.split('\n').filter((l) => l.trim().length > 0);
-  const entries = [];
-  lines.forEach((line) => {
-    const parsed = parseJsonSafe(line, null);
-    if (parsed && typeof parsed === 'object') {
-      entries.push(parsed);
-    }
-  });
-  return entries;
-}
+import { createRunRegistry, parseRuns } from './terminal-manager/run-registry.js';
+import { createPidRegistry } from './terminal-manager/pid-registry.js';
+import { createTerminalStatusStore } from './terminal-manager/status-store.js';
 
 export function createTerminalManager({
   projectRoot,
@@ -65,11 +49,28 @@ export function createTerminalManager({
   const getMainWindow = typeof mainWindowGetter === 'function' ? mainWindowGetter : () => null;
   const runsPath = typeof defaultPaths?.runs === 'string' && defaultPaths.runs.trim() ? defaultPaths.runs : '';
 
+  const runRegistry = createRunRegistry({ runsPath, safeRead, isPidAlive });
+  const { getRunPidFromRegistry, isRunPidAliveFromRegistry } = runRegistry;
+
+  const pidRegistry = createPidRegistry({ baseTerminalsDir });
+  const { listRunPidRegistry, listRunPidRecords } = pidRegistry;
+
+  const statusStore = createTerminalStatusStore({ baseTerminalsDir, getMainWindow });
+  const {
+    appendTerminalControl,
+    appendTerminalInbox,
+    broadcastTerminalStatuses,
+    listTerminalStatuses,
+    readTerminalStatus,
+    startTerminalStatusWatcher,
+    waitForTerminalState,
+    waitForTerminalStatus,
+    dispose: disposeStatusStore,
+  } = statusStore;
+
   const launchedCli = new Map();
   const pendingSystemTerminalLaunch = new Map();
 
-  let terminalStatusWatcher = null;
-  let terminalStatusWatcherDebounce = null;
   let healthCheckInterval = null;
 
   function cleanupLaunchedCli() {
@@ -121,51 +122,10 @@ export function createTerminalManager({
     return `run-${Date.now().toString(36)}-${short}`;
   }
 
-  function resolveCliEntrypointPath() {
-    const resources = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
-    if (resources) {
-      const asarPath = path.join(resources, 'app.asar');
-      try {
-        if (fs.existsSync(asarPath)) {
-          const distCandidate = path.join(asarPath, 'dist', 'cli.js');
-          if (fs.existsSync(distCandidate)) return distCandidate;
-          const srcCandidate = path.join(asarPath, 'src', 'cli.js');
-          if (fs.existsSync(srcCandidate)) return srcCandidate;
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    const srcLocal = path.join(baseProjectRoot, 'src', 'cli.js');
-    try {
-      if (fs.existsSync(srcLocal)) return srcLocal;
-    } catch {
-      // ignore
-    }
-    const distLocal = path.join(baseProjectRoot, 'dist', 'cli.js');
-    try {
-      if (fs.existsSync(distLocal)) return distLocal;
-    } catch {
-      // ignore
-    }
-    return distLocal;
+  function resolveCliEntrypointPathForTerminal() {
+    return resolveCliEntrypointPath({ baseProjectRoot });
   }
 
-  function startTerminalStatusWatcher() {
-    if (terminalStatusWatcher) return;
-    ensureDir(baseTerminalsDir);
-    terminalStatusWatcher = fs.watch(baseTerminalsDir, { persistent: false }, () => {
-      if (terminalStatusWatcherDebounce) {
-        clearTimeout(terminalStatusWatcherDebounce);
-      }
-      terminalStatusWatcherDebounce = setTimeout(() => {
-        terminalStatusWatcherDebounce = null;
-        broadcastTerminalStatuses();
-      }, 120);
-    });
-    broadcastTerminalStatuses();
-  }
   function startHealthChecker() {
     if (healthCheckInterval) return;
     healthCheckInterval = setInterval(() => {
@@ -188,187 +148,6 @@ export function createTerminalManager({
       });
     }, 30000); // 30 seconds
     if (healthCheckInterval.unref) healthCheckInterval.unref();
-  }
-
-  function broadcastTerminalStatuses() {
-    const win = getMainWindow();
-    if (!win) return;
-    win.webContents.send('terminalStatus:update', {
-      statuses: listTerminalStatuses(),
-    });
-  }
-
-  function listTerminalStatuses() {
-    try {
-      ensureDir(baseTerminalsDir);
-      const files = fs.readdirSync(baseTerminalsDir).filter((name) => name.endsWith('.status.json'));
-      const out = [];
-      files.forEach((name) => {
-        const runId = name.replace(/\.status\.json$/, '');
-        const status = readTerminalStatus(runId);
-        if (status) out.push(status);
-      });
-      return out;
-    } catch {
-      return [];
-    }
-  }
-
-  function readTerminalStatus(runId) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) return null;
-    const statusPath = path.join(baseTerminalsDir, `${rid}.status.json`);
-    try {
-      if (!fs.existsSync(statusPath)) return null;
-      const raw = fs.readFileSync(statusPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        return parsed;
-      }
-    } catch {
-      // ignore status read errors
-    }
-    return null;
-  }
-
-  function appendTerminalControl(runId, command) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) throw new Error('runId is required');
-    ensureDir(baseTerminalsDir);
-    const controlPath = path.join(baseTerminalsDir, `${rid}.control.jsonl`);
-    fs.appendFileSync(controlPath, `${JSON.stringify(command)}\n`, 'utf8');
-  }
-
-  async function waitForTerminalStatus(runId, timeoutMs = 1200) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) return null;
-    const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
-    while (Date.now() < deadline) {
-      const status = readTerminalStatus(rid);
-      if (status) return status;
-      await new Promise((resolve) => setTimeout(resolve, 120));
-    }
-    return null;
-  }
-
-  function isRunPidAliveFromRegistry(runId) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid || !runsPath) return false;
-    try {
-      const entries = parseRuns(safeRead(runsPath));
-      let best = null;
-      entries.forEach((entry) => {
-        if (!entry || typeof entry !== 'object') return;
-        if (String(entry.runId || '').trim() !== rid) return;
-        if (!best || String(entry.ts || '') > String(best.ts || '')) {
-          best = entry;
-        }
-      });
-      const pid = best?.pid;
-      return isPidAlive(pid);
-    } catch {
-      return false;
-    }
-  }
-
-  function getRunPidFromRegistry(runId) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid || !runsPath) return null;
-    try {
-      const entries = parseRuns(safeRead(runsPath));
-      let best = null;
-      entries.forEach((entry) => {
-        if (!entry || typeof entry !== 'object') return;
-        if (String(entry.runId || '').trim() !== rid) return;
-        if (!best || String(entry.ts || '') > String(best.ts || '')) {
-          best = entry;
-        }
-      });
-      const pid = best?.pid;
-      const num = Number(pid);
-      return Number.isFinite(num) && num > 0 ? num : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function waitForTerminalState(runId, predicate, timeoutMs = 2000) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) return null;
-    const check = typeof predicate === 'function' ? predicate : () => false;
-    const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
-    while (Date.now() < deadline) {
-      const status = readTerminalStatus(rid);
-      if (check(status)) return status;
-      await new Promise((resolve) => setTimeout(resolve, 140));
-    }
-    return readTerminalStatus(rid);
-  }
-
-  function listRunPidRegistry(runId) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) return [];
-    const filePath = path.join(baseTerminalsDir, `${rid}.pids.jsonl`);
-    try {
-      if (!fs.existsSync(filePath)) return [];
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const lines = raw.split('\n').filter(Boolean);
-      const unique = new Set();
-      lines.forEach((line) => {
-        try {
-          const parsed = JSON.parse(line);
-          const pid = Number(parsed?.pid);
-          if (Number.isFinite(pid) && pid > 0) {
-            unique.add(pid);
-          }
-        } catch {
-          // ignore parse failures
-        }
-      });
-      return Array.from(unique);
-    } catch {
-      return [];
-    }
-  }
-
-  function listRunPidRecords(runId) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) return [];
-    const filePath = path.join(baseTerminalsDir, `${rid}.pids.jsonl`);
-    try {
-      if (!fs.existsSync(filePath)) return [];
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const lines = raw.split('\n').filter(Boolean);
-      const latestByPid = new Map();
-      lines.forEach((line) => {
-        const parsed = parseJsonSafe(line, null);
-        if (!parsed || typeof parsed !== 'object') return;
-        const pid = Number(parsed?.pid);
-        if (!Number.isFinite(pid) || pid <= 0) return;
-        const record = {
-          pid,
-          runId: typeof parsed?.runId === 'string' ? parsed.runId : rid,
-          kind: typeof parsed?.kind === 'string' ? parsed.kind : '',
-          name: typeof parsed?.name === 'string' ? parsed.name : '',
-          ts: typeof parsed?.ts === 'string' ? parsed.ts : '',
-        };
-        const prev = latestByPid.get(pid);
-        if (!prev || String(record.ts || '') >= String(prev.ts || '')) {
-          latestByPid.set(pid, record);
-        }
-      });
-      return Array.from(latestByPid.values());
-    } catch {
-      return [];
-    }
-  }
-
-  function appendTerminalInbox(runId, entry) {
-    const rid = typeof runId === 'string' ? runId.trim() : '';
-    if (!rid) throw new Error('runId is required');
-    ensureDir(baseTerminalsDir);
-    const inboxPath = path.join(baseTerminalsDir, `${rid}.inbox.jsonl`);
-    fs.appendFileSync(inboxPath, `${JSON.stringify(entry)}\n`, 'utf8');
   }
 
   function appendEventLog(type, payload, runId) {
@@ -397,7 +176,7 @@ export function createTerminalManager({
           ? 'subagent_worker'
           : inprocActive
             ? 'subagent_inproc'
-          : 'cli'
+            : 'cli'
         : requestedTarget === 'main'
           ? 'cli'
           : requestedTarget;
@@ -455,7 +234,6 @@ export function createTerminalManager({
 
     return { ok: false, message: `unsupported target: ${resolvedTarget}` };
   }
-
 
   function cleanupTerminalArtifacts(runId) {
     const rid = typeof runId === 'string' ? runId.trim() : '';
@@ -584,7 +362,7 @@ export function createTerminalManager({
     runsPath,
     parseRuns,
     safeRead,
-    resolveCliEntrypointPath,
+    resolveCliEntrypointPath: resolveCliEntrypointPathForTerminal,
     resolveUiTerminalMode,
     resolveLandConfigId,
     uiTerminalStdio,
@@ -715,7 +493,6 @@ export function createTerminalManager({
     return { statuses: listTerminalStatuses() };
   }
 
-  
   function stopHealthChecker() {
     if (healthCheckInterval) {
       clearInterval(healthCheckInterval);
@@ -725,16 +502,7 @@ export function createTerminalManager({
 
   function dispose() {
     stopHealthChecker();
-    try {
-      terminalStatusWatcher?.close?.();
-    } catch {
-      // ignore
-    }
-    terminalStatusWatcher = null;
-    if (terminalStatusWatcherDebounce) {
-      clearTimeout(terminalStatusWatcherDebounce);
-      terminalStatusWatcherDebounce = null;
-    }
+    disposeStatusStore();
   }
 
   return {

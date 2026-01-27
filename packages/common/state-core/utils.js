@@ -48,6 +48,22 @@ export function ensureDir(dirPath) {
   }
 }
 
+export function ensureFileExists(filePath, defaultContent = '') {
+  if (!filePath) return;
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  } catch {
+    // ignore
+  }
+  try {
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, defaultContent, 'utf8');
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function copyTree({ src, dest }) {
   if (!src || !dest) return;
   let stat = null;

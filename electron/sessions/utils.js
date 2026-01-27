@@ -3,15 +3,9 @@ import os from 'os';
 import path from 'path';
 import { getHostApp } from '../../packages/common/host-app.js';
 import { resolveAppStateDir } from '../../packages/common/state-core/state-paths.js';
+import { ensureDir } from '../../packages/common/state-core/utils.js';
 
-export function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
-
+export { ensureDir };
 export function sanitizeName(rawName) {
   return (
     String(rawName || '')

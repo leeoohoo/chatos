@@ -1,7 +1,6 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import crypto from 'crypto';
 // electron 是 CommonJS，需要用 default import 解构
 import electron from 'electron';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -14,7 +13,6 @@ import {
   syncRegistryFromServices,
 } from './backend/registry-sync.js';
 import { registerUiAppsApi } from './ui-apps/index.js';
-import { installUiAppsPlugins } from './ui-apps/plugin-installer.js';
 import { createConfigManager } from './config-manager/index.js';
 import { registerConfigIpcHandlers } from './config-manager/ipc-handlers.js';
 import { registerQuickSwitchHandlers } from './config-manager/quick-switch.js';
@@ -26,19 +24,26 @@ import { createCliShim } from './cli-shim.js';
 import { createTerminalManager } from './terminal-manager.js';
 import { registerChatApi } from './chat/index.js';
 import { ensureAllSubagentsInstalled, maybePurgeUiAppsSyncedAdminData, readLegacyState } from './main-helpers.js';
+import {
+  createActionId,
+  createInstallLog,
+  createRuntimeLogReader,
+  patchProcessPath,
+  resolveAppIconPath,
+} from './main-utils.js';
+import { registerLspInstallerIpc, registerUiAppsPluginInstallerIpc } from './main-installer-ipc.js';
 import { createCliIpcHandlers } from './cli-ipc.js';
 import { registerSessionIpcHandlers } from './session-ipc.js';
+import { registerSubagentIpcHandlers } from './subagent-ipc.js';
 import { resolveEngineRoot } from '../src/engine-paths.js';
 import { resolveSessionRoot, persistSessionRoot } from '../src/session-root.js';
 import { ensureAppStateDir } from '../packages/common/state-core/state-paths.js';
-import { resolveRuntimeLogPath, createRuntimeLogger } from '../packages/common/state-core/runtime-log.js';
+import { createRuntimeLogger } from '../packages/common/state-core/runtime-log.js';
 import { createDb } from '../packages/common/admin-data/storage.js';
 import { createAdminServices } from '../packages/common/admin-data/services/index.js';
 import { syncAdminToFiles } from '../packages/common/admin-data/sync.js';
 import { buildAdminSeed } from '../packages/common/admin-data/legacy.js';
-import { createLspInstaller } from './lsp-installer.js';
 import { ConfigApplier } from '../packages/core/session/ConfigApplier.js';
-import { readLastLinesFromFile } from './sessions/utils.js';
 import { resolveEngineModule } from '../src/engine-loader.js';
 import { resolveBoolEnv } from './shared/env-utils.js';
 
@@ -68,7 +73,7 @@ const { createSubAgentManager } = await import(
   pathToFileURL(resolveEngineModule({ engineRoot, relativePath: 'subagents/index.js' })).href
 );
 
-const appIconPath = resolveAppIconPath();
+const appIconPath = resolveAppIconPath(projectRoot);
 const hostApp =
   String(runtimeEnv.MODEL_CLI_HOST_APP || 'chatos')
     .trim()
@@ -86,20 +91,8 @@ const installLogger = createRuntimeLogger({
   runId: 'desktop',
   env: runtimeEnv,
 });
-
-function createActionId(prefix) {
-  const base = typeof prefix === 'string' && prefix.trim() ? prefix.trim() : 'action';
-  const short = crypto.randomUUID().split('-')[0];
-  return `${base}-${Date.now().toString(36)}-${short}`;
-}
-
-function logInstall(level, message, meta, err) {
-  const logger = installLogger;
-  if (!logger) return;
-  const fn = typeof logger[level] === 'function' ? logger[level] : logger.info;
-  if (typeof fn !== 'function') return;
-  fn(message, meta, err);
-}
+const logInstall = createInstallLog(installLogger);
+const readRuntimeLog = createRuntimeLogReader({ sessionRoot, hostApp, runtimeEnv });
 
 let mainWindow = null;
 let chatApi = null;
@@ -139,262 +132,25 @@ try {
   // ignore
 }
 
-function resolveAppIconPath() {
-  const candidates = [
-    path.join(projectRoot, 'apps', 'ui', 'dist', 'icon.png'),
-    path.join(projectRoot, 'apps', 'ui', 'icon.png'),
-    path.join(projectRoot, 'build_resources', 'icon.png'),
-  ];
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) return candidate;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
-function readRuntimeLog({ lineCount, maxBytes } = {}) {
-  const outputPath = resolveRuntimeLogPath({
-    sessionRoot,
-    hostApp,
-    fallbackHostApp: 'chatos',
-    preferSessionRoot: true,
-    env: runtimeEnv,
-  });
-  if (!outputPath) {
-    return { ok: false, message: 'runtime log path not available' };
-  }
-  try {
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    if (!fs.existsSync(outputPath)) {
-      fs.writeFileSync(outputPath, '', 'utf8');
-    }
-  } catch {
-    // ignore file bootstrap failures
-  }
-  const size = (() => {
-    try {
-      return fs.statSync(outputPath).size;
-    } catch {
-      return null;
-    }
-  })();
-  const mtime = (() => {
-    try {
-      const stat = fs.statSync(outputPath);
-      return stat?.mtime ? stat.mtime.toISOString() : null;
-    } catch {
-      return null;
-    }
-  })();
-  const bytes = Number.isFinite(Number(maxBytes))
-    ? Math.max(1024, Math.min(4 * 1024 * 1024, Math.floor(Number(maxBytes))))
-    : 1024 * 1024;
-  const lines = Number.isFinite(Number(lineCount))
-    ? Math.max(1, Math.min(50_000, Math.floor(Number(lineCount))))
-    : 500;
-  const content = readLastLinesFromFile(outputPath, lines, bytes);
-  return { ok: true, outputPath, size, mtime, lineCount: lines, maxBytes: bytes, content };
-}
 
 
-function patchProcessPath(env) {
-  // GUI apps on macOS often do not inherit the user's shell PATH (e.g., Homebrew lives in /opt/homebrew/bin).
-  // Ensure common binary locations are available for child_process exec/spawn.
-  if (process.platform !== 'darwin') return;
-  if (!env || typeof env !== 'object') return;
-
-  const current = typeof env.PATH === 'string' ? env.PATH : '';
-  const parts = current.split(':').filter(Boolean);
-  const prepend = [];
-
-  const addDir = (dirPath) => {
-    const normalized = typeof dirPath === 'string' ? dirPath.trim() : '';
-    if (!normalized) return;
-    if (prepend.includes(normalized)) return;
-    if (parts.includes(normalized)) return;
-    try {
-      if (fs.existsSync(normalized)) {
-        prepend.push(normalized);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const addLatestNvmNodeBin = (homeDir) => {
-    if (!homeDir) return;
-    const versionsDir = path.join(homeDir, '.nvm', 'versions', 'node');
-    let entries = [];
-    try {
-      entries = fs.readdirSync(versionsDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    const parseSemver = (dirName) => {
-      const match = String(dirName || '')
-        .trim()
-        .match(/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/);
-      if (!match) return null;
-      return {
-        major: Number(match[1] || 0),
-        minor: Number(match[2] || 0),
-        patch: Number(match[3] || 0),
-        dir: dirName,
-      };
-    };
-    const candidates = entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => parseSemver(entry.name))
-      .filter(Boolean)
-      .sort((a, b) => {
-        if (a.major !== b.major) return b.major - a.major;
-        if (a.minor !== b.minor) return b.minor - a.minor;
-        return b.patch - a.patch;
-      });
-    const best = candidates[0];
-    if (!best?.dir) return;
-    addDir(path.join(versionsDir, best.dir, 'bin'));
-  };
-
-  // Homebrew (Apple Silicon / Intel), MacPorts, plus common user bins.
-  addDir('/opt/homebrew/bin');
-  addDir('/opt/homebrew/sbin');
-  addDir('/usr/local/bin');
-  addDir('/usr/local/sbin');
-  addDir('/opt/local/bin');
-  addDir('/opt/local/sbin');
-
-  const home = env.HOME || env.USERPROFILE || os.homedir();
-  if (home) {
-    // Popular Node/Python toolchains and version managers (for MCP servers using npx/uvx/etc).
-    addDir(path.join(home, '.volta', 'bin'));
-    addDir(path.join(home, '.asdf', 'shims'));
-    addDir(path.join(home, '.nodenv', 'shims'));
-    addLatestNvmNodeBin(home);
-
-    // Common language toolchain bins (for LSP installers).
-    addDir(path.join(home, '.cargo', 'bin'));
-    addDir(path.join(home, '.dotnet', 'tools'));
-    addDir(path.join(home, 'go', 'bin'));
-
-    addDir(path.join(home, '.local', 'bin'));
-    addDir(path.join(home, 'bin'));
-  }
-
-  if (prepend.length === 0) return;
-  env.PATH = [...prepend, ...parts].join(':');
-}
-
-function registerUiAppsPluginInstallerIpc() {
-  ipcMain.handle('uiApps:plugins:install', async (_event, payload = {}) => {
-    const actionId = createActionId('uiapps_install');
-    logInstall('info', 'uiapps.install.start', {
-      actionId,
-      fromDialog: !payload?.path,
-      platform: process.platform,
-    });
-    let selectedPath = typeof payload?.path === 'string' ? payload.path.trim() : '';
-    if (!selectedPath) {
-      if (!dialog || typeof dialog.showOpenDialog !== 'function') {
-        logInstall('error', 'uiapps.install.dialog_unavailable', { actionId });
-        return { ok: false, message: 'dialog not available', logId: actionId };
-      }
-      let result = null;
-      if (process.platform === 'win32') {
-        let mode = typeof payload?.mode === 'string' ? payload.mode.trim().toLowerCase() : '';
-        if (!mode && dialog && typeof dialog.showMessageBox === 'function') {
-          const selection = await dialog.showMessageBox(mainWindow || undefined, {
-            type: 'question',
-            title: '导入应用包',
-            message: '请选择应用包类型',
-            detail: 'Windows 的文件选择器在“目录/文件混选”模式下可能看不到 .zip。',
-            buttons: ['选择 .zip', '选择目录', '取消'],
-            defaultId: 0,
-            cancelId: 2,
-          });
-          if (selection?.response === 2) {
-            logInstall('info', 'uiapps.install.canceled', { actionId, stage: 'mode_select' });
-            return { ok: false, canceled: true, logId: actionId };
-          }
-          mode = selection?.response === 1 ? 'dir' : 'zip';
-        }
-        if (mode !== 'dir' && mode !== 'zip') {
-          mode = 'zip';
-        }
-        result = await dialog.showOpenDialog(mainWindow || undefined, {
-          title: mode === 'dir' ? '选择应用包目录' : '选择应用包（.zip）',
-          properties: mode === 'dir' ? ['openDirectory'] : ['openFile'],
-          ...(mode === 'zip' ? { filters: [{ name: 'App package', extensions: ['zip'] }] } : null),
-        });
-      } else {
-        result = await dialog.showOpenDialog(mainWindow || undefined, {
-          title: '选择应用包（目录或 .zip）',
-          properties: ['openFile', 'openDirectory'],
-          filters: [{ name: 'App package', extensions: ['zip'] }],
-        });
-      }
-      if (result.canceled) {
-        logInstall('info', 'uiapps.install.canceled', { actionId, stage: 'path_select' });
-        return { ok: false, canceled: true, logId: actionId };
-      }
-      selectedPath = Array.isArray(result.filePaths) ? result.filePaths[0] : '';
-      if (!selectedPath) {
-        logInstall('info', 'uiapps.install.canceled', { actionId, stage: 'path_empty' });
-        return { ok: false, canceled: true, logId: actionId };
-      }
-    }
-
-    try {
-      logInstall('info', 'uiapps.install.selected', { actionId, selectedPath });
-      const result = await installUiAppsPlugins({
-        inputPath: selectedPath,
-        stateDir,
-        logger: installLogger,
-        actionId,
-      });
-      logInstall('info', 'uiapps.install.complete', {
-        actionId,
-        pluginCount: Array.isArray(result?.plugins) ? result.plugins.length : 0,
-        pluginsRoot: result?.pluginsRoot || '',
-      });
-      return { ...result, logId: actionId };
-    } catch (err) {
-      logInstall('error', 'uiapps.install.failed', { actionId, selectedPath }, err);
-      return { ok: false, message: err?.message || String(err), logId: actionId };
-    }
-  });
-}
-
-registerUiAppsPluginInstallerIpc();
-
-const lspInstaller = createLspInstaller({ rootDir: projectRoot, logger: installLogger, env: runtimeEnv });
-ipcMain.handle('lsp:catalog', async () => {
-  try {
-    return await lspInstaller.getCatalog();
-  } catch (err) {
-    return { ok: false, message: err?.message || String(err) };
-  }
+registerUiAppsPluginInstallerIpc({
+  ipcMain,
+  dialog,
+  getWindow: () => mainWindow,
+  createActionId,
+  logInstall,
+  stateDir,
+  logger: installLogger,
 });
-ipcMain.handle('lsp:install', async (_event, payload = {}) => {
-  const actionId = createActionId('lsp_install');
-  try {
-    const ids = Array.isArray(payload?.ids) ? payload.ids : [];
-    const timeout_ms = payload?.timeout_ms;
-    logInstall('info', 'lsp.install.start', { actionId, ids, timeout_ms });
-    const result = await lspInstaller.install({ ids, timeout_ms, actionId });
-    logInstall('info', 'lsp.install.complete', {
-      actionId,
-      ok: result?.ok === true,
-      results: Array.isArray(result?.results) ? result.results.length : 0,
-    });
-    return { ...result, logId: actionId };
-  } catch (err) {
-    logInstall('error', 'lsp.install.failed', { actionId }, err);
-    return { ok: false, message: err?.message || String(err), logId: actionId };
-  }
+
+registerLspInstallerIpc({
+  ipcMain,
+  rootDir: projectRoot,
+  logger: installLogger,
+  env: runtimeEnv,
+  createActionId,
+  logInstall,
 });
 
 const defaultPaths = {
@@ -655,141 +411,21 @@ createCliIpcHandlers({
   commandName: CLI_COMMAND_NAME,
 });
 
-ipcMain.handle('subagents:setModel', async (_event, payload = {}) => {
-  const result = adminDefaults.setSubagentModels(payload);
-  adminDefaults.maybeReseedSubagentsFromPlugins();
-  syncAdminToFiles(adminServices.snapshot(), {
-    modelsPath: defaultPaths.models,
-    mcpConfigPath: defaultPaths.mcpConfig,
-    subagentsPath: defaultPaths.installedSubagents,
-    promptsPath: defaultPaths.systemPrompt,
-    systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-    systemUserPromptPath: defaultPaths.systemUserPrompt,
-    subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-    subagentUserPromptPath: defaultPaths.subagentUserPrompt,
-    tasksPath: null,
-  });
-  if (mainWindow) {
-    mainWindow.webContents.send('admin:update', {
-      data: sanitizeAdminForUi(adminServices.snapshot()),
-      dbPath: adminServices.dbPath,
-      uiFlags: UI_FLAGS,
-    });
-    mainWindow.webContents.send('config:update', sessionApi.readConfigPayload());
-  }
-  return result;
+registerSubagentIpcHandlers({
+  ipcMain,
+  adminDefaults,
+  adminServices,
+  defaultPaths,
+  sessionApi,
+  subAgentManager,
+  uiFlags: UI_FLAGS,
+  exposeSubagents: UI_DEVELOPER_MODE || UI_EXPOSE_SUBAGENTS,
+  createActionId,
+  logInstall,
+  mainWindowGetter: () => mainWindow,
+  sanitizeAdminForUi,
 });
-ipcMain.handle('subagents:marketplace:list', async () => {
-  try {
-    return {
-      ok: true,
-      marketplace: subAgentManager.listMarketplace(),
-      sources: UI_DEVELOPER_MODE || UI_EXPOSE_SUBAGENTS ? subAgentManager.listMarketplaceSources() : [],
-    };
-  } catch (err) {
-    return { ok: false, message: err?.message || String(err), marketplace: [], sources: [] };
-  }
-});
-ipcMain.handle('subagents:marketplace:addSource', async (_event, payload = {}) => {
-  if (!UI_DEVELOPER_MODE && !UI_EXPOSE_SUBAGENTS) {
-    return { ok: false, message: 'Sub-agents 管理未开启（需要开发者模式或开启 Sub-agents 暴露开关）。' };
-  }
-  const source = typeof payload?.source === 'string' ? payload.source.trim() : '';
-  if (!source) {
-    return { ok: false, message: 'source is required' };
-  }
-  try {
-    const result = subAgentManager.addMarketplaceSource(source);
-    if (mainWindow) {
-      mainWindow.webContents.send('config:update', sessionApi.readConfigPayload());
-    }
-    return { ok: true, ...result };
-  } catch (err) {
-    return { ok: false, message: err?.message || String(err) };
-  }
-});
-ipcMain.handle('subagents:plugins:install', async (_event, payload = {}) => {
-  const actionId = createActionId('subagent_install');
-  if (!UI_DEVELOPER_MODE && !UI_EXPOSE_SUBAGENTS) {
-    logInstall('warn', 'subagents.install.denied', { actionId });
-    return { ok: false, message: 'Sub-agents 管理未开启（需要开发者模式或开启 Sub-agents 暴露开关）。', logId: actionId };
-  }
-  const pluginId = typeof payload?.id === 'string' ? payload.id.trim() : typeof payload?.pluginId === 'string' ? payload.pluginId.trim() : '';
-  if (!pluginId) {
-    logInstall('warn', 'subagents.install.missing_id', { actionId });
-    return { ok: false, message: 'pluginId is required', logId: actionId };
-  }
-  try {
-    logInstall('info', 'subagents.install.start', { actionId, pluginId });
-    const changed = subAgentManager.install(pluginId);
-    adminDefaults.maybeReseedSubagentsFromPlugins();
-    syncAdminToFiles(adminServices.snapshot(), {
-      modelsPath: defaultPaths.models,
-      mcpConfigPath: defaultPaths.mcpConfig,
-      subagentsPath: defaultPaths.installedSubagents,
-      promptsPath: defaultPaths.systemPrompt,
-      systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-      systemUserPromptPath: defaultPaths.systemUserPrompt,
-      subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-      subagentUserPromptPath: defaultPaths.subagentUserPrompt,
-      tasksPath: null,
-    });
-    if (mainWindow) {
-      mainWindow.webContents.send('admin:update', {
-        data: sanitizeAdminForUi(adminServices.snapshot()),
-        dbPath: adminServices.dbPath,
-        uiFlags: UI_FLAGS,
-      });
-      mainWindow.webContents.send('config:update', sessionApi.readConfigPayload());
-    }
-    logInstall('info', 'subagents.install.complete', { actionId, pluginId, changed });
-    return { ok: true, changed, logId: actionId };
-  } catch (err) {
-    logInstall('error', 'subagents.install.failed', { actionId, pluginId }, err);
-    return { ok: false, message: err?.message || String(err), logId: actionId };
-  }
-});
-ipcMain.handle('subagents:plugins:uninstall', async (_event, payload = {}) => {
-  const actionId = createActionId('subagent_uninstall');
-  if (!UI_DEVELOPER_MODE && !UI_EXPOSE_SUBAGENTS) {
-    logInstall('warn', 'subagents.uninstall.denied', { actionId });
-    return { ok: false, message: 'Sub-agents 管理未开启（需要开发者模式或开启 Sub-agents 暴露开关）。', logId: actionId };
-  }
-  const pluginId = typeof payload?.id === 'string' ? payload.id.trim() : typeof payload?.pluginId === 'string' ? payload.pluginId.trim() : '';
-  if (!pluginId) {
-    logInstall('warn', 'subagents.uninstall.missing_id', { actionId });
-    return { ok: false, message: 'pluginId is required', logId: actionId };
-  }
-  try {
-    logInstall('info', 'subagents.uninstall.start', { actionId, pluginId });
-    const removed = subAgentManager.uninstall(pluginId);
-    adminDefaults.maybeReseedSubagentsFromPlugins();
-    syncAdminToFiles(adminServices.snapshot(), {
-      modelsPath: defaultPaths.models,
-      mcpConfigPath: defaultPaths.mcpConfig,
-      subagentsPath: defaultPaths.installedSubagents,
-      promptsPath: defaultPaths.systemPrompt,
-      systemDefaultPromptPath: defaultPaths.systemDefaultPrompt,
-      systemUserPromptPath: defaultPaths.systemUserPrompt,
-      subagentPromptsPath: defaultPaths.subagentSystemPrompt,
-      subagentUserPromptPath: defaultPaths.subagentUserPrompt,
-      tasksPath: null,
-    });
-    if (mainWindow) {
-      mainWindow.webContents.send('admin:update', {
-        data: sanitizeAdminForUi(adminServices.snapshot()),
-        dbPath: adminServices.dbPath,
-        uiFlags: UI_FLAGS,
-      });
-      mainWindow.webContents.send('config:update', sessionApi.readConfigPayload());
-    }
-    logInstall('info', 'subagents.uninstall.complete', { actionId, pluginId, removed });
-    return { ok: true, removed, logId: actionId };
-  } catch (err) {
-    logInstall('error', 'subagents.uninstall.failed', { actionId, pluginId }, err);
-    return { ok: false, message: err?.message || String(err), logId: actionId };
-  }
-});
+
 ipcMain.handle('sessions:list', async () => listSessions({ sessionRoot, env: runtimeEnv }));
 ipcMain.handle('sessions:kill', async (_event, payload = {}) =>
   killSession({ sessionRoot, name: payload?.name, env: runtimeEnv })

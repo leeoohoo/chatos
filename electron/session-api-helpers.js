@@ -1,26 +1,9 @@
 import fs from 'fs';
-import path from 'path';
 import { createDb } from '../packages/aide/shared/data/storage.js';
 import { parseJsonSafe } from '../packages/aide/shared/data/legacy.js';
+import { ensureDir, ensureFileExists } from '../packages/common/state-core/utils.js';
 
-export function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
-
-export function ensureFileExists(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
-}
+export { ensureDir, ensureFileExists };
 
 export function readTasksFromDbFile(dbPath) {
   try {

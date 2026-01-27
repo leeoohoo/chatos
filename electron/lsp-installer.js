@@ -3,13 +3,7 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { clampNumber } from '../packages/common/number-utils.js';
-
-function logWith(logger, level, message, meta, err) {
-  if (!logger) return;
-  const fn = typeof logger[level] === 'function' ? logger[level] : logger.info;
-  if (typeof fn !== 'function') return;
-  fn(message, meta, err);
-}
+import { logWith } from './shared/logger-utils.js';
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';

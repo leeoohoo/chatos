@@ -1,13 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { uiAppsPluginSchema } from './schemas.js';
 import { isUiAppsPluginTrusted, setUiAppsPluginTrust } from './trust-store.js';
-import { resolveUiAppsAi, syncUiAppsAiContributes } from './ai.js';
-import { getRegistryCenter } from '../backend/registry-center.js';
+import { scanPluginsDir } from './registry-scan.js';
+import { sanitizeAppForUi } from './registry-sanitize.js';
+import { syncAiContributes, syncRegistryCenterFromUiApps } from './registry-sync.js';
 import { createRuntimeLogger } from '../../packages/common/state-core/runtime-log.js';
 import { resolveBoolEnv } from '../shared/env-utils.js';
-import { uniqueStrings } from '../../packages/common/text-utils.js';
 import { readPromptSource } from './prompt-source.js';
 
 const DEFAULT_MANIFEST_FILE = 'plugin.json';
@@ -38,9 +37,19 @@ class UiAppsManager {
   constructor(options = {}) {
     this.projectRoot = typeof options.projectRoot === 'string' ? options.projectRoot : process.cwd();
     this.stateDir = typeof options.stateDir === 'string' ? options.stateDir : null;
-    this.sessionRoot = typeof options.sessionRoot === 'string' ? options.sessionRoot : this.stateDir ? path.dirname(this.stateDir) : null;
-    this.manifestFile = typeof options.manifestFile === 'string' && options.manifestFile.trim() ? options.manifestFile.trim() : DEFAULT_MANIFEST_FILE;
-    this.maxManifestBytes = Number.isFinite(options.maxManifestBytes) ? options.maxManifestBytes : DEFAULT_MAX_MANIFEST_BYTES;
+    this.sessionRoot =
+      typeof options.sessionRoot === 'string'
+        ? options.sessionRoot
+        : this.stateDir
+          ? path.dirname(this.stateDir)
+          : null;
+    this.manifestFile =
+      typeof options.manifestFile === 'string' && options.manifestFile.trim()
+        ? options.manifestFile.trim()
+        : DEFAULT_MANIFEST_FILE;
+    this.maxManifestBytes = Number.isFinite(options.maxManifestBytes)
+      ? options.maxManifestBytes
+      : DEFAULT_MAX_MANIFEST_BYTES;
     this.maxPromptBytes = Number.isFinite(options.maxPromptBytes) ? options.maxPromptBytes : DEFAULT_MAX_PROMPT_BYTES;
     this.adminServices = options.adminServices || null;
     this.onAdminMutation = typeof options.onAdminMutation === 'function' ? options.onAdminMutation : null;
@@ -82,8 +91,28 @@ class UiAppsManager {
     this.#ensureDir(this.dataRootDir);
 
     const errors = [];
-    const builtin = this.#scanPluginsDir(this.builtinPluginsDir, 'builtin', errors);
-    const user = this.userPluginsDir ? this.#scanPluginsDir(this.userPluginsDir, 'user', errors) : [];
+    const scanOptions = {
+      manifestFile: this.manifestFile,
+      maxManifestBytes: this.maxManifestBytes,
+      stateDir: this.stateDir,
+      sessionRoot: this.sessionRoot,
+      projectRoot: this.projectRoot,
+      dataRootDir: this.dataRootDir,
+      isPluginTrusted: (plugin) => this.#isPluginTrusted(plugin),
+      errors,
+    };
+    const builtin = scanPluginsDir({
+      dirPath: this.builtinPluginsDir,
+      source: 'builtin',
+      ...scanOptions,
+    });
+    const user = this.userPluginsDir
+      ? scanPluginsDir({
+          dirPath: this.userPluginsDir,
+          source: 'user',
+          ...scanOptions,
+        })
+      : [];
 
     const byId = new Map();
     builtin.forEach((plugin) => {
@@ -97,7 +126,12 @@ class UiAppsManager {
 
     if (this.adminServices) {
       try {
-        this.#syncRegistryCenterFromUiApps(pluginsInternal, errors);
+        syncRegistryCenterFromUiApps({
+          adminServices: this.adminServices,
+          pluginsInternal,
+          maxPromptBytes: this.maxPromptBytes,
+          errors,
+        });
       } catch (err) {
         errors.push({
           dir: '(uiApps registry sync)',
@@ -110,7 +144,12 @@ class UiAppsManager {
     let didMutateAdmin = false;
     if (this.syncAiContributes && this.adminServices) {
       try {
-        didMutateAdmin = this.#syncAiContributes(pluginsInternal, errors);
+        didMutateAdmin = syncAiContributes({
+          adminServices: this.adminServices,
+          pluginsInternal,
+          maxPromptBytes: this.maxPromptBytes,
+          errors,
+        });
       } catch (err) {
         errors.push({
           dir: '(uiApps ai sync)',
@@ -130,49 +169,6 @@ class UiAppsManager {
         }
       }
     }
-
-    const sanitizeAiForUi = (ai) => {
-      if (!ai || typeof ai !== 'object') return null;
-      const mcp = ai?.mcp && typeof ai.mcp === 'object' ? ai.mcp : null;
-      const mcpPrompt = ai?.mcpPrompt && typeof ai.mcpPrompt === 'object' ? ai.mcpPrompt : null;
-      const agent = ai?.agent && typeof ai.agent === 'object' ? ai.agent : null;
-      const sanitizePromptSource = (src) => {
-        if (!src || typeof src !== 'object') return null;
-        const p = typeof src.path === 'string' ? src.path : '';
-        return p ? { path: p } : null;
-      };
-      return {
-        mcp: mcp
-          ? {
-              name: mcp.name || '',
-              url: mcp.url || '',
-              description: mcp.description || '',
-              tags: Array.isArray(mcp.tags) ? mcp.tags : [],
-              enabled: typeof mcp.enabled === 'boolean' ? mcp.enabled : undefined,
-            }
-          : null,
-        mcpPrompt: mcpPrompt
-          ? {
-              title: mcpPrompt.title || '',
-              zh: sanitizePromptSource(mcpPrompt.zh),
-              en: sanitizePromptSource(mcpPrompt.en),
-              names: mcpPrompt.names || null,
-            }
-          : null,
-        agent: agent
-          ? {
-              name: agent.name || '',
-              description: agent.description || '',
-              modelId: agent.modelId || '',
-            }
-          : null,
-      };
-    };
-
-    const sanitizeAppForUi = (app) => ({
-      ...app,
-      ai: sanitizeAiForUi(app?.ai),
-    });
 
     const plugins = pluginsInternal.map((plugin) => ({
       id: plugin.id,
@@ -229,7 +225,9 @@ class UiAppsManager {
     const pluginDir = typeof plugin?.pluginDir === 'string' ? plugin.pluginDir : '';
     if (!pluginDir) return null;
 
-    const app = (Array.isArray(plugin?.apps) ? plugin.apps : []).find((entry) => String(entry?.id || '').trim() === appId);
+    const app = (Array.isArray(plugin?.apps) ? plugin.apps : []).find(
+      (entry) => String(entry?.id || '').trim() === appId
+    );
     const ai = app?.ai && typeof app.ai === 'object' ? app.ai : null;
     if (!ai) return null;
 
@@ -383,367 +381,6 @@ class UiAppsManager {
     }
   }
 
-  #scanPluginsDir(dirPath, source, errors) {
-    const normalized = typeof dirPath === 'string' ? dirPath.trim() : '';
-    if (!normalized) return [];
-
-    let entries = [];
-    try {
-      entries = fs.readdirSync(normalized, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-
-    const plugins = [];
-    entries.forEach((entry) => {
-      if (!entry?.isDirectory?.()) return;
-      const pluginDir = path.join(normalized, entry.name);
-      const manifestPath = path.join(pluginDir, this.manifestFile);
-      try {
-        if (!fs.existsSync(manifestPath)) return;
-      } catch {
-        return;
-      }
-      try {
-        const parsed = this.#readPluginManifest(manifestPath);
-        const plugin = uiAppsPluginSchema.parse(parsed);
-        const apps = this.#resolveApps(pluginDir, plugin, errors);
-        const backend = this.#resolveBackend(pluginDir, plugin, errors);
-        const trusted = this.#isPluginTrusted({ id: plugin.id, source, pluginDir });
-        plugins.push({
-          id: plugin.id,
-          providerAppId: plugin.providerAppId || '',
-          name: plugin.name,
-          version: plugin.version,
-          description: plugin.description,
-          source,
-          trusted,
-          backend,
-          apps,
-          pluginDir,
-        });
-      } catch (err) {
-        errors.push({
-          dir: pluginDir,
-          source,
-          message: err?.message || String(err),
-        });
-      }
-    });
-
-    return plugins;
-  }
-
-  #readPluginManifest(manifestPath) {
-    const stat = fs.statSync(manifestPath);
-    if (stat.size > this.maxManifestBytes) {
-      throw new Error(`Manifest too large (${stat.size} bytes): ${manifestPath}`);
-    }
-    const raw = fs.readFileSync(manifestPath, 'utf8');
-    return JSON.parse(raw);
-  }
-
-  #resolveApps(pluginDir, plugin, errors) {
-    const seenIds = new Set();
-    const apps = [];
-    (Array.isArray(plugin.apps) ? plugin.apps : []).forEach((app) => {
-      const appId = typeof app?.id === 'string' ? app.id.trim() : '';
-      if (!appId) return;
-      if (seenIds.has(appId)) {
-        errors.push({
-          dir: pluginDir,
-          source: 'manifest',
-          message: `Duplicate app id "${appId}" in plugin "${plugin?.id}"`,
-        });
-        return;
-      }
-      seenIds.add(appId);
-
-      try {
-        const entry = this.#resolveEntry(pluginDir, app.entry);
-        const ai = this.#resolveAi(pluginDir, plugin?.id, app, errors);
-        apps.push({
-          id: app.id,
-          name: app.name,
-          description: app.description || '',
-          icon: app.icon || '',
-          entry,
-          ai,
-          route: `apps/plugin/${encodeURIComponent(plugin.id)}/${encodeURIComponent(app.id)}`,
-        });
-      } catch (err) {
-        errors.push({
-          dir: pluginDir,
-          source: 'entry',
-          message: `App "${plugin?.id}:${appId}" entry error: ${err?.message || String(err)}`,
-        });
-      }
-    });
-    return apps;
-  }
-
-  #resolveAi(pluginDir, pluginIdRaw, app, errors) {
-    return resolveUiAppsAi(pluginDir, pluginIdRaw, app, errors, {
-      stateDir: this.stateDir,
-      sessionRoot: this.sessionRoot,
-      projectRoot: this.projectRoot,
-      dataRootDir: this.dataRootDir,
-    });
-  }
-
-  #syncRegistryCenterFromUiApps(pluginsInternal, errors) {
-    const services = this.adminServices;
-    if (!services?.mcpServers) return;
-
-    let registry = null;
-    try {
-      registry = getRegistryCenter({ db: services.mcpServers.db });
-    } catch {
-      registry = null;
-    }
-    if (!registry) return;
-
-    pluginsInternal.forEach((plugin) => {
-      const pluginId = typeof plugin?.id === 'string' ? plugin.id.trim() : '';
-      const pluginDir = typeof plugin?.pluginDir === 'string' ? plugin.pluginDir : '';
-      if (!pluginId || !pluginDir) return;
-
-      const providerAppIdRaw = typeof plugin?.providerAppId === 'string' ? plugin.providerAppId.trim() : '';
-      const providerAppId = providerAppIdRaw || pluginId;
-      const allowGrants = plugin?.trusted === true;
-
-      try {
-        registry.registerApp(providerAppId, { name: plugin?.name || providerAppId, version: plugin?.version || '' });
-      } catch {
-        // ignore
-      }
-
-      (Array.isArray(plugin?.apps) ? plugin.apps : []).forEach((app) => {
-        const appId = typeof app?.id === 'string' ? app.id.trim() : '';
-        if (!appId) return;
-        const consumerAppId = `${pluginId}.${appId}`;
-
-        const ai = app?.ai && typeof app.ai === 'object' ? app.ai : null;
-        if (!ai) return;
-
-        const mcp = ai?.mcp && typeof ai.mcp === 'object' ? ai.mcp : null;
-        if (mcp?.name && mcp?.url) {
-          const desiredTags = uniqueStrings([
-            ...(Array.isArray(mcp.tags) ? mcp.tags : []),
-            'uiapp',
-            `uiapp:${pluginId}`,
-            `uiapp:${pluginId}:${appId}`,
-            `uiapp:${pluginId}.${appId}`,
-          ]).sort((a, b) => a.localeCompare(b));
-          try {
-            const serverRecord = registry.registerMcpServer(providerAppId, {
-              id: String(mcp.name || '').trim(),
-              name: String(mcp.name || '').trim(),
-              url: String(mcp.url || '').trim(),
-              description: String(mcp.description || '').trim(),
-              tags: desiredTags,
-              enabled: typeof mcp.enabled === 'boolean' ? mcp.enabled : true,
-              auth: mcp.auth || undefined,
-              callMeta: mcp.callMeta || mcp.call_meta || undefined,
-            });
-            if (serverRecord?.id) {
-              if (allowGrants) {
-                try {
-                  registry.grantMcpServerAccess(consumerAppId, serverRecord.id);
-                } catch (err) {
-                  errors.push({
-                    dir: pluginDir,
-                    source: 'registry',
-                    message: `Failed to grant MCP server "${mcp.name}" to "${consumerAppId}": ${err?.message || String(err)}`,
-                  });
-                }
-              } else {
-                try {
-                  registry.revokeMcpServerAccess(consumerAppId, serverRecord.id);
-                } catch (err) {
-                  errors.push({
-                    dir: pluginDir,
-                    source: 'registry',
-                    message: `Failed to revoke MCP server "${mcp.name}" from "${consumerAppId}": ${err?.message || String(err)}`,
-                  });
-                }
-              }
-            }
-          } catch (err) {
-            errors.push({
-              dir: pluginDir,
-              source: 'registry',
-              message: `Failed to register MCP server "${mcp.name}" for "${providerAppId}": ${err?.message || String(err)}`,
-            });
-          }
-        }
-
-        const prompt = ai?.mcpPrompt && typeof ai.mcpPrompt === 'object' ? ai.mcpPrompt : null;
-        const promptNames = prompt?.names && typeof prompt.names === 'object' ? prompt.names : null;
-        if (prompt && promptNames) {
-          const title =
-            typeof prompt.title === 'string' && prompt.title.trim()
-              ? prompt.title.trim()
-              : `${app?.name || appId} MCP Prompt`;
-
-          const variants = [
-            { name: promptNames.zh, source: prompt.zh, label: 'ai.mcpPrompt.zh' },
-            { name: promptNames.en, source: prompt.en, label: 'ai.mcpPrompt.en' },
-          ].filter((v) => v?.source && v?.name);
-
-          variants.forEach((variant) => {
-          let content = '';
-          try {
-            content = readPromptSource({
-              pluginDir,
-              source: variant.source,
-              label: variant.label,
-              maxPromptBytes: this.maxPromptBytes,
-            });
-          } catch (err) {
-              errors.push({
-                dir: pluginDir,
-                source: 'registry',
-                message: `Failed to read ${variant.label} for "${pluginId}:${appId}": ${err?.message || String(err)}`,
-              });
-              return;
-            }
-            if (!content) return;
-
-            const promptName = String(variant.name || '').trim();
-            if (!promptName) return;
-            try {
-              const promptRecord = registry.registerPrompt(providerAppId, {
-                id: promptName,
-                name: promptName,
-                title,
-                type: 'system',
-                content,
-              });
-              if (promptRecord?.id) {
-                if (allowGrants) {
-                  try {
-                    registry.grantPromptAccess(consumerAppId, promptRecord.id);
-                  } catch (err) {
-                    errors.push({
-                      dir: pluginDir,
-                      source: 'registry',
-                      message: `Failed to grant Prompt "${promptName}" to "${consumerAppId}": ${err?.message || String(err)}`,
-                    });
-                  }
-                } else {
-                  try {
-                    registry.revokePromptAccess(consumerAppId, promptRecord.id);
-                  } catch (err) {
-                    errors.push({
-                      dir: pluginDir,
-                      source: 'registry',
-                      message: `Failed to revoke Prompt "${promptName}" from "${consumerAppId}": ${err?.message || String(err)}`,
-                    });
-                  }
-                }
-              }
-            } catch (err) {
-              errors.push({
-                dir: pluginDir,
-                source: 'registry',
-                message: `Failed to register Prompt "${promptName}" for "${providerAppId}": ${err?.message || String(err)}`,
-              });
-            }
-          });
-        }
-      });
-    });
-  }
-
-  #syncAiContributes(pluginsInternal, errors) {
-    const trustedPlugins = (Array.isArray(pluginsInternal) ? pluginsInternal : []).filter((plugin) => plugin?.trusted === true);
-    return syncUiAppsAiContributes(
-      { adminServices: this.adminServices, maxPromptBytes: this.maxPromptBytes },
-      trustedPlugins,
-      errors
-    );
-  }
-
-  #resolveBackend(pluginDir, plugin, errors) {
-    const rel = typeof plugin?.backend?.entry === 'string' ? plugin.backend.entry.trim() : '';
-    if (!rel) return null;
-
-    const resolved = path.resolve(pluginDir, rel);
-    const relative = path.relative(pluginDir, resolved);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-      errors.push({
-        dir: pluginDir,
-        source: 'backend',
-        message: 'backend.entry must be within plugin directory',
-      });
-      return { entry: rel, resolved: null };
-    }
-
-    let stat = null;
-    try {
-      stat = fs.statSync(resolved);
-    } catch {
-      errors.push({
-        dir: pluginDir,
-        source: 'backend',
-        message: `backend.entry not found: ${rel}`,
-      });
-      return { entry: rel, resolved: null };
-    }
-
-    if (!stat.isFile()) {
-      errors.push({
-        dir: pluginDir,
-        source: 'backend',
-        message: `backend.entry must be a file: ${rel}`,
-      });
-      return { entry: rel, resolved: null };
-    }
-
-    return { entry: rel, resolved, mtimeMs: stat.mtimeMs };
-  }
-
-  #resolveEntry(pluginDir, entry) {
-    const resolveEntryItem = (raw, label = 'entry') => {
-      const normalized = typeof raw === 'string' ? { type: 'module', path: raw } : raw;
-      const entryType = normalized?.type;
-      if (entryType !== 'module') {
-        if (label === 'entry') throw new Error('Only module entry is supported');
-        throw new Error(`Only module ${label} is supported`);
-      }
-      const relPath = typeof normalized?.path === 'string' ? normalized.path.trim() : '';
-      if (!relPath) throw new Error(`${label}.path is required`);
-      const resolved = path.resolve(pluginDir, relPath);
-      const relative = path.relative(pluginDir, resolved);
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-        throw new Error(`${label}.path must be within plugin directory`);
-      }
-      if (!fs.existsSync(resolved)) {
-        throw new Error(`${label}.path not found: ${relPath}`);
-      }
-
-      let stat = null;
-      try {
-        stat = fs.statSync(resolved);
-      } catch {
-        throw new Error(`${label}.path not found: ${relPath}`);
-      }
-      if (!stat.isFile()) {
-        throw new Error(`${label}.path must be a file for module apps: ${relPath}`);
-      }
-
-      return { type: entryType, url: pathToFileURL(resolved).toString() };
-    };
-
-    const resolved = resolveEntryItem(entry, 'entry');
-    const compact = entry && typeof entry === 'object' ? entry.compact : null;
-    if (compact) {
-      resolved.compact = resolveEntryItem(compact, 'entry.compact');
-    }
-    return resolved;
-  }
-
   #buildInvokeContext(pluginId, plugin) {
     const pluginDir = typeof plugin?.pluginDir === 'string' ? plugin.pluginDir : '';
     const dataDir = this.dataRootDir ? path.join(this.dataRootDir, pluginId) : '';
@@ -774,7 +411,11 @@ class UiAppsManager {
     } catch {
       // ignore
     }
-    const mtimeMs = Number.isFinite(stat?.mtimeMs) ? stat.mtimeMs : Number.isFinite(plugin?.backend?.mtimeMs) ? plugin.backend.mtimeMs : 0;
+    const mtimeMs = Number.isFinite(stat?.mtimeMs)
+      ? stat.mtimeMs
+      : Number.isFinite(plugin?.backend?.mtimeMs)
+        ? plugin.backend.mtimeMs
+        : 0;
 
     const cached = this.backendCache.get(pluginId);
     if (cached && cached.mtimeMs === mtimeMs) {
@@ -790,7 +431,9 @@ class UiAppsManager {
     }
     this.backendCache.delete(pluginId);
 
-    const moduleUrl = `${pathToFileURL(backendResolved).toString()}?mtime=${encodeURIComponent(String(mtimeMs || Date.now()))}`;
+    const moduleUrl = `${pathToFileURL(backendResolved).toString()}?mtime=${encodeURIComponent(
+      String(mtimeMs || Date.now())
+    )}`;
     const mod = await import(moduleUrl);
     const create = mod?.createUiAppsBackend;
     if (typeof create !== 'function') {

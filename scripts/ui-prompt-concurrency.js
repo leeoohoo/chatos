@@ -2,6 +2,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { ensureFileExists } from '../packages/common/state-core/utils.js';
 import { fileURLToPath } from 'url';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -217,16 +218,6 @@ function printSettled(label, settled) {
   }
 }
 
-function ensureFileExists(filePath) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, '', 'utf8');
-    }
-  } catch {
-    // ignore
-  }
-}
 
 function resolveSessionRoot(parsedArgs) {
   const direct = safeTrim(parsedArgs.session_root ?? parsedArgs.sessionRoot);

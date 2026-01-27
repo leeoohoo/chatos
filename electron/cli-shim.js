@@ -2,14 +2,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { STATE_ROOT_DIRNAME, resolveStateRootDir } from '../packages/common/state-core/state-paths.js';
-
-function ensureDir(dirPath) {
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
+import { ensureDir } from '../packages/common/state-core/utils.js';
+import { resolveCliEntrypointPath } from './shared/cli-entrypoint.js';
 
 function escapeShell(text) {
   return `'${String(text || '').replace(/'/g, `'\\''`)}'`;
@@ -38,20 +32,8 @@ export function createCliShim({ projectRoot, commandName, env } = {}) {
     }
   }
 
-  function resolveCliEntrypointPath() {
-    const resources = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
-    if (resources) {
-      const asarPath = path.join(resources, 'app.asar');
-      if (fs.existsSync(asarPath)) {
-        const distCandidate = path.join(asarPath, 'dist', 'cli.js');
-        if (fs.existsSync(distCandidate)) return distCandidate;
-        const legacyCandidate = path.join(asarPath, 'src', 'cli.js');
-        if (fs.existsSync(legacyCandidate)) return legacyCandidate;
-      }
-    }
-    const distLocal = path.join(baseRoot, 'dist', 'cli.js');
-    if (fs.existsSync(distLocal)) return distLocal;
-    return path.join(baseRoot, 'src', 'cli.js');
+  function resolveCliEntrypointPathForShim() {
+    return resolveCliEntrypointPath({ baseProjectRoot: baseRoot, preferSrc: true });
   }
 
   function resolveWindowsAppsDir() {
@@ -159,7 +141,7 @@ export function createCliShim({ projectRoot, commandName, env } = {}) {
     const resolvedExec =
       typeof execPath === 'string' && execPath.trim() ? execPath.trim() : process.execPath;
     const resolvedCli =
-      typeof cliPath === 'string' && cliPath.trim() ? cliPath.trim() : resolveCliEntrypointPath();
+      typeof cliPath === 'string' && cliPath.trim() ? cliPath.trim() : resolveCliEntrypointPathForShim();
     if (process.platform === 'win32') {
       return {
         direct: `set ELECTRON_RUN_AS_NODE=1 && "${resolvedExec}" "${resolvedCli}" chat`,
@@ -203,7 +185,7 @@ export function createCliShim({ projectRoot, commandName, env } = {}) {
       }
     }) || '';
     const preferred = resolvePreferredCliShimTarget();
-    const cliPath = resolveCliEntrypointPath();
+    const cliPath = resolveCliEntrypointPathForShim();
     const examples = buildCliLaunchExamples({ execPath: process.execPath, cliPath });
     return {
       ok: true,
@@ -240,7 +222,7 @@ export function createCliShim({ projectRoot, commandName, env } = {}) {
       // ignore
     }
 
-    const cliPath = resolveCliEntrypointPath();
+    const cliPath = resolveCliEntrypointPathForShim();
     if (!fs.existsSync(cliPath)) {
       return { ok: false, message: `找不到 CLI 入口：${cliPath}` };
     }
