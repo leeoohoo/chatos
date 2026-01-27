@@ -1,4 +1,4 @@
-import {
+﻿import {
   RUN_FILTER_AUTO,
   RUN_FILTER_ALL,
   createStorageKeys,
@@ -16,6 +16,7 @@ import {
 import { truncateText } from 'aide-ui/lib/format.js';
 import { buildEventPreview, getEventMeta as getBaseEventMeta } from 'aide-ui/lib/events.js';
 import { dedupeFileChanges } from 'aide-ui/lib/file-changes.js';
+import { createCompactElements } from './compact-elements.mjs';
 
 export function mount({ container, host }) {
   if (!container) throw new Error('container is required');
@@ -26,577 +27,45 @@ export function mount({ container, host }) {
   const themeGet = typeof host?.theme?.get === 'function' ? host.theme.get : null;
   const themeOnChange = typeof host?.theme?.onChange === 'function' ? host.theme.onChange : null;
 
-  const root = document.createElement('div');
-  root.className = 'aide-compact-root';
-
-  const style = document.createElement('style');
-  style.textContent = `
-    .aide-compact-root {
-      position: relative;
-      height: 100%;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      color: var(--aide-compact-text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    .aide-compact-header {
-      padding: 14px 16px 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      border-bottom: 1px solid var(--aide-compact-border);
-    }
-    .aide-compact-title {
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.2;
-    }
-    .aide-compact-meta {
-      font-size: 12px;
-      color: var(--aide-compact-text-secondary);
-    }
-    .aide-compact-body {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: auto;
-      padding: 12px 16px 180px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      box-sizing: border-box;
-    }
-    .aide-compact-card {
-      border-radius: 12px;
-      border: 1px solid var(--aide-compact-border);
-      background: var(--aide-compact-card-bg);
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .aide-compact-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .aide-compact-card-title {
-      font-weight: 700;
-      font-size: 13px;
-    }
-    .aide-compact-card-meta {
-      font-size: 12px;
-      color: var(--aide-compact-text-secondary);
-    }
-    .aide-compact-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .aide-compact-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 8px;
-      border-radius: 10px;
-      background: var(--aide-compact-muted-bg);
-    }
-    .aide-compact-row-title {
-      font-weight: 600;
-      font-size: 12px;
-      line-height: 1.2;
-    }
-    .aide-compact-row-text {
-      font-size: 12px;
-      color: var(--aide-compact-text-secondary);
-      line-height: 1.4;
-    }
-    .aide-compact-row-main {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1;
-      min-width: 0;
-    }
-    .aide-compact-tag {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2px 6px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-      background: var(--aide-compact-tag-bg);
-      color: var(--aide-compact-tag-text);
-    }
-    .aide-compact-tag.success {
-      background: var(--aide-compact-tag-green-bg);
-      color: var(--aide-compact-tag-green-text);
-    }
-    .aide-compact-tag.warning {
-      background: var(--aide-compact-tag-orange-bg);
-      color: var(--aide-compact-tag-orange-text);
-    }
-    .aide-compact-tag.danger {
-      background: var(--aide-compact-tag-red-bg);
-      color: var(--aide-compact-tag-red-text);
-    }
-    .aide-compact-tag.info {
-      background: var(--aide-compact-tag-blue-bg);
-      color: var(--aide-compact-tag-blue-text);
-    }
-    .aide-compact-button {
-      border-radius: 8px;
-      border: 1px solid var(--aide-compact-border-strong);
-      background: var(--aide-compact-button-bg);
-      color: var(--aide-compact-text);
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .aide-compact-button:disabled {
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
-    .aide-compact-alert {
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--aide-compact-border);
-      background: var(--aide-compact-alert-bg);
-      font-size: 12px;
-      color: var(--aide-compact-text-secondary);
-    }
-    .aide-compact-pagination {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--aide-compact-text-secondary);
-    }
-    .aide-compact-pagination-controls {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-    .aide-compact-float {
-      position: absolute;
-      left: 16px;
-      right: 16px;
-      bottom: 12px;
-      padding: 10px 12px;
-      border-radius: 16px;
-      border: 1px solid var(--aide-compact-border);
-      background: var(--aide-compact-float-bg);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
-    }
-    .aide-compact-float.is-collapsed {
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .aide-compact-float-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      width: 100%;
-    }
-    .aide-compact-float-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .aide-compact-float-text {
-      font-size: 12px;
-      color: var(--aide-compact-text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1;
-    }
-    .aide-compact-tabs {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      padding: 2px 0;
-    }
-    .aide-compact-tab {
-      border: 1px solid var(--aide-compact-border);
-      background: var(--aide-compact-muted-bg);
-      color: var(--aide-compact-text);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .aide-compact-tab.is-active {
-      background: var(--aide-compact-tab-active-bg);
-      color: var(--aide-compact-tab-active-text);
-      border-color: var(--aide-compact-tab-active-border);
-      font-weight: 600;
-    }
-    .aide-compact-section {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-height: 0;
-    }
-    .aide-compact-row.is-clickable {
-      cursor: pointer;
-    }
-    .aide-compact-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .aide-compact-button.is-mini {
-      padding: 2px 8px;
-      font-size: 11px;
-    }
-    .aide-compact-select {
-      width: 100%;
-      min-width: 160px;
-      padding: 4px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--aide-compact-border);
-      background: var(--aide-compact-card-bg);
-      color: var(--aide-compact-text);
-      font-size: 12px;
-    }
-    .aide-compact-input {
-      width: 100%;
-      min-height: 34px;
-      max-height: 120px;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--aide-compact-border);
-      background: var(--aide-compact-card-bg);
-      color: var(--aide-compact-text);
-      font-size: 12px;
-      resize: vertical;
-      box-sizing: border-box;
-    }
-    .aide-compact-float-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
-    .aide-compact-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.35);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      z-index: 20;
-      box-sizing: border-box;
-    }
-    .aide-compact-overlay-panel {
-      width: min(860px, 100%);
-      max-height: 90%;
-      background: var(--aide-compact-card-bg);
-      border: 1px solid var(--aide-compact-border);
-      border-radius: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding: 12px;
-      box-sizing: border-box;
-    }
-    .aide-compact-overlay-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .aide-compact-overlay-body {
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-      background: var(--aide-compact-muted-bg);
-      border-radius: 10px;
-      padding: 10px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-      color: var(--aide-compact-text);
-    }
-  `;
-  root.appendChild(style);
-
-  const header = document.createElement('div');
-  header.className = 'aide-compact-header';
-  const headerLeft = document.createElement('div');
-  headerLeft.style.display = 'flex';
-  headerLeft.style.flexDirection = 'column';
-  headerLeft.style.gap = '4px';
-  const title = document.createElement('div');
-  title.className = 'aide-compact-title';
-  title.textContent = 'AIDE \u534a\u5c4f\u6982\u89c8';
-  const meta = document.createElement('div');
-  meta.className = 'aide-compact-meta';
-  meta.textContent = `${ctx?.pluginId || ''}:${ctx?.appId || ''} \u00b7 compact \u00b7 bridge=${bridgeEnabled ? 'on' : 'off'}`;
-  headerLeft.appendChild(title);
-  headerLeft.appendChild(meta);
-  const headerRight = document.createElement('div');
-  const refreshButton = document.createElement('button');
-  refreshButton.className = 'aide-compact-button';
-  refreshButton.textContent = '\u5237\u65b0';
-  refreshButton.disabled = !bridgeEnabled;
-  headerRight.appendChild(refreshButton);
-  header.appendChild(headerLeft);
-  header.appendChild(headerRight);
-
-  const body = document.createElement('div');
-  body.className = 'aide-compact-body';
-
-  const alert = document.createElement('div');
-  alert.className = 'aide-compact-alert';
-  alert.style.display = 'none';
-  body.appendChild(alert);
-
-  const tabBar = document.createElement('div');
-  tabBar.className = 'aide-compact-tabs';
-  const overviewTab = document.createElement('button');
-  overviewTab.type = 'button';
-  overviewTab.className = 'aide-compact-tab is-active';
-  overviewTab.textContent = '\u6982\u89c8';
-  const traceTab = document.createElement('button');
-  traceTab.type = 'button';
-  traceTab.className = 'aide-compact-tab';
-  traceTab.textContent = '\u8f68\u8ff9';
-  tabBar.appendChild(overviewTab);
-  tabBar.appendChild(traceTab);
-  body.appendChild(tabBar);
-
-  const overviewSection = document.createElement('div');
-  overviewSection.className = 'aide-compact-section';
-  const traceSection = document.createElement('div');
-  traceSection.className = 'aide-compact-section';
-
-  const conversationCard = document.createElement('div');
-  conversationCard.className = 'aide-compact-card';
-  const conversationHeader = document.createElement('div');
-  conversationHeader.className = 'aide-compact-card-header';
-  const conversationTitle = document.createElement('div');
-  conversationTitle.className = 'aide-compact-card-title';
-  conversationTitle.textContent = '\u6700\u8fd1\u5bf9\u8bdd';
-  const conversationMeta = document.createElement('div');
-  conversationMeta.className = 'aide-compact-card-meta';
-  conversationHeader.appendChild(conversationTitle);
-  conversationHeader.appendChild(conversationMeta);
-  const conversationList = document.createElement('div');
-  conversationList.className = 'aide-compact-list';
-  conversationCard.appendChild(conversationHeader);
-  conversationCard.appendChild(conversationList);
-
-  const sessionsCard = document.createElement('div');
-  sessionsCard.className = 'aide-compact-card';
-  const sessionsHeader = document.createElement('div');
-  sessionsHeader.className = 'aide-compact-card-header';
-  const sessionsTitle = document.createElement('div');
-  sessionsTitle.className = 'aide-compact-card-title';
-  sessionsTitle.textContent = '\u540e\u53f0\u4f1a\u8bdd';
-  const sessionsMeta = document.createElement('div');
-  sessionsMeta.className = 'aide-compact-card-meta';
-  const sessionsHeaderRight = document.createElement('div');
-  sessionsHeaderRight.style.display = 'flex';
-  sessionsHeaderRight.style.alignItems = 'center';
-  sessionsHeaderRight.style.gap = '8px';
-  const sessionsRefresh = document.createElement('button');
-  sessionsRefresh.className = 'aide-compact-button';
-  sessionsRefresh.textContent = '\u5237\u65b0';
-  sessionsRefresh.disabled = !bridgeEnabled;
-  sessionsHeaderRight.appendChild(sessionsMeta);
-  sessionsHeaderRight.appendChild(sessionsRefresh);
-  sessionsHeader.appendChild(sessionsTitle);
-  sessionsHeader.appendChild(sessionsHeaderRight);
-  const sessionsList = document.createElement('div');
-  sessionsList.className = 'aide-compact-list';
-  sessionsCard.appendChild(sessionsHeader);
-  sessionsCard.appendChild(sessionsList);
-
-  const filesCard = document.createElement('div');
-  filesCard.className = 'aide-compact-card';
-  const filesHeader = document.createElement('div');
-  filesHeader.className = 'aide-compact-card-header';
-  const filesTitle = document.createElement('div');
-  filesTitle.className = 'aide-compact-card-title';
-  filesTitle.textContent = '\u6587\u4ef6\u6539\u52a8';
-  const filesMeta = document.createElement('div');
-  filesMeta.className = 'aide-compact-card-meta';
-  const filesHeaderRight = document.createElement('div');
-  filesHeaderRight.style.display = 'flex';
-  filesHeaderRight.style.alignItems = 'center';
-  filesHeaderRight.style.gap = '8px';
-  const filesRefresh = document.createElement('button');
-  filesRefresh.className = 'aide-compact-button';
-  filesRefresh.textContent = '\u5237\u65b0';
-  filesRefresh.disabled = !bridgeEnabled;
-  filesHeaderRight.appendChild(filesMeta);
-  filesHeaderRight.appendChild(filesRefresh);
-  filesHeader.appendChild(filesTitle);
-  filesHeader.appendChild(filesHeaderRight);
-  const filesList = document.createElement('div');
-  filesList.className = 'aide-compact-list';
-  const filesPagination = document.createElement('div');
-  filesPagination.className = 'aide-compact-pagination';
-  const filesPageText = document.createElement('div');
-  const filesControls = document.createElement('div');
-  filesControls.className = 'aide-compact-pagination-controls';
-  const filesPrev = document.createElement('button');
-  filesPrev.className = 'aide-compact-button';
-  filesPrev.textContent = '\u4e0a\u4e00\u9875';
-  const filesNext = document.createElement('button');
-  filesNext.className = 'aide-compact-button';
-  filesNext.textContent = '\u4e0b\u4e00\u9875';
-  filesControls.appendChild(filesPrev);
-  filesControls.appendChild(filesNext);
-  filesPagination.appendChild(filesPageText);
-  filesPagination.appendChild(filesControls);
-  filesCard.appendChild(filesHeader);
-  filesCard.appendChild(filesList);
-  filesCard.appendChild(filesPagination);
-
-  const traceCard = document.createElement('div');
-  traceCard.className = 'aide-compact-card';
-  const traceHeader = document.createElement('div');
-  traceHeader.className = 'aide-compact-card-header';
-  const traceTitle = document.createElement('div');
-  traceTitle.className = 'aide-compact-card-title';
-  traceTitle.textContent = '\u8f68\u8ff9';
-  const traceMeta = document.createElement('div');
-  traceMeta.className = 'aide-compact-card-meta';
-  traceHeader.appendChild(traceTitle);
-  traceHeader.appendChild(traceMeta);
-  const traceList = document.createElement('div');
-  traceList.className = 'aide-compact-list';
-  const tracePagination = document.createElement('div');
-  tracePagination.className = 'aide-compact-pagination';
-  const tracePageText = document.createElement('div');
-  const traceControls = document.createElement('div');
-  traceControls.className = 'aide-compact-pagination-controls';
-  const tracePrev = document.createElement('button');
-  tracePrev.className = 'aide-compact-button';
-  tracePrev.textContent = '\u4e0a\u4e00\u9875';
-  const traceNext = document.createElement('button');
-  traceNext.className = 'aide-compact-button';
-  traceNext.textContent = '\u4e0b\u4e00\u9875';
-  traceControls.appendChild(tracePrev);
-  traceControls.appendChild(traceNext);
-  tracePagination.appendChild(tracePageText);
-  tracePagination.appendChild(traceControls);
-  traceCard.appendChild(traceHeader);
-  traceCard.appendChild(traceList);
-  traceCard.appendChild(tracePagination);
-  traceSection.appendChild(traceCard);
-
-  overviewSection.appendChild(conversationCard);
-  overviewSection.appendChild(sessionsCard);
-  overviewSection.appendChild(filesCard);
-  body.appendChild(overviewSection);
-  body.appendChild(traceSection);
-
-  const floatBar = document.createElement('div');
-  floatBar.className = 'aide-compact-float';
-
-  const floatRow = document.createElement('div');
-  floatRow.className = 'aide-compact-float-row';
-  const floatText = document.createElement('div');
-  floatText.className = 'aide-compact-float-text';
-  const floatToggle = document.createElement('button');
-  floatToggle.className = 'aide-compact-button is-mini';
-  floatToggle.textContent = '\u6536\u8d77';
-  floatRow.appendChild(floatText);
-  floatRow.appendChild(floatToggle);
-
-  const floatPanel = document.createElement('div');
-  floatPanel.className = 'aide-compact-float-panel';
-  const floatRunRow = document.createElement('div');
-  floatRunRow.className = 'aide-compact-float-row';
-  const runSelect = document.createElement('select');
-  runSelect.className = 'aide-compact-select';
-  runSelect.style.flex = '1';
-  const runStatus = document.createElement('div');
-  runStatus.className = 'aide-compact-row-text';
-  runStatus.style.whiteSpace = 'nowrap';
-  runStatus.style.maxWidth = '180px';
-  runStatus.style.overflow = 'hidden';
-  runStatus.style.textOverflow = 'ellipsis';
-  const floatRefresh = document.createElement('button');
-  floatRefresh.className = 'aide-compact-button is-mini';
-  floatRefresh.textContent = '\u5237\u65b0';
-  floatRefresh.disabled = !bridgeEnabled;
-  floatRunRow.appendChild(runSelect);
-  floatRunRow.appendChild(runStatus);
-  floatRunRow.appendChild(floatRefresh);
-
-  const dispatchInput = document.createElement('textarea');
-  dispatchInput.className = 'aide-compact-input';
-  dispatchInput.placeholder = '\u8f93\u5165\u8981\u53d1\u9001\u7ed9 CLI \u7684\u5185\u5bb9\uff08Enter \u53d1\u9001\uff0cShift+Enter \u6362\u884c\uff09';
-
-  const floatActions = document.createElement('div');
-  floatActions.className = 'aide-compact-float-actions';
-  const stopButton = document.createElement('button');
-  stopButton.className = 'aide-compact-button';
-  stopButton.textContent = '\u505c\u6b62';
-  stopButton.disabled = true;
-  const sendButton = document.createElement('button');
-  sendButton.className = 'aide-compact-button';
-  sendButton.textContent = '\u53d1\u9001';
-  sendButton.disabled = !bridgeEnabled;
-  floatActions.appendChild(stopButton);
-  floatActions.appendChild(sendButton);
-
-  floatPanel.appendChild(floatRunRow);
-  floatPanel.appendChild(dispatchInput);
-  floatPanel.appendChild(floatActions);
-
-  floatBar.appendChild(floatRow);
-  floatBar.appendChild(floatPanel);
-
-  const overlay = document.createElement('div');
-  overlay.className = 'aide-compact-overlay';
-  const overlayPanel = document.createElement('div');
-  overlayPanel.className = 'aide-compact-overlay-panel';
-  const overlayHeader = document.createElement('div');
-  overlayHeader.className = 'aide-compact-overlay-header';
-  const overlayTitle = document.createElement('div');
-  overlayTitle.style.fontWeight = '700';
-  const overlayActions = document.createElement('div');
-  overlayActions.className = 'aide-compact-actions';
-  const overlayRefresh = document.createElement('button');
-  overlayRefresh.className = 'aide-compact-button is-mini';
-  overlayRefresh.textContent = '\u5237\u65b0';
-  overlayRefresh.style.display = 'none';
-  const overlayClose = document.createElement('button');
-  overlayClose.className = 'aide-compact-button is-mini';
-  overlayClose.textContent = '\u5173\u95ed';
-  overlayActions.appendChild(overlayRefresh);
-  overlayActions.appendChild(overlayClose);
-  overlayHeader.appendChild(overlayTitle);
-  overlayHeader.appendChild(overlayActions);
-  const overlayBody = document.createElement('div');
-  overlayBody.className = 'aide-compact-overlay-body';
-  overlayPanel.appendChild(overlayHeader);
-  overlayPanel.appendChild(overlayBody);
-  overlay.appendChild(overlayPanel);
-
-  root.appendChild(header);
-  root.appendChild(body);
-  root.appendChild(floatBar);
-  root.appendChild(overlay);
+  const {
+  root,
+  refreshButton,
+  alert,
+  overviewTab,
+  traceTab,
+  overviewSection,
+  traceSection,
+  conversationMeta,
+  conversationList,
+  sessionsMeta,
+  sessionsRefresh,
+  sessionsList,
+  filesMeta,
+  filesRefresh,
+  filesList,
+  filesPageText,
+  filesPrev,
+  filesNext,
+  traceMeta,
+  traceList,
+  tracePageText,
+  tracePrev,
+  traceNext,
+  floatBar,
+  floatText,
+  floatToggle,
+  runSelect,
+  runStatus,
+  floatRefresh,
+  dispatchInput,
+  stopButton,
+  sendButton,
+  overlay,
+  overlayTitle,
+  overlayBody,
+  overlayRefresh,
+  overlayClose,
+  } = createCompactElements({ ctx, bridgeEnabled });
   container.appendChild(root);
 
   const STORAGE_KEYS = createStorageKeys('deepseek_cli.ui');
@@ -752,7 +221,7 @@ export function mount({ container, host }) {
     const events = Array.isArray(state.events?.eventsList) ? state.events.eventsList : [];
     const changes = Array.isArray(state.fileChanges?.entries) ? state.fileChanges.entries : [];
     const runEntries = Array.isArray(state.runs?.entries) ? state.runs.entries : [];
-    const { runs } = collectRunStats({
+  const { runs } = collectRunStats({
       eventList: events,
       fileChangeEntries: changes,
       runEntries,
@@ -1446,3 +915,6 @@ export function mount({ container, host }) {
     }
   };
 }
+
+
+

@@ -15,6 +15,7 @@ import {
 } from 'antd';
 
 import { CodeBlock } from '../../../components/CodeBlock.jsx';
+import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -28,6 +29,7 @@ export function FloatingIslandPrompt({
   allowCancel,
   pendingCount,
   onUiPromptRespond,
+  constrainHeight = true,
 }) {
   const safeRequestId = typeof requestId === 'string' ? requestId : '';
   const safeKind = typeof promptKind === 'string' ? promptKind : '';
@@ -107,6 +109,15 @@ export function FloatingIslandPrompt({
     }
     if (safeKind === 'file_change_confirm') {
       setRemarkDraft(typeof safePrompt?.defaultRemark === 'string' ? safePrompt.defaultRemark : '');
+      setTasksDraft([]);
+      setKvDraft({});
+      setChoiceDraft('');
+      setMultiDraft([]);
+      setPromptSubmitting(false);
+      return;
+    }
+    if (safeKind === 'result') {
+      setRemarkDraft('');
       setTasksDraft([]);
       setKvDraft({});
       setChoiceDraft('');
@@ -208,6 +219,16 @@ export function FloatingIslandPrompt({
           response: { status: 'ok', remark: typeof remarkDraft === 'string' ? remarkDraft : '' },
         });
         message.success('已提交');
+        return;
+      }
+
+      if (safeKind === 'result') {
+        await onUiPromptRespond({
+          requestId: safeRequestId,
+          runId: safeRunId,
+          response: { status: 'ok' },
+        });
+        message.success('已确认');
         return;
       }
 
@@ -320,7 +341,7 @@ export function FloatingIslandPrompt({
           </Space>
         </Space>
         {desc ? <Text type="secondary">{desc}</Text> : null}
-        <div style={{ maxHeight: 360, overflow: 'auto', paddingRight: 4 }}>
+        <div style={{ maxHeight: constrainHeight ? 360 : undefined, overflow: constrainHeight ? 'auto' : 'visible', paddingRight: 4 }}>
           {list.length === 0 ? (
             <Empty description="暂无任务" />
           ) : (
@@ -460,7 +481,9 @@ export function FloatingIslandPrompt({
           </Space>
         </Space>
         {desc ? <Text type="secondary">{desc}</Text> : null}
-        {command ? <CodeBlock text={command} maxHeight={120} highlight={false} wrap alwaysExpanded constrainHeight /> : null}
+        {command ? (
+          <CodeBlock text={command} maxHeight={120} highlight={false} wrap alwaysExpanded constrainHeight={constrainHeight} />
+        ) : null}
         {cwdLabel ? (
           <Text type="secondary" style={{ fontSize: 12 }}>
             cwd: {cwdLabel}
@@ -473,7 +496,7 @@ export function FloatingIslandPrompt({
           language="diff"
           wrap={false}
           alwaysExpanded
-          constrainHeight
+          constrainHeight={constrainHeight}
         />
         <TextArea
           value={remarkDraft}
@@ -497,7 +520,45 @@ export function FloatingIslandPrompt({
     );
   }
 
+  if (safeKind === 'result') {
+    const origin = typeof safePrompt?.source === 'string' ? safePrompt.source.trim() : '';
+    const markdownText =
+      typeof safePrompt?.markdown === 'string'
+        ? safePrompt.markdown
+        : typeof safePrompt?.result === 'string'
+          ? safePrompt.result
+          : typeof safePrompt?.content === 'string'
+            ? safePrompt.content
+            : '';
+
+    return (
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Space align="center" wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space align="center" wrap size={8}>
+            <Text strong>{title || '执行结果'}</Text>
+            {safeRunId ? <Tag color="blue">{safeRunId}</Tag> : null}
+            {origin ? <Tag color="geekblue">{origin}</Tag> : null}
+            {count > 1 ? <Tag color="purple">{count} 个待处理</Tag> : null}
+          </Space>
+        </Space>
+        {desc ? <Text type="secondary">{desc}</Text> : null}
+        <MarkdownBlock text={markdownText || '（无结果内容）'} maxHeight={constrainHeight ? 360 : 520} copyable />
+        <Space size={10} align="center" style={{ width: '100%', justifyContent: 'flex-end' }} wrap>
+          {canCancel ? (
+            <Button size="large" onClick={handlePromptCancel} disabled={promptSubmitting}>
+              关闭
+            </Button>
+          ) : null}
+          <Button size="large" type="primary" loading={promptSubmitting} onClick={handlePromptConfirm}>
+            知道了
+          </Button>
+        </Space>
+      </Space>
+    );
+  }
+
   if (safeKind === 'kv') {
+    const origin = typeof safePrompt?.source === 'string' ? safePrompt.source.trim() : '';
     const fields = Array.isArray(safePrompt?.fields) ? safePrompt.fields : [];
     const dataSource = fields.map((field) => ({
       key: typeof field?.key === 'string' ? field.key.trim() : '',
@@ -584,6 +645,7 @@ export function FloatingIslandPrompt({
           <Space align="center" wrap size={8}>
             <Text strong>{title}</Text>
             {safeRunId ? <Tag color="blue">{safeRunId}</Tag> : null}
+            {origin ? <Tag color="geekblue">{origin}</Tag> : null}
             {count > 1 ? <Tag color="purple">{count} 个待处理</Tag> : null}
           </Space>
         </Space>
@@ -607,6 +669,7 @@ export function FloatingIslandPrompt({
   const multiple = safePrompt?.multiple === true;
   const minSelections = Number.isFinite(Number(safePrompt?.minSelections)) ? Number(safePrompt.minSelections) : 0;
   const maxSelections = Number.isFinite(Number(safePrompt?.maxSelections)) ? Number(safePrompt.maxSelections) : options.length;
+  const origin = typeof safePrompt?.source === 'string' ? safePrompt.source.trim() : '';
 
   return (
     <Space direction="vertical" size={10} style={{ width: '100%' }}>
@@ -614,6 +677,7 @@ export function FloatingIslandPrompt({
         <Space align="center" wrap size={8}>
           <Text strong>{title}</Text>
           {safeRunId ? <Tag color="blue">{safeRunId}</Tag> : null}
+          {origin ? <Tag color="geekblue">{origin}</Tag> : null}
           {count > 1 ? <Tag color="purple">{count} 个待处理</Tag> : null}
         </Space>
       </Space>

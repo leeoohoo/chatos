@@ -316,16 +316,47 @@ export function registerRemoteTool(
         if (subagentAllowPrefixes && subagentAllowPrefixes.length > 0) {
           mergedArgs.mcp_allow_prefixes = subagentAllowPrefixes;
         }
+        const reconnectIfNeeded = async (err) => {
+          if (!isMcpDisconnectedError(err) || !reconnect) {
+            return false;
+          }
+          const handle = await reconnect({ reason: err });
+          if (handle?.client) {
+            activeClient = handle.client;
+          }
+          if (handle?.streamTracker) {
+            activeStreamTracker = handle.streamTracker;
+          }
+          return Boolean(handle?.client);
+        };
         let jobId = null;
         try {
           throwIfAborted(signal);
-          const start = await callSubagentTool(
-            client,
-            requestOptions,
-            'start_sub_agent_async',
-            mergedArgs,
-            { signal, meta: callMeta }
-          );
+          let start;
+          try {
+            start = await callSubagentTool(
+              activeClient,
+              requestOptions,
+              'start_sub_agent_async',
+              mergedArgs,
+              { signal, meta: callMeta }
+            );
+          } catch (err) {
+            if (err?.name === 'AbortError') {
+              throw err;
+            }
+            if (await reconnectIfNeeded(err)) {
+              start = await callSubagentTool(
+                activeClient,
+                requestOptions,
+                'start_sub_agent_async',
+                mergedArgs,
+                { signal, meta: callMeta }
+              );
+            } else {
+              throw err;
+            }
+          }
           jobId = start?.job_id;
           if (!jobId) {
             const errMsg = start?.error ? `：${start.error}` : '：未返回 job_id';
@@ -354,20 +385,47 @@ export function registerRemoteTool(
             }
             let status;
             try {
-              status = await callSubagentTool(client, requestOptions, 'get_sub_agent_status', {
-                job_id: jobId,
-              }, { signal, meta: callMeta });
+              status = await callSubagentTool(
+                activeClient,
+                requestOptions,
+                'get_sub_agent_status',
+                { job_id: jobId },
+                { signal, meta: callMeta }
+              );
               consecutiveErrors = 0;
             } catch (err) {
               if (err?.name === 'AbortError') {
                 throw err;
               }
               throwIfAborted(signal);
-              consecutiveErrors += 1;
-              if (consecutiveErrors >= 3) {
-                throw err;
+              let recovered = false;
+              let finalErr = err;
+              if (await reconnectIfNeeded(err)) {
+                try {
+                  status = await callSubagentTool(
+                    activeClient,
+                    requestOptions,
+                    'get_sub_agent_status',
+                    { job_id: jobId },
+                    { signal, meta: callMeta }
+                  );
+                  consecutiveErrors = 0;
+                  recovered = true;
+                } catch (retryErr) {
+                  if (retryErr?.name === 'AbortError') {
+                    throw retryErr;
+                  }
+                  throwIfAborted(signal);
+                  finalErr = retryErr;
+                }
               }
-              continue;
+              if (!recovered) {
+                consecutiveErrors += 1;
+                if (consecutiveErrors >= 3) {
+                  throw finalErr;
+                }
+                continue;
+              }
             }
             const state = status?.status;
             const updatedAt = status?.updated_at ? Date.parse(status.updated_at) : NaN;
@@ -409,7 +467,13 @@ export function registerRemoteTool(
                   maxTotalTimeout: cancelTimeoutMs,
                   resetTimeoutOnProgress: false,
                 };
-                callSubagentTool(client, cancelOptions, 'cancel_sub_agent_job', { job_id: jobId }, { meta: callMeta }).catch(() => {});
+                callSubagentTool(
+                  activeClient,
+                  cancelOptions,
+                  'cancel_sub_agent_job',
+                  { job_id: jobId },
+                  { meta: callMeta }
+                ).catch(() => {});
               } catch {
                 // ignore cancellation failures
               }
