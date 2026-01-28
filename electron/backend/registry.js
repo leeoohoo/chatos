@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import initSqlJs from 'sql.js';
 import { normalizeHostApp } from '../../packages/common/state-core/utils.js';
 import {
   maybeMigrateLegacyDbFiles,
@@ -13,26 +12,25 @@ import {
 
 const require = createRequire(import.meta.url);
 
-let SQL_PROMISE = null;
-
-function resolveSqlWasmPath() {
-  try {
-    return require.resolve('sql.js/dist/sql-wasm.wasm');
-  } catch {
-    const sqlMain = require.resolve('sql.js');
-    return path.join(path.dirname(sqlMain), 'sql-wasm.wasm');
-  }
+function normalizeDriverName(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-async function getSql() {
-  if (!SQL_PROMISE) {
-    SQL_PROMISE = (async () => {
-      const wasmPath = resolveSqlWasmPath();
-      const wasmBinary = fs.readFileSync(wasmPath);
-      return await initSqlJs({ wasmBinary });
-    })();
+const driverHint = normalizeDriverName(process.env.MODEL_CLI_DB_DRIVER);
+const disallowedSqlJs = driverHint === 'sqljs' || driverHint === 'sql.js';
+if (disallowedSqlJs) {
+  throw new Error('SQL.js driver is no longer supported. Install better-sqlite3 and remove MODEL_CLI_DB_DRIVER=sqljs.');
+}
+
+let BETTER_SQLITE3 = undefined;
+function getBetterSqlite3() {
+  if (BETTER_SQLITE3 !== undefined) return BETTER_SQLITE3;
+  try {
+    BETTER_SQLITE3 = require('better-sqlite3');
+  } catch {
+    BETTER_SQLITE3 = null;
   }
-  return await SQL_PROMISE;
+  return BETTER_SQLITE3;
 }
 
 function parseJsonSafe(text) {
@@ -98,38 +96,28 @@ function resolveDbPath({ sessionRoot, hostApp }) {
   };
 }
 
-function readDbTable({ SQL, dbPath, tableName }) {
+function readDbTable({ Database, dbPath, tableName }) {
   const rawDbPath = typeof dbPath === 'string' ? dbPath.trim() : '';
   if (!rawDbPath) return [];
   if (!fs.existsSync(rawDbPath)) return [];
   const table = typeof tableName === 'string' ? tableName.trim() : '';
   if (!table) return [];
 
-  const binary = fs.readFileSync(rawDbPath);
-  if (!binary || binary.length === 0) return [];
-
-  const db = new SQL.Database(new Uint8Array(binary));
+  let db;
   try {
-    const stmt = db.prepare('SELECT payload FROM records WHERE table_name = ?');
-    stmt.bind([table]);
-    const rows = [];
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-      const parsed = parseJsonSafe(row?.payload);
-      if (parsed) rows.push(parsed);
-    }
-    stmt.free();
-    return rows;
+    db = new Database(rawDbPath, { readonly: true, fileMustExist: true });
+    const rows = db.prepare('SELECT payload FROM records WHERE table_name = ?').all(table);
+    return rows.map((row) => parseJsonSafe(row?.payload)).filter(Boolean);
   } finally {
     try {
-      db.close();
+      db?.close?.();
     } catch {
       // ignore
     }
   }
 }
 
-function readDbRecord({ SQL, dbPath, tableName, id }) {
+function readDbRecord({ Database, dbPath, tableName, id }) {
   const rawDbPath = typeof dbPath === 'string' ? dbPath.trim() : '';
   if (!rawDbPath) return null;
   if (!fs.existsSync(rawDbPath)) return null;
@@ -138,19 +126,14 @@ function readDbRecord({ SQL, dbPath, tableName, id }) {
   const recordId = typeof id === 'string' ? id.trim() : '';
   if (!recordId) return null;
 
-  const binary = fs.readFileSync(rawDbPath);
-  if (!binary || binary.length === 0) return null;
-
-  const db = new SQL.Database(new Uint8Array(binary));
+  let db;
   try {
-    const stmt = db.prepare('SELECT payload FROM records WHERE table_name = ? AND id = ?');
-    stmt.bind([table, recordId]);
-    const row = stmt.step() ? stmt.getAsObject() : null;
-    stmt.free();
+    db = new Database(rawDbPath, { readonly: true, fileMustExist: true });
+    const row = db.prepare('SELECT payload FROM records WHERE table_name = ? AND id = ?').get(table, recordId);
     return row?.payload ? parseJsonSafe(row.payload) : null;
   } finally {
     try {
-      db.close();
+      db?.close?.();
     } catch {
       // ignore
     }
@@ -187,12 +170,15 @@ export function registerRegistryApi(ipcMain, options = {}) {
 
   ipcMain.handle('registry:mcpServers:list', async () => {
     try {
-      const SQL = await getSql();
+      const Database = getBetterSqlite3();
+      if (!Database) {
+        throw new Error('better-sqlite3 is required but the module is not available.');
+      }
       const appIds = listAppIds({ knownApps });
       const apps = appIds.map((appId) => {
         const { stateDir, dbPath } = resolveDbPath({ sessionRoot, hostApp: appId });
         const dbExists = Boolean(dbPath && fs.existsSync(dbPath));
-        const mcpServers = dbExists ? readDbTable({ SQL, dbPath, tableName: 'mcpServers' }) : [];
+        const mcpServers = dbExists ? readDbTable({ Database, dbPath, tableName: 'mcpServers' }) : [];
         return { appId, stateDir, dbPath, dbExists, mcpServers };
       });
       return { ok: true, apps };
@@ -203,12 +189,15 @@ export function registerRegistryApi(ipcMain, options = {}) {
 
   ipcMain.handle('registry:prompts:list', async () => {
     try {
-      const SQL = await getSql();
+      const Database = getBetterSqlite3();
+      if (!Database) {
+        throw new Error('better-sqlite3 is required but the module is not available.');
+      }
       const appIds = listAppIds({ knownApps });
       const apps = appIds.map((appId) => {
         const { stateDir, dbPath } = resolveDbPath({ sessionRoot, hostApp: appId });
         const dbExists = Boolean(dbPath && fs.existsSync(dbPath));
-        const raw = dbExists ? readDbTable({ SQL, dbPath, tableName: 'prompts' }) : [];
+        const raw = dbExists ? readDbTable({ Database, dbPath, tableName: 'prompts' }) : [];
         const prompts = (Array.isArray(raw) ? raw : []).map((p) => summarizePrompt(p));
         return { appId, stateDir, dbPath, dbExists, prompts };
       });
@@ -230,8 +219,11 @@ export function registerRegistryApi(ipcMain, options = {}) {
         return { ok: false, message: `DB not found for app: ${appId}` };
       }
 
-      const SQL = await getSql();
-      const record = readDbRecord({ SQL, dbPath, tableName: 'prompts', id });
+      const Database = getBetterSqlite3();
+      if (!Database) {
+        throw new Error('better-sqlite3 is required but the module is not available.');
+      }
+      const record = readDbRecord({ Database, dbPath, tableName: 'prompts', id });
       return { ok: true, appId, stateDir, dbPath, record };
     } catch (err) {
       return { ok: false, message: err?.message || String(err) };

@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import initSqlJs from 'sql.js';
 import { resolveAppDbFileName, resolveAppStateDir } from '../../packages/common/state-core/state-paths.js';
 import { normalizeHostApp } from '../../packages/common/state-core/utils.js';
 
@@ -12,9 +11,12 @@ function normalizeDriverName(value) {
 }
 
 const driverHint = normalizeDriverName(process.env.MODEL_CLI_DB_DRIVER);
-const forceSqlJs = driverHint === 'sqljs' || driverHint === 'sql.js';
 const forceBetterSqlite =
   driverHint === 'better-sqlite3' || driverHint === 'better-sqlite' || driverHint === 'sqlite';
+const disallowedSqlJs = driverHint === 'sqljs' || driverHint === 'sql.js';
+if (disallowedSqlJs) {
+  throw new Error('SQL.js driver is no longer supported. Install better-sqlite3 and remove MODEL_CLI_DB_DRIVER=sqljs.');
+}
 
 let BETTER_SQLITE3 = undefined;
 function getBetterSqlite3() {
@@ -25,28 +27,6 @@ function getBetterSqlite3() {
     BETTER_SQLITE3 = null;
   }
   return BETTER_SQLITE3;
-}
-
-let SQL_PROMISE = null;
-
-function resolveSqlWasmPath() {
-  try {
-    return require.resolve('sql.js/dist/sql-wasm.wasm');
-  } catch {
-    const sqlMain = require.resolve('sql.js');
-    return path.join(path.dirname(sqlMain), 'sql-wasm.wasm');
-  }
-}
-
-async function getSql() {
-  if (!SQL_PROMISE) {
-    SQL_PROMISE = (async () => {
-      const wasmPath = resolveSqlWasmPath();
-      const wasmBinary = fs.readFileSync(wasmPath);
-      return await initSqlJs({ wasmBinary });
-    })();
-  }
-  return await SQL_PROMISE;
 }
 
 function parseJsonSafe(text) {
@@ -64,37 +44,6 @@ function normalizeRecordTags(value) {
     if (Array.isArray(parsed)) return parsed;
   }
   return [];
-}
-
-function readDbTableWithSqlJs({ SQL, dbPath, tableName }) {
-  const rawDbPath = typeof dbPath === 'string' ? dbPath.trim() : '';
-  if (!rawDbPath) return [];
-  if (!fs.existsSync(rawDbPath)) return [];
-  const table = typeof tableName === 'string' ? tableName.trim() : '';
-  if (!table) return [];
-
-  const binary = fs.readFileSync(rawDbPath);
-  if (!binary || binary.length === 0) return [];
-
-  const db = new SQL.Database(new Uint8Array(binary));
-  try {
-    const stmt = db.prepare('SELECT payload FROM records WHERE table_name = ?');
-    stmt.bind([table]);
-    const rows = [];
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-      const parsed = parseJsonSafe(row?.payload);
-      if (parsed) rows.push(parsed);
-    }
-    stmt.free();
-    return rows;
-  } finally {
-    try {
-      db.close();
-    } catch {
-      // ignore
-    }
-  }
 }
 
 function readDbTableWithBetterSqlite({ Database, dbPath, tableName }) {
@@ -121,17 +70,14 @@ function readDbTableWithBetterSqlite({ Database, dbPath, tableName }) {
 }
 
 async function readDbTable({ dbPath, tableName }) {
-  if (!forceSqlJs) {
-    const Database = getBetterSqlite3();
-    if (Database) {
-      return readDbTableWithBetterSqlite({ Database, dbPath, tableName });
-    }
-    if (forceBetterSqlite) {
-      throw new Error('MODEL_CLI_DB_DRIVER requested better-sqlite3 but the module is not available.');
-    }
+  const Database = getBetterSqlite3();
+  if (Database) {
+    return readDbTableWithBetterSqlite({ Database, dbPath, tableName });
   }
-  const SQL = await getSql();
-  return readDbTableWithSqlJs({ SQL, dbPath, tableName });
+  if (forceBetterSqlite || !Database) {
+    throw new Error('better-sqlite3 is required but the module is not available.');
+  }
+  return [];
 }
 
 export function resolveExistingAppDbPath({ sessionRoot, hostApp }) {

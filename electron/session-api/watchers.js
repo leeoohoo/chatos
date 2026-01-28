@@ -144,15 +144,13 @@ export function createSessionWatchers({
       if (!normalized) return true;
       if (normalized === adminDbBase) return true;
       if (sqliteSidecars.has(normalized)) return true;
-      // SQL.js persists via atomic rename; watch for temp artifacts too.
-      if (normalized.startsWith(`.${adminDbBase}.`)) return true;
       return false;
     };
 
     ensureDir(adminDbDir);
     ensureFileExists(defaultPaths.adminDb);
     try {
-      // Watch the directory (not the file). SQL.js uses atomic rename, SQLite writes WAL/SHM sidecars,
+      // Watch the directory (not the file). SQLite writes WAL/SHM sidecars,
       // and a file watcher can break across rename on some platforms.
       tasksWatcher = fs.watch(adminDbDir, { persistent: false }, (_eventType, filename) => {
         if (!shouldRefreshForFilename(filename)) return;
