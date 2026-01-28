@@ -1,7 +1,7 @@
 import React from 'react';
 import { Collapse } from 'antd';
 
-import { ToolBlock, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue, normalizeText } from './detail-utils.js';
 
 function buildMetaItems(chatos) {
@@ -42,13 +42,7 @@ export function ToolMetaSection({ structuredContent, showStructured = true }) {
   const items = buildMetaItems(chatos);
   const errorInfo = extractError(chatos);
   const hasErrorDetails = Boolean(errorInfo.details);
-  const structuredText = showStructured ? formatJson(structuredContent) : '';
-  const hasStructured =
-    showStructured &&
-    structuredText &&
-    structuredText !== '{}' &&
-    structuredText !== 'null' &&
-    structuredText !== '""';
+  const hasStructured = showStructured && structuredContent && Object.keys(structuredContent).length > 0;
 
   if (items.length === 0 && !errorInfo.message && !hasStructured) return null;
 
@@ -57,17 +51,17 @@ export function ToolMetaSection({ structuredContent, showStructured = true }) {
       {items.length > 0 ? <ToolSummary items={items} /> : null}
       {errorInfo.message ? (
         <div style={{ marginTop: items.length > 0 ? 8 : 0 }}>
-          <ToolBlock text={errorInfo.message} tone="stderr" />
+          <ToolJsonPreview text={errorInfo.message} tone="stderr" showRawToggle={false} emptyText="" />
         </div>
       ) : null}
       {hasErrorDetails ? (
         <div style={{ marginTop: 8 }}>
-          <ToolBlock text={errorInfo.details} tone="stderr" />
+          <ToolJsonPreview text={errorInfo.details} tone="stderr" showRawToggle={false} emptyText="" />
         </div>
       ) : null}
       {hasStructured ? (
         <div style={{ marginTop: 8 }}>
-          <ToolBlock text={structuredText} />
+          <ToolJsonPreview value={structuredContent} showRawToggle />
         </div>
       ) : null}
     </div>

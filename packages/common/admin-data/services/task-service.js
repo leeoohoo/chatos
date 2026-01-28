@@ -1,9 +1,13 @@
 import { BaseService } from './base-service.js';
 import { taskSchema } from '../schema.js';
+import { resolveTaskTableName } from '../task-tables.js';
 
 export class TaskService extends BaseService {
-  constructor(db) {
-    super(db, 'tasks', taskSchema);
+  constructor(db, options = {}) {
+    const opt = typeof options === 'string' ? { tableName: options } : options || {};
+    const hasSelector = Boolean(opt.tableName || opt.scope || opt.env);
+    const tableName = hasSelector ? resolveTaskTableName(opt) : 'tasks';
+    super(db, tableName || 'tasks', taskSchema);
     this.defaultRunId = this.#currentRunId() || null;
     this.defaultSessionId = this.#currentSessionId() || null;
   }

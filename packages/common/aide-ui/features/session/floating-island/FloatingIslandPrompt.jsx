@@ -20,6 +20,13 @@ import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
 const { Text } = Typography;
 const { TextArea } = Input;
 
+const FLOATING_SELECT_DROPDOWN_STYLE = { zIndex: 1301 };
+const getFloatingSelectContainer = (triggerNode) => {
+  if (typeof document === 'undefined') return triggerNode?.parentElement || undefined;
+  const inner = triggerNode?.closest?.('.ds-floating-island-inner');
+  return inner || document.body;
+};
+
 export function FloatingIslandPrompt({
   promptActive,
   promptKind,
@@ -380,6 +387,8 @@ export function FloatingIslandPrompt({
                             ]}
                             disabled={promptSubmitting}
                             style={{ width: 110 }}
+                            dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                            getPopupContainer={getFloatingSelectContainer}
                           />
                           <Select
                             value={typeof safeTask.status === 'string' && safeTask.status ? safeTask.status : 'todo'}
@@ -392,6 +401,8 @@ export function FloatingIslandPrompt({
                             ]}
                             disabled={promptSubmitting}
                             style={{ width: 120 }}
+                            dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                            getPopupContainer={getFloatingSelectContainer}
                           />
                         </Space>
                         <Space size={6} wrap>

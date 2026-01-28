@@ -9,6 +9,7 @@ import {
 } from '../../packages/aide/shared/data/legacy.js';
 import { loadSystemPromptFromDb } from '../../packages/aide/src/prompts.js';
 import { parseJsonLines, readTasksFromDbFile } from '../session-api-helpers.js';
+import { TASK_TABLES } from '../../packages/common/admin-data/task-tables.js';
 
 export function createSessionPayloadReaders({
   defaultPaths,
@@ -73,7 +74,9 @@ export function createSessionPayloadReaders({
           defaultList: Array.isArray(defaultSubagentsList) ? defaultSubagentsList : [],
         })
       : [];
-    const tasksList = readTasksFromDbFile(defaultPaths.adminDb);
+    const tasksList = readTasksFromDbFile(defaultPaths.adminDb, { tableName: TASK_TABLES.legacy });
+    const tasksListCli = readTasksFromDbFile(defaultPaths.adminDb, { tableName: TASK_TABLES.cli });
+    const tasksListChat = readTasksFromDbFile(defaultPaths.adminDb, { tableName: TASK_TABLES.chat });
     const eventsList = parseEvents(safeRead(defaultPaths.events));
     const adminState = sanitize(snapshot);
     const runtimeSettings = Array.isArray(snapshot.settings) ? snapshot.settings : [];
@@ -101,6 +104,8 @@ export function createSessionPayloadReaders({
       tasksPath: defaultPaths.tasks,
       tasks: tasksJson,
       tasksList,
+      tasksListCli,
+      tasksListChat,
       eventsPath: defaultPaths.events,
       eventsList,
       eventsContent,

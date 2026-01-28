@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+const TASK_COLUMNS = [
+  { name: 'id', type: 'string', required: true },
+  { name: 'title', type: 'string', required: true },
+  { name: 'runId', type: 'string', required: false, note: '终端运行实例 ID（用于隔离多终端）' },
+  { name: 'sessionId', type: 'string', required: false, note: '关联的会话 ID' },
+  { name: 'status', type: 'string', required: false },
+  { name: 'priority', type: 'string', required: false },
+  { name: 'tags', type: 'string[]', required: false },
+  { name: 'createdAt', type: 'datetime', required: true },
+  { name: 'updatedAt', type: 'datetime', required: true },
+];
+
 export const TABLE_SCHEMAS = {
   models: {
     name: 'models',
@@ -101,18 +113,18 @@ export const TABLE_SCHEMAS = {
   },
   tasks: {
     name: 'tasks',
-    description: '任务列表',
-    columns: [
-      { name: 'id', type: 'string', required: true },
-      { name: 'title', type: 'string', required: true },
-      { name: 'runId', type: 'string', required: false, note: '终端运行实例 ID（用于隔离多终端）' },
-      { name: 'sessionId', type: 'string', required: false, note: '关联的会话 ID' },
-      { name: 'status', type: 'string', required: false },
-      { name: 'priority', type: 'string', required: false },
-      { name: 'tags', type: 'string[]', required: false },
-      { name: 'createdAt', type: 'datetime', required: true },
-      { name: 'updatedAt', type: 'datetime', required: true },
-    ],
+    description: '任务列表（legacy，兼容旧数据）',
+    columns: TASK_COLUMNS,
+  },
+  tasks_cli: {
+    name: 'tasks_cli',
+    description: '终端/CLI 任务列表（与对话任务分表隔离）',
+    columns: TASK_COLUMNS,
+  },
+  tasks_chat: {
+    name: 'tasks_chat',
+    description: '对话/Chat 任务列表（与终端任务分表隔离）',
+    columns: TASK_COLUMNS,
   },
   settings: {
     name: 'settings',
@@ -384,6 +396,8 @@ export const DEFAULT_EMPTY_STATE = {
   prompts: [],
   events: [],
   tasks: [],
+  tasks_cli: [],
+  tasks_chat: [],
   settings: [],
   landConfigs: [],
 };

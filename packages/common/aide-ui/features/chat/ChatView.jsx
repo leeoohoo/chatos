@@ -120,7 +120,11 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     let canceled = false;
 
     const applyTaskSnapshot = (data) => {
-      const list = Array.isArray(data?.tasksList) ? data.tasksList : parseTasks(data?.tasks);
+      const list = Array.isArray(data?.tasksListChat)
+        ? data.tasksListChat
+        : Array.isArray(data?.tasksList)
+          ? data.tasksList
+          : parseTasks(data?.tasks);
       setTasks(Array.isArray(list) ? list : []);
     };
 

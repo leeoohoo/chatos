@@ -1,7 +1,7 @@
 import React from 'react';
 import { Typography } from 'antd';
 
-import { ToolBlock, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatListLines, formatSummaryValue, normalizeText } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -53,41 +53,41 @@ export function JournalToolDetails({ argsRaw, argsParsed, resultText, structured
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       {entrySummaryText ? (
         <ToolSection title="内容">
-          <ToolBlock text={entrySummaryText} />
+          <ToolJsonPreview text={entrySummaryText} />
         </ToolSection>
       ) : null}
       {filesText ? (
         <ToolSection title="文件">
-          <ToolBlock text={filesText} />
+          <ToolJsonPreview text={filesText} />
         </ToolSection>
       ) : null}
       {highlightsText ? (
         <ToolSection title="亮点">
-          <ToolBlock text={highlightsText} />
+          <ToolJsonPreview text={highlightsText} />
         </ToolSection>
       ) : null}
       {nextStepsText ? (
         <ToolSection title="下一步">
-          <ToolBlock text={nextStepsText} />
+          <ToolJsonPreview text={nextStepsText} />
         </ToolSection>
       ) : null}
       {logListText ? (
         <ToolSection title="记录">
-          <ToolBlock text={logListText} />
+          <ToolJsonPreview text={logListText} />
         </ToolSection>
       ) : null}
       {structuredText && !entrySummaryText ? (
         <ToolSection title="结构化">
-          <ToolBlock text={structuredText} />
+          <ToolJsonPreview value={entry} text={structuredText} />
         </ToolSection>
       ) : null}
       <ToolSection title="结果">
-        {resultText ? <ToolBlock text={resultText} /> : <Text type="secondary">（暂无结果）</Text>}
+        <ToolJsonPreview text={resultText} emptyText="（暂无结果）" />
       </ToolSection>
     </>
   );

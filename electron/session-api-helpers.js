@@ -2,13 +2,15 @@ import fs from 'fs';
 import { createDb } from '../packages/aide/shared/data/storage.js';
 import { parseJsonSafe } from '../packages/aide/shared/data/legacy.js';
 import { ensureDir, ensureFileExists } from '../packages/common/state-core/utils.js';
+import { resolveTaskTableName } from '../packages/common/admin-data/task-tables.js';
 
 export { ensureDir, ensureFileExists };
 
-export function readTasksFromDbFile(dbPath) {
+export function readTasksFromDbFile(dbPath, options = {}) {
   try {
     const db = createDb({ dbPath });
-    return db.list('tasks') || [];
+    const tableName = resolveTaskTableName(options);
+    return db.list(tableName || 'tasks') || [];
   } catch {
     return [];
   }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tag, Typography } from 'antd';
 
-import { ToolBlock, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -114,7 +114,7 @@ export function LspToolDetails({ argsRaw, argsParsed, resultText, structuredCont
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       {diagnosticItems.length > 0 ? (
@@ -124,7 +124,7 @@ export function LspToolDetails({ argsRaw, argsParsed, resultText, structuredCont
       ) : null}
       {diagnosticItems.length === 0 ? (
         <ToolSection title="结果">
-          {resolvedText ? <ToolBlock text={resolvedText} /> : <Text type="secondary">（暂无结果）</Text>}
+          <ToolJsonPreview text={resolvedText} emptyText="（暂无结果）" />
         </ToolSection>
       ) : null}
     </>

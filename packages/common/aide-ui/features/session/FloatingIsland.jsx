@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
+import { Button, Collapse, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
 
 import {
   FLOATING_ISLAND_COLLAPSED_STORAGE_KEY,
@@ -23,6 +23,19 @@ import {
 
 const { Text } = Typography;
 const { TextArea } = Input;
+
+const FLOATING_SELECT_DROPDOWN_STYLE = { zIndex: 1301 };
+const DEFAULT_ADVANCED_SETTINGS = {
+  shellMaxBufferKb: 2048,
+  filesystemMaxFileKb: 256,
+  filesystemMaxWriteKb: 5120,
+};
+
+const getFloatingSelectContainer = (triggerNode) => {
+  if (typeof document === 'undefined') return triggerNode?.parentElement || undefined;
+  const inner = triggerNode?.closest?.('.ds-floating-island-inner');
+  return inner || document.body;
+};
 
 function FloatingIsland({
   containerRef,
@@ -100,7 +113,6 @@ function FloatingIsland({
   const confirmMainTaskCreate = runtimeSettings?.confirmMainTaskCreate === true;
   const confirmSubTaskCreate = runtimeSettings?.confirmSubTaskCreate === true;
   const confirmFileChanges = runtimeSettings?.confirmFileChanges === true;
-  const injectSecretsToEnv = runtimeSettings?.injectSecretsToEnv === true;
   const landConfigId = typeof runtimeSettings?.landConfigId === 'string' ? runtimeSettings.landConfigId.trim() : '';
   const landConfigOptions = useMemo(() => {
     const list = Array.isArray(landConfigs) ? landConfigs : [];
@@ -154,19 +166,21 @@ function FloatingIsland({
   }, [runtimeSettings]);
   const shellMaxBufferKb = useMemo(() => {
     const value = coerceRuntimeNumber(runtimeSettings?.shellMaxBufferBytes);
-    return Number.isFinite(value) ? Math.max(16, Math.round(value / 1024)) : 2048;
+    return Number.isFinite(value)
+      ? Math.max(16, Math.round(value / 1024))
+      : DEFAULT_ADVANCED_SETTINGS.shellMaxBufferKb;
   }, [runtimeSettings]);
   const filesystemMaxFileKb = useMemo(() => {
     const value = coerceRuntimeNumber(runtimeSettings?.filesystemMaxFileBytes);
-    return Number.isFinite(value) ? Math.max(1, Math.round(value / 1024)) : 256;
+    return Number.isFinite(value)
+      ? Math.max(1, Math.round(value / 1024))
+      : DEFAULT_ADVANCED_SETTINGS.filesystemMaxFileKb;
   }, [runtimeSettings]);
   const filesystemMaxWriteKb = useMemo(() => {
     const value = coerceRuntimeNumber(runtimeSettings?.filesystemMaxWriteBytes);
-    return Number.isFinite(value) ? Math.max(1, Math.round(value / 1024)) : 5120;
-  }, [runtimeSettings]);
-  const mcpStartupConcurrency = useMemo(() => {
-    const value = coerceRuntimeNumber(runtimeSettings?.mcpStartupConcurrency);
-    return Number.isFinite(value) ? Math.max(1, Math.min(20, Math.round(value))) : 4;
+    return Number.isFinite(value)
+      ? Math.max(1, Math.round(value / 1024))
+      : DEFAULT_ADVANCED_SETTINGS.filesystemMaxWriteKb;
   }, [runtimeSettings]);
   const shellSafetyOptions = [
     { label: 'Shell 严格', value: 'strict' },
@@ -284,7 +298,8 @@ function FloatingIsland({
                     onChange={(value) => applyRuntimeSettingsPatch({ landConfigId: value || '' })}
                     options={landConfigOptions}
                     style={{ minWidth: 220 }}
-                    dropdownStyle={{ zIndex: 1301 }}
+                    dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                    getPopupContainer={getFloatingSelectContainer}
                     showSearch
                     optionFilterProp="label"
                     placeholder="选择 land_config"
@@ -297,7 +312,8 @@ function FloatingIsland({
                     onChange={(val) => (typeof onRunFilterChange === 'function' ? onRunFilterChange(val) : null)}
                     options={Array.isArray(runOptions) ? runOptions : [{ label: '全部终端', value: RUN_FILTER_ALL }]}
                     style={{ minWidth: 260 }}
-                    dropdownStyle={{ zIndex: 1301 }}
+                    dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                    getPopupContainer={getFloatingSelectContainer}
                     showSearch
                     optionFilterProp="label"
                     placeholder="选择终端(runId)"
@@ -382,14 +398,6 @@ function FloatingIsland({
                 </Space>
                 <Space size={6} align="center">
                   <Switch
-                    checked={injectSecretsToEnv}
-                    onChange={(checked) => applyRuntimeSettingsPatch({ injectSecretsToEnv: checked })}
-                    disabled={settingsSaving}
-                  />
-                  <Text>注入密钥 Env</Text>
-                </Space>
-                <Space size={6} align="center">
-                  <Switch
                     checked={openSystemTerminalOnSend}
                     onChange={(checked) => applyRuntimeSettingsPatch({ uiTerminalMode: checked ? 'system' : 'headless' })}
                     disabled={settingsSaving}
@@ -398,104 +406,117 @@ function FloatingIsland({
                 </Space>
               </Space>
 
-              <Space size={10} align="center" wrap>
-                <Text type="secondary">安全/日志：</Text>
-                <Select
-                  size="middle"
-                  value={shellSafetyMode}
-                  options={shellSafetyOptions}
-                  onChange={(value) => applyRuntimeSettingsPatch({ shellSafetyMode: value })}
-                  disabled={settingsSaving}
-                  style={{ minWidth: 140 }}
-                />
-                <Select
-                  size="middle"
-                  value={filesystemSymlinkPolicy}
-                  options={symlinkPolicyOptions}
-                  onChange={(value) => applyRuntimeSettingsPatch({ filesystemSymlinkPolicy: value })}
-                  disabled={settingsSaving}
-                  style={{ minWidth: 160 }}
-                />
-                <Select
-                  size="middle"
-                  value={mcpToolLogLevel}
-                  options={mcpLogLevelOptions}
-                  onChange={(value) => applyRuntimeSettingsPatch({ mcpToolLogLevel: value })}
-                  disabled={settingsSaving}
-                  style={{ minWidth: 150 }}
-                />
-                <Select
-                  size="middle"
-                  value={uiPromptLogMode}
-                  options={promptLogModeOptions}
-                  onChange={(value) => applyRuntimeSettingsPatch({ uiPromptLogMode: value })}
-                  disabled={settingsSaving}
-                  style={{ minWidth: 150 }}
-                />
-              </Space>
+              <Collapse
+                ghost
+                size="small"
+                items={[
+                  {
+                    key: 'advanced',
+                    label: '高级设置',
+                    children: (
+                      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                        <Space size={10} align="center" wrap>
+                          <Text type="secondary">安全/日志：</Text>
+                          <Select
+                            size="middle"
+                            value={shellSafetyMode}
+                            options={shellSafetyOptions}
+                            onChange={(value) => applyRuntimeSettingsPatch({ shellSafetyMode: value })}
+                            disabled={settingsSaving}
+                            style={{ minWidth: 140 }}
+                            dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                            getPopupContainer={getFloatingSelectContainer}
+                          />
+                          <Select
+                            size="middle"
+                            value={filesystemSymlinkPolicy}
+                            options={symlinkPolicyOptions}
+                            onChange={(value) => applyRuntimeSettingsPatch({ filesystemSymlinkPolicy: value })}
+                            disabled={settingsSaving}
+                            style={{ minWidth: 160 }}
+                            dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                            getPopupContainer={getFloatingSelectContainer}
+                          />
+                          <Select
+                            size="middle"
+                            value={mcpToolLogLevel}
+                            options={mcpLogLevelOptions}
+                            onChange={(value) => applyRuntimeSettingsPatch({ mcpToolLogLevel: value })}
+                            disabled={settingsSaving}
+                            style={{ minWidth: 150 }}
+                            dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                            getPopupContainer={getFloatingSelectContainer}
+                          />
+                          <Select
+                            size="middle"
+                            value={uiPromptLogMode}
+                            options={promptLogModeOptions}
+                            onChange={(value) => applyRuntimeSettingsPatch({ uiPromptLogMode: value })}
+                            disabled={settingsSaving}
+                            style={{ minWidth: 150 }}
+                            dropdownStyle={FLOATING_SELECT_DROPDOWN_STYLE}
+                            getPopupContainer={getFloatingSelectContainer}
+                          />
+                        </Space>
 
-              <Space size={10} align="center" wrap>
-                <Text type="secondary">限制：</Text>
-                <Space size={6} align="center">
-                  <Text>Shell 输出(KB)</Text>
-                  <InputNumber
-                    min={16}
-                    max={51200}
-                    step={64}
-                    value={shellMaxBufferKb}
-                    onChange={(value) =>
-                      applyRuntimeSettingsPatch({
-                        shellMaxBufferBytes: Number.isFinite(value) ? Math.max(16, Math.round(value)) * 1024 : 16 * 1024,
-                      })
-                    }
-                    disabled={settingsSaving}
-                  />
-                </Space>
-                <Space size={6} align="center">
-                  <Text>文件读取(KB)</Text>
-                  <InputNumber
-                    min={1}
-                    max={102400}
-                    step={64}
-                    value={filesystemMaxFileKb}
-                    onChange={(value) => {
-                      const nextKb = Number.isFinite(value) ? Math.max(1, Math.round(value)) : 256;
-                      const bytes = nextKb * 1024;
-                      applyRuntimeSettingsPatch({ filesystemMaxFileBytes: bytes, filesystemMaxWriteBytes: bytes });
-                    }}
-                    disabled={settingsSaving}
-                  />
-                </Space>
-                <Space size={6} align="center">
-                  <Text>文件写入(KB)</Text>
-                  <InputNumber
-                    min={1}
-                    max={102400}
-                    step={128}
-                    value={filesystemMaxWriteKb}
-                    onChange={(value) => {
-                      const nextKb = Number.isFinite(value) ? Math.max(1, Math.round(value)) : 5120;
-                      applyRuntimeSettingsPatch({ filesystemMaxWriteBytes: nextKb * 1024 });
-                    }}
-                    disabled={settingsSaving}
-                  />
-                </Space>
-                <Space size={6} align="center">
-                  <Text>MCP 并发</Text>
-                  <InputNumber
-                    min={1}
-                    max={20}
-                    step={1}
-                    value={mcpStartupConcurrency}
-                    onChange={(value) =>
-                      applyRuntimeSettingsPatch({
-                        mcpStartupConcurrency: Number.isFinite(value) ? Math.max(1, Math.min(20, Math.round(value))) : 4,
-                      })
-                    }
-                    disabled={settingsSaving}
-                  />
-                </Space>
-              </Space>
+                        <Space size={10} align="center" wrap>
+                          <Text type="secondary">限制：</Text>
+                          <Space size={6} align="center">
+                            <Text>Shell 输出(KB)</Text>
+                            <InputNumber
+                              min={16}
+                              max={51200}
+                              step={64}
+                              value={shellMaxBufferKb}
+                              onChange={(value) =>
+                                applyRuntimeSettingsPatch({
+                                  shellMaxBufferBytes: Number.isFinite(value)
+                                    ? Math.max(16, Math.round(value)) * 1024
+                                    : DEFAULT_ADVANCED_SETTINGS.shellMaxBufferKb * 1024,
+                                })
+                              }
+                              disabled={settingsSaving}
+                            />
+                          </Space>
+                          <Space size={6} align="center">
+                            <Text>文件读取(KB)</Text>
+                            <InputNumber
+                              min={1}
+                              max={102400}
+                              step={64}
+                              value={filesystemMaxFileKb}
+                              onChange={(value) => {
+                                const nextKb = Number.isFinite(value)
+                                  ? Math.max(1, Math.round(value))
+                                  : DEFAULT_ADVANCED_SETTINGS.filesystemMaxFileKb;
+                                const bytes = nextKb * 1024;
+                                applyRuntimeSettingsPatch({ filesystemMaxFileBytes: bytes, filesystemMaxWriteBytes: bytes });
+                              }}
+                              disabled={settingsSaving}
+                            />
+                          </Space>
+                          <Space size={6} align="center">
+                            <Text>文件写入(KB)</Text>
+                            <InputNumber
+                              min={1}
+                              max={102400}
+                              step={128}
+                              value={filesystemMaxWriteKb}
+                              onChange={(value) => {
+                                const nextKb = Number.isFinite(value)
+                                  ? Math.max(1, Math.round(value))
+                                  : DEFAULT_ADVANCED_SETTINGS.filesystemMaxWriteKb;
+                                applyRuntimeSettingsPatch({ filesystemMaxWriteBytes: nextKb * 1024 });
+                              }}
+                              disabled={settingsSaving}
+                            />
+                          </Space>
+                        </Space>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
 
               {promptActive ? (
                 <FloatingIslandPrompt

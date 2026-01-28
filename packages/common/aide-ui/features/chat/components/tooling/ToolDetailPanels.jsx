@@ -13,6 +13,8 @@ import { TaskToolDetails } from './details/TaskToolDetails.jsx';
 import { ToolMetaSection } from './details/ToolMetaSection.jsx';
 
 export function ToolDetails({ toolKind, structuredContent, liveSteps, display, ...props }) {
+  const toolNameText = typeof props.toolName === 'string' ? props.toolName.toLowerCase() : '';
+  const isRunSubAgent = toolNameText.includes('run_sub_agent');
   let body = null;
   if (toolKind === 'shell') body = <ShellToolDetails {...props} />;
   else if (toolKind === 'filesystem') body = <FilesystemToolDetails {...props} structuredContent={structuredContent} />;
@@ -27,7 +29,7 @@ export function ToolDetails({ toolKind, structuredContent, liveSteps, display, .
     body = <CodeMaintainerToolDetails {...props} structuredContent={structuredContent} />;
   else body = <DefaultToolDetails {...props} structuredContent={structuredContent} />;
 
-  const showMeta = !(toolKind === 'subagent' && display === 'popover');
+  const showMeta = !(toolKind === 'subagent' && (display === 'popover' || (display === 'drawer' && isRunSubAgent)));
 
   return (
     <>

@@ -76,12 +76,12 @@ export function ToolInvocationTag({
   const { argsInfo, toolKind, shellResult, status, subtitle, color } = presentation;
   const isSubagent = toolKind === 'subagent';
   const hidePopoverHeader = isSubagent && isRunSubAgent;
-  const popoverMaxWidth = maxWidth;
-  const popoverMaxHeight = maxHeight;
+  const popoverMaxWidth = isRunSubAgent ? 960 : maxWidth;
+  const popoverMaxHeight = isRunSubAgent ? 520 : maxHeight;
   const popoverPlacement = isSubagent ? 'bottomLeft' : undefined;
   const drawerWidth = isSubagent ? '100vw' : 780;
   const drawerClassName = isSubagent
-    ? 'ds-tool-drawer ds-tool-drawer-wide ds-tool-drawer-full'
+    ? 'ds-tool-drawer ds-tool-drawer-wide ds-tool-drawer-full ds-tool-drawer-subagent'
     : 'ds-tool-drawer';
   const badgeSubtitle = subtitle ? truncateText(subtitle, 28) : '';
   const title = buildDrawerTitle(name, callId);
@@ -94,6 +94,13 @@ export function ToolInvocationTag({
     (copyableArgs && copyableArgs.length > 320) ||
     (copyableResult && copyableResult.length > 320) ||
     Boolean(resolvedStructuredContent);
+  const drawerStyles = isRunSubAgent
+    ? {
+        header: { display: 'none' },
+        body: { padding: 0, height: '100%', display: 'flex', flexDirection: 'column' },
+      }
+    : undefined;
+  const drawerTitle = isRunSubAgent ? null : title;
 
   const onCopyArgs = async () => {
     if (!copyableArgs) return;
@@ -115,10 +122,26 @@ export function ToolInvocationTag({
     }
   };
 
+  const drawerExtra = isRunSubAgent ? null : (
+    <Space size={6}>
+      {canCopyArgs ? (
+        <Button size="small" icon={<CopyOutlined />} onClick={onCopyArgs}>
+          参数
+        </Button>
+      ) : null}
+      {canCopyResult ? (
+        <Button size="small" icon={<CopyOutlined />} onClick={onCopyResult}>
+          结果
+        </Button>
+      ) : null}
+    </Space>
+  );
+
   const onExpand = () => {
     setPopoverOpen(false);
     setDrawerOpen(true);
   };
+  const onCloseDrawer = () => setDrawerOpen(false);
 
   const actions = (
     <Space size={4} className="ds-tool-popover-actions">
@@ -180,25 +203,14 @@ export function ToolInvocationTag({
       </PopoverTag>
       <Drawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={onCloseDrawer}
         width={drawerWidth}
         destroyOnClose
         className={drawerClassName}
-        title={title}
-        extra={
-          <Space size={6}>
-            {canCopyArgs ? (
-              <Button size="small" icon={<CopyOutlined />} onClick={onCopyArgs}>
-                参数
-              </Button>
-            ) : null}
-            {canCopyResult ? (
-              <Button size="small" icon={<CopyOutlined />} onClick={onCopyResult}>
-                结果
-              </Button>
-            ) : null}
-          </Space>
-        }
+        title={drawerTitle}
+        extra={drawerExtra}
+        closable={!isRunSubAgent}
+        styles={drawerStyles}
       >
         <ToolDetails
           toolName={name}
@@ -212,6 +224,7 @@ export function ToolInvocationTag({
           display="drawer"
           callId={callId}
           status={status}
+          onClose={onCloseDrawer}
         />
       </Drawer>
     </>

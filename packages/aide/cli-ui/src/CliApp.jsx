@@ -234,7 +234,12 @@ function CliAppBody({ host, mountContainer }) {
     try {
       const data = await api.invoke('config:read');
       setConfig(data);
-      setTasks(Array.isArray(data?.tasksList) ? data.tasksList : parseTasks(data?.tasks));
+      const list = Array.isArray(data?.tasksListCli)
+        ? data.tasksListCli
+        : Array.isArray(data?.tasksList)
+          ? data.tasksList
+          : parseTasks(data?.tasks);
+      setTasks(Array.isArray(list) ? list : []);
     } catch (err) {
       setError(err?.message || '加载配置失败');
     }
@@ -751,7 +756,12 @@ function CliAppBody({ host, mountContainer }) {
     });
     const unsubConfig = api.on('config:update', (data) => {
       setConfig(data);
-      setTasks(Array.isArray(data?.tasksList) ? data.tasksList : parseTasks(data?.tasks));
+      const list = Array.isArray(data?.tasksListCli)
+        ? data.tasksListCli
+        : Array.isArray(data?.tasksList)
+          ? data.tasksList
+          : parseTasks(data?.tasks);
+      setTasks(Array.isArray(list) ? list : []);
     });
     const unsubTerminal = api.on('terminalStatus:update', (payload) => {
       const statuses = Array.isArray(payload?.statuses) ? payload.statuses : [];

@@ -18,6 +18,7 @@ import { createWriteQueue } from './task/utils.js';
 import {
   createDedupeStore,
 } from './shared/dedupe-store.js';
+import { resolveTaskTableName } from '../../common/admin-data/task-tables.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
@@ -62,7 +63,8 @@ let taskDb = null;
 let settingsDb = null;
 try {
   const db = createDb({ dbPath: adminDbPath });
-  taskDb = new TaskService(db);
+  const taskTable = resolveTaskTableName({ env: process.env });
+  taskDb = new TaskService(db, { tableName: taskTable });
   settingsDb = new SettingsService(db);
   settingsDb.ensureRuntime();
 } catch (err) {

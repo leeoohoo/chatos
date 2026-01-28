@@ -2,7 +2,7 @@ import React from 'react';
 import { Typography } from 'antd';
 import { FileTextOutlined, FolderOpenOutlined, SearchOutlined } from '@ant-design/icons';
 
-import { ToolBlock, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatSummaryValue, normalizeText } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -102,7 +102,7 @@ export function FilesystemToolDetails({ argsRaw, argsParsed, resultText, structu
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       {changeItems.length > 0 ? (
@@ -122,7 +122,7 @@ export function FilesystemToolDetails({ argsRaw, argsParsed, resultText, structu
       ) : null}
       {!hasParsedResults ? (
         <ToolSection title="结果">
-          {normalizedResult ? <ToolBlock text={normalizedResult} /> : <Text type="secondary">（暂无结果）</Text>}
+          {normalizedResult ? <ToolJsonPreview text={normalizedResult} emptyText="（暂无结果）" /> : <Text type="secondary">（暂无结果）</Text>}
         </ToolSection>
       ) : null}
     </>

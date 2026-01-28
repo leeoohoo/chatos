@@ -10,6 +10,7 @@ import {
 import { createSessionPayloadReaders } from './session-api/payloads.js';
 import { createSessionWatchers } from './session-api/watchers.js';
 import { createUiPromptHandlers } from './session-api/ui-prompts.js';
+import { TASK_TABLES } from '../packages/common/admin-data/task-tables.js';
 
 const promptLogMaxBytes = clampNumber(
   process.env.MODEL_CLI_UI_PROMPTS_MAX_BYTES,
@@ -93,9 +94,17 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     };
 
     try {
-      const existingTasks = adminServices.tasks.list();
-      adminDb.reset('tasks', []);
-      summary.tasksCleared = existingTasks.length;
+      const taskTables = [TASK_TABLES.legacy, TASK_TABLES.cli, TASK_TABLES.chat];
+      const perTable = {};
+      let totalRemoved = 0;
+      taskTables.forEach((table) => {
+        const list = adminDb.list(table) || [];
+        perTable[table] = list.length;
+        totalRemoved += list.length;
+        adminDb.reset(table, []);
+      });
+      summary.tasksCleared = totalRemoved;
+      summary.tasksClearedByTable = perTable;
     } catch (err) {
       summary.tasksError = err?.message || String(err);
     }

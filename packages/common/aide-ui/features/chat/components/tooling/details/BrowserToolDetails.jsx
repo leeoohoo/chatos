@@ -2,7 +2,7 @@ import React from 'react';
 import { Typography } from 'antd';
 
 import { MarkdownBlock } from '../../../../../components/MarkdownBlock.jsx';
-import { ToolBlock, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue, normalizeText } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -32,22 +32,21 @@ export function BrowserToolDetails({ argsRaw, argsParsed, resultText, structured
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       {structuredText && !resultText ? (
         <ToolSection title="结构化">
-          <ToolBlock text={structuredText} />
+          <ToolJsonPreview value={structuredContent} text={structuredText} />
         </ToolSection>
       ) : null}
       <ToolSection title="结果">
-        {resultText ? (
-          <MarkdownBlock text={resultText} maxHeight={320} container={false} copyable />
-        ) : structuredText ? (
-          <ToolBlock text={structuredText} />
-        ) : (
-          <Text type="secondary">（暂无结果）</Text>
-        )}
+        <ToolJsonPreview
+          text={resultText}
+          value={!resultText && structuredContent ? structuredContent : undefined}
+          emptyText="（暂无结果）"
+          renderFallback={(raw) => <MarkdownBlock text={raw} maxHeight={320} container={false} copyable />}
+        />
       </ToolSection>
     </>
   );

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Space, Tag, Typography } from 'antd';
 
-import { ToolBlock, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue, normalizeText } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -126,7 +126,7 @@ export function TaskToolDetails({ toolName, argsRaw, argsParsed, resultText, str
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       {createdItems.length > 0 ? (
@@ -146,16 +146,16 @@ export function TaskToolDetails({ toolName, argsRaw, argsParsed, resultText, str
       ) : null}
       {changesText ? (
         <ToolSection title="变更">
-          <ToolBlock text={changesText} />
+          <ToolJsonPreview value={structuredContent?.user_changes} text={changesText} />
         </ToolSection>
       ) : null}
       {remark ? (
         <ToolSection title="备注">
-          <ToolBlock text={remark} />
+          <ToolJsonPreview text={remark} />
         </ToolSection>
       ) : null}
       <ToolSection title="结果">
-        {resultText ? <ToolBlock text={resultText} /> : <Text type="secondary">（暂无结果）</Text>}
+        <ToolJsonPreview text={resultText} emptyText="（暂无结果）" />
       </ToolSection>
     </>
   );

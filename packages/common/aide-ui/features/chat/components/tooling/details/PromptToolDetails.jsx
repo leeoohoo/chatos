@@ -1,7 +1,7 @@
 import React from 'react';
 import { Typography } from 'antd';
 
-import { ToolBlock, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolJsonPreview, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue, normalizeText } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -49,7 +49,7 @@ export function PromptToolDetails({ argsRaw, argsParsed, resultText, structuredC
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       {valueItems.length > 0 || selectionText ? (
@@ -64,11 +64,11 @@ export function PromptToolDetails({ argsRaw, argsParsed, resultText, structuredC
       ) : null}
       {detailText && hasMore ? (
         <ToolSection title="详情">
-          <ToolBlock text={detailText} />
+          <ToolJsonPreview value={values || selection} text={detailText} />
         </ToolSection>
       ) : null}
       <ToolSection title="结果">
-        {resultText ? <ToolBlock text={resultText} /> : <Text type="secondary">（暂无结果）</Text>}
+        <ToolJsonPreview text={resultText} emptyText="（暂无结果）" />
       </ToolSection>
     </>
   );

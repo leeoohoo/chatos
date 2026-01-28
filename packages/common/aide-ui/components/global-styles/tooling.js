@@ -458,6 +458,20 @@ export const GLOBAL_TOOLING_STYLES = `
         border-color: rgba(245, 158, 11, 0.35);
         background: rgba(245, 158, 11, 0.12);
       }
+      .ds-tool-json-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ds-tool-json-collapse .ant-collapse-header {
+        padding: 0 !important;
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(71, 85, 105, 0.85);
+      }
+      :root[data-theme='dark'] .ds-tool-json-collapse .ant-collapse-header {
+        color: rgba(148, 163, 184, 0.9);
+      }
       .ds-tool-output-grid {
         display: grid;
         gap: 10px;
@@ -554,6 +568,7 @@ export const GLOBAL_TOOLING_STYLES = `
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        pointer-events: none;
       }
       :root[data-theme='dark'] .ds-subagent-step-summary {
         color: rgba(148, 163, 184, 0.82);
@@ -798,6 +813,18 @@ export const GLOBAL_TOOLING_STYLES = `
         flex-direction: column;
         gap: 8px;
       }
+      .ds-subagent-timeline-scroll {
+        max-height: clamp(240px, 50vh, 520px);
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-gutter: stable;
+        overscroll-behavior: contain;
+      }
+      .ds-subagent-timeline-scroll.is-fullscreen {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+      }
       .ds-subagent-timeline-item {
         display: grid;
         grid-template-columns: 16px 1fr;
@@ -890,6 +917,279 @@ export const GLOBAL_TOOLING_STYLES = `
       }
       :root[data-theme='dark'] .ds-subagent-timeline-summary {
         color: rgba(148, 163, 184, 0.82);
+      }
+      .ds-subagent-timeline-toggle {
+        margin-left: 6px;
+        border: 1px solid var(--ds-panel-border);
+        background: transparent;
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 10px;
+        color: rgba(71, 85, 105, 0.75);
+        cursor: pointer;
+      }
+      .ds-subagent-timeline-toggle[data-align='right'] {
+        margin-left: auto;
+      }
+      .ds-subagent-timeline-toggle:hover {
+        background: rgba(15, 23, 42, 0.05);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-toggle {
+        color: rgba(148, 163, 184, 0.85);
+        background: rgba(15, 23, 42, 0.3);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-toggle:hover {
+        background: rgba(15, 23, 42, 0.45);
+      }
+      .ds-subagent-timeline-details {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .ds-subagent-fullscreen {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px 20px 20px;
+        height: 100%;
+        min-height: 0;
+        background: var(--ds-panel-bg);
+      }
+      .ds-subagent-fullscreen-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 16px;
+        border-radius: 16px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-subagent-fullscreen-header-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+        flex: 1;
+      }
+      .ds-subagent-fullscreen-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.14);
+        color: #6366f1;
+      }
+      .ds-subagent-fullscreen-title {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .ds-subagent-fullscreen-title-text {
+        font-size: 16px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.92);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-title-text {
+        color: rgba(255, 255, 255, 0.92);
+      }
+      .ds-subagent-fullscreen-subtitle {
+        font-size: 12px;
+        color: rgba(71, 85, 105, 0.8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 420px;
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-subtitle {
+        color: rgba(148, 163, 184, 0.9);
+      }
+      .ds-subagent-fullscreen-chips {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .ds-subagent-fullscreen-actions {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .ds-subagent-fullscreen-action-btn {
+        border: 1px solid var(--ds-panel-border);
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 6px 12px;
+        font-size: 11px;
+        color: rgba(15, 23, 42, 0.85);
+        cursor: pointer;
+      }
+      .ds-subagent-fullscreen-action-btn:hover {
+        background: rgba(15, 23, 42, 0.05);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-action-btn {
+        background: rgba(15, 23, 42, 0.35);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-action-btn:hover {
+        background: rgba(15, 23, 42, 0.5);
+      }
+      .ds-subagent-fullscreen-body {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        gap: 20px;
+        min-height: 0;
+        flex: 1;
+      }
+      .ds-subagent-fullscreen-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-panel-bg);
+        min-height: 0;
+        overflow: auto;
+      }
+      .ds-subagent-fullscreen-panel-head {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .ds-subagent-fullscreen-panel-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.92);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-panel-title {
+        color: rgba(255, 255, 255, 0.92);
+      }
+      .ds-subagent-fullscreen-panel-subtitle {
+        font-size: 12px;
+        color: rgba(71, 85, 105, 0.8);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-panel-subtitle {
+        color: rgba(148, 163, 184, 0.85);
+      }
+      .ds-subagent-fullscreen-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-subagent-fullscreen-card-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.86);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-card-title {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-fullscreen-notes {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: rgba(71, 85, 105, 0.8);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-notes {
+        color: rgba(148, 163, 184, 0.85);
+      }
+      .ds-subagent-fullscreen-note::before {
+        content: '- ';
+      }
+      .ds-subagent-fullscreen-preview {
+        font-size: 12px;
+        color: rgba(15, 23, 42, 0.86);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-preview {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-fullscreen-section {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ds-subagent-fullscreen-section-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.86);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-section-title {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-fullscreen-meta-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-subagent-fullscreen-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .ds-subagent-fullscreen-meta-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: rgba(71, 85, 105, 0.7);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-meta-label {
+        color: rgba(148, 163, 184, 0.75);
+      }
+      .ds-subagent-fullscreen-meta-value {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-meta-value {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-fullscreen-raw-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .ds-subagent-fullscreen-raw-tab {
+        border: 1px solid var(--ds-panel-border);
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 6px 12px;
+        font-size: 11px;
+        color: rgba(15, 23, 42, 0.8);
+        cursor: pointer;
+      }
+      .ds-subagent-fullscreen-raw-tab[data-active='true'] {
+        border-color: rgba(99, 102, 241, 0.45);
+        background: rgba(99, 102, 241, 0.12);
+        color: rgba(67, 56, 202, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-raw-tab {
+        background: rgba(15, 23, 42, 0.35);
+        color: rgba(255, 255, 255, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-fullscreen-raw-tab[data-active='true'] {
+        background: rgba(99, 102, 241, 0.25);
+        color: rgba(224, 231, 255, 0.9);
+      }
+      .ds-subagent-fullscreen-raw-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
       .ds-subagent-preview {
         padding: 8px 10px;

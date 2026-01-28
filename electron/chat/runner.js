@@ -19,6 +19,7 @@ import { applyRuntimeSettingsToEnv } from '../../packages/common/runtime-setting
 import { normalizeKey, uniqueIds } from '../../packages/common/text-utils.js';
 import { extractTraceMeta } from '../../packages/common/trace-utils.js';
 import { readRegistrySnapshot } from '../../packages/common/admin-data/registry-utils.js';
+import { TASK_TABLES } from '../../packages/common/admin-data/task-tables.js';
 
 
 
@@ -169,6 +170,7 @@ export function createChatRunner({
           const { initializeMcpRuntime } = await loadEngineDeps();
           mcpRuntime = await initializeMcpRuntime(configPath, sessionRoot, effectiveWorkspaceRoot, {
             caller: 'main',
+            taskTable: TASK_TABLES.chat,
             servers: useInlineServers ? servers : undefined,
             extraServers,
             skipServers,

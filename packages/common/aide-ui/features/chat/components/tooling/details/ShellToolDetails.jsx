@@ -2,7 +2,7 @@ import React from 'react';
 import { Typography } from 'antd';
 
 import { formatBytes } from '../../../../../lib/format.js';
-import { ToolBlock, ToolSection, ToolSummary } from '../ToolPanels.jsx';
+import { ToolBlock, ToolJsonPreview, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatSummaryValue } from './detail-utils.js';
 
 const { Text } = Typography;
@@ -43,7 +43,7 @@ export function ShellToolDetails({ argsRaw, argsParsed, resultText, shellResult 
       ) : null}
       {argsRaw ? (
         <ToolSection title="参数">
-          <ToolBlock text={argsRaw} />
+          <ToolJsonPreview text={argsRaw} />
         </ToolSection>
       ) : null}
       <ToolSection title="输出">
@@ -63,7 +63,7 @@ export function ShellToolDetails({ argsRaw, argsParsed, resultText, shellResult 
             </div>
           </div>
         ) : resultText ? (
-          <ToolBlock text={resultText} />
+          <ToolJsonPreview text={resultText} />
         ) : (
           <Text type="secondary">（暂无结果）</Text>
         )}

@@ -30,6 +30,7 @@ import { createRuntimeLogger } from '../../packages/aide/shared/runtime-log.js';
 import { normalizeKey } from '../../packages/aide/shared/text-utils.js';
 import { readRegistrySnapshot } from '../../packages/common/admin-data/registry-utils.js';
 import { applyRuntimeSettings } from '../../packages/common/runtime-settings-utils.js';
+import { TASK_TABLES } from '../../packages/common/admin-data/task-tables.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -390,6 +391,7 @@ async function runChat(options) {
       process.cwd(),
       {
         caller: 'main',
+        taskTable: TASK_TABLES.cli,
         servers: runtimeMcpServers,
         eventLogger,
       }

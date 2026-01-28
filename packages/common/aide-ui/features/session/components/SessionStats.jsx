@@ -26,7 +26,7 @@ function SessionStats({ stats }) {
     {
       title: '任务',
       value: stats.tasks,
-      hint: '来自 admin.db (tasks)',
+      hint: '来自 admin.db (tasks_cli)',
       color: '#fa8c16',
     },
   ];

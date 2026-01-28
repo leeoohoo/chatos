@@ -301,6 +301,7 @@ export function createCompactElements({ ctx, bridgeEnabled }) {
     floatBar,
     floatText,
     floatToggle,
+    floatPanel,
     runSelect,
     runStatus,
     floatRefresh,

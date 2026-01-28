@@ -228,6 +228,18 @@ export async function connectMcpServer(entry, baseDir, sessionRoot, workspaceRoo
     if (workspaceRoot) {
       env.MODEL_CLI_WORKSPACE_ROOT = workspaceRoot;
     }
+    if (runtimeOptions?.taskTable && typeof runtimeOptions.taskTable === 'string') {
+      const tableName = runtimeOptions.taskTable.trim();
+      if (tableName) {
+        env.MODEL_CLI_TASK_TABLE = tableName;
+      }
+    }
+    if (runtimeOptions?.taskScope && typeof runtimeOptions.taskScope === 'string') {
+      const scope = runtimeOptions.taskScope.trim();
+      if (scope) {
+        env.MODEL_CLI_TASK_SCOPE = scope;
+      }
+    }
     // Ensure task-server writes to the app-scoped DB under session root,
     // regardless of where the CLI is launched.
     if (!env.MODEL_CLI_TASK_DB) {
