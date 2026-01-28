@@ -17,13 +17,6 @@ function resolveMcpCommandLine(command, args, env) {
     return { command, args: resolvedArgs };
   }
 
-  // In Electron packaged apps we want MCP stdio servers to use the bundled Node runtime
-  // (ELECTRON_RUN_AS_NODE=1 + process.execPath), even when the user config references
-  // system Node in other forms (absolute path, `/usr/bin/env node`, etc.).
-  if (!process?.versions?.electron) {
-    return { command: resolvedCommand, args: resolvedArgs };
-  }
-
   const normalizeBasename = (value) => {
     const text = String(value || '').trim().replace(/\\/g, '/');
     const base = text.split('/').pop() || '';
@@ -34,9 +27,17 @@ function resolveMcpCommandLine(command, args, env) {
   const isEnvBasename = (base) => base === 'env' || base === 'env.exe';
 
   const ensureElectronAsNode = () => {
+    if (!process?.versions?.electron) return;
     if (env && typeof env === 'object') {
       env.ELECTRON_RUN_AS_NODE = env.ELECTRON_RUN_AS_NODE || '1';
     }
+  };
+
+  const resolveWithExecPath = (overrideArgs) => {
+    const execPath = typeof process?.execPath === 'string' ? process.execPath.trim() : '';
+    if (!execPath) return null;
+    ensureElectronAsNode();
+    return { command: execPath, args: Array.isArray(overrideArgs) ? overrideArgs : resolvedArgs };
   };
 
   const base = normalizeBasename(resolvedCommand);
@@ -45,8 +46,8 @@ function resolveMcpCommandLine(command, args, env) {
   if (isEnvBasename(base) && resolvedArgs.length > 0) {
     const firstArgBase = normalizeBasename(resolvedArgs[0]);
     if (isNodeBasename(firstArgBase)) {
-      ensureElectronAsNode();
-      return { command: process.execPath, args: resolvedArgs.slice(1) };
+      const fallback = resolveWithExecPath(resolvedArgs.slice(1));
+      if (fallback) return fallback;
     }
   }
 
@@ -55,7 +56,8 @@ function resolveMcpCommandLine(command, args, env) {
   }
 
   // If the config references an absolute system Node path and it exists, keep it.
-  // Otherwise fall back to Electron's Node runtime to avoid requiring Node to be installed.
+  // Otherwise fall back to the current runtime (Electron's Node or the CLI's Node)
+  // to avoid PATH/lookup issues.
   const isAbsoluteLike = (value) => {
     if (!value) return false;
     if (path.isAbsolute(value)) return true;
@@ -71,8 +73,9 @@ function resolveMcpCommandLine(command, args, env) {
     }
   }
 
-  ensureElectronAsNode();
-  return { command: process.execPath, args: resolvedArgs };
+  const fallback = resolveWithExecPath(resolvedArgs);
+  if (fallback) return fallback;
+  return { command: resolvedCommand, args: resolvedArgs };
 }
 
 async function fetchAllTools(client) {

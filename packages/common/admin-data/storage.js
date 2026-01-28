@@ -20,10 +20,22 @@ function normalizeDriverName(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+let betterSqliteError = null;
+let betterSqliteFallback = false;
+
 function loadBetterSqlite3() {
   try {
-    return require('better-sqlite3');
-  } catch {
+    const Database = require('better-sqlite3');
+    try {
+      const probe = new Database(':memory:');
+      probe.close();
+    } catch (err) {
+      betterSqliteError = err;
+      return null;
+    }
+    return Database;
+  } catch (err) {
+    betterSqliteError = err;
     return null;
   }
 }
@@ -41,11 +53,21 @@ if (!forceSqlJs) {
     driver = { type: 'better-sqlite3', Database };
     driverSource = forceBetterSqlite ? 'env' : 'default';
   } else if (forceBetterSqlite) {
-    throw new Error('MODEL_CLI_DB_DRIVER requested better-sqlite3 but the module is not available.');
+    const suffix = betterSqliteError ? ` (${betterSqliteError?.message || String(betterSqliteError)})` : '';
+    throw new Error(`MODEL_CLI_DB_DRIVER requested better-sqlite3 but the module is not available${suffix}.`);
   } else {
-    throw new Error(
-      'better-sqlite3 is required by default. Install it or set MODEL_CLI_DB_DRIVER=sqljs to use SQL.js.'
-    );
+    // Fall back to SQL.js when better-sqlite3 is present but incompatible (e.g., ABI mismatch).
+    const message = betterSqliteError?.message || '';
+    const isModuleMissing = betterSqliteError?.code === 'MODULE_NOT_FOUND';
+    const isDlopenFailed = betterSqliteError?.code === 'ERR_DLOPEN_FAILED';
+    const isModuleVersionMismatch = /NODE_MODULE_VERSION/i.test(message);
+    if (!isModuleMissing && (isDlopenFailed || isModuleVersionMismatch)) {
+      betterSqliteFallback = true;
+    } else {
+      throw new Error(
+        'better-sqlite3 is required by default. Install it or set MODEL_CLI_DB_DRIVER=sqljs to use SQL.js.'
+      );
+    }
   }
 }
 
@@ -57,7 +79,7 @@ if (!driver) {
   const wasmBinary = fs.readFileSync(wasmPath);
   const SQL = await initSqlJs({ wasmBinary });
   driver = { type: 'sql.js', SQL };
-  driverSource = 'env';
+  driverSource = forceSqlJs ? 'env' : betterSqliteFallback ? 'fallback' : 'env';
 }
 
 let didLogDriver = false;
@@ -65,6 +87,10 @@ function logDbDriverSelection() {
   if (didLogDriver) return;
   didLogDriver = true;
   const suffix = driverSource ? ` (${driverSource})` : '';
+  if (betterSqliteFallback && betterSqliteError) {
+    const shortMessage = String(betterSqliteError?.message || betterSqliteError).split('\n')[0];
+    console.error(`[db] better-sqlite3 unavailable (${shortMessage}); falling back to sql.js`);
+  }
   console.error(`[db] driver=${driver.type}${suffix}`);
 }
 logDbDriverSelection();
