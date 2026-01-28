@@ -42,6 +42,12 @@ function ModelsManager({
         render: (v) => (v ? <Tag color="purple">支持</Tag> : '-'),
       },
       {
+        title: '推理模型',
+        dataIndex: 'supportsReasoning',
+        width: 110,
+        render: (v) => (v ? <Tag color="gold">支持</Tag> : '-'),
+      },
+      {
         title: '思考等级',
         dataIndex: 'reasoningEffort',
         width: 110,
@@ -140,6 +146,13 @@ function ModelsManager({
         type: 'switch',
         defaultValue: false,
         extra: '开启后，对话输入框可粘贴/上传图片，并以 base64(data URL) 发送给模型。',
+      },
+      {
+        name: 'supportsReasoning',
+        label: '推理模型',
+        type: 'switch',
+        defaultValue: false,
+        extra: '开启后会在消息中携带 reasoning_content，用于推理模型/思维链输出。',
       },
     ],
     [providerOptions]

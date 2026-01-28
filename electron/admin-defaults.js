@@ -172,6 +172,7 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
         provider: prev?.provider || model.provider || '',
         model: prev?.model || model.model || '',
         reasoningEffort: prev?.reasoningEffort ?? model.reasoningEffort ?? '',
+        supportsReasoning: prev?.supportsReasoning ?? model.supportsReasoning ?? false,
         baseUrl: prev?.baseUrl || model.baseUrl || '',
         apiKeyEnv: prev?.apiKeyEnv || model.apiKeyEnv || '',
         tools: Array.isArray(prev?.tools) ? prev.tools : model.tools || [],

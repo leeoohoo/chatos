@@ -50,12 +50,19 @@ export function parseModelsWithDefault(raw) {
       : typeof cfg.toolFollowupMode === 'string'
         ? cfg.toolFollowupMode
         : '';
+    const supportsReasoning =
+      typeof cfg.supports_reasoning === 'boolean'
+        ? cfg.supports_reasoning
+        : typeof cfg.supportsReasoning === 'boolean'
+          ? cfg.supportsReasoning
+          : undefined;
     entries.push({
       name,
       provider: cfg.provider || '',
       model: cfg.model || '',
       reasoningEffort,
       toolFollowupMode,
+      ...(supportsReasoning !== undefined ? { supportsReasoning } : {}),
       baseUrl: cfg.base_url || cfg.baseUrl || '',
       apiKeyEnv: cfg.api_key_env || '',
       tools: Array.isArray(cfg.tools) ? cfg.tools : [],

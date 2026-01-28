@@ -101,8 +101,8 @@ function StatCard({ color, value, label }) {
         }}
       />
       <div>
-        <div style={{ fontSize: 20, fontWeight: 650, color: '#111827' }}>{value}</div>
-        <div style={{ fontSize: 12, color: '#6b7280' }}>{label}</div>
+        <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--ds-text-primary)' }}>{value}</div>
+        <div style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{label}</div>
       </div>
     </div>
   );
@@ -385,7 +385,7 @@ export function ChatAgentsView({ admin }) {
 
   const renderFilterGroup = (title, options, value, onChange, maxHeight) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>{title}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-text-primary)' }}>{title}</div>
       <Checkbox.Group value={value} onChange={onChange}>
         <div
           style={{
@@ -399,7 +399,7 @@ export function ChatAgentsView({ admin }) {
         >
           {options.length > 0 ? (
             options.map((option) => (
-              <Checkbox key={option.value} value={option.value} style={{ color: '#6b7280', fontSize: 12 }}>
+              <Checkbox key={option.value} value={option.value} style={{ color: 'var(--ds-text-muted)', fontSize: 12 }}>
                 {option.label}
               </Checkbox>
             ))
@@ -458,14 +458,14 @@ export function ChatAgentsView({ admin }) {
               onChange={(event) => handleToggleSelect(id, event.target.checked)}
             />
           ) : null}
-          <span style={{ fontWeight: 650, fontSize: 14, color: '#111827' }}>{name}</span>
+          <span style={{ fontWeight: 650, fontSize: 14, color: 'var(--ds-text-primary)' }}>{name}</span>
           <span
             style={{
               padding: '2px 10px',
               borderRadius: 999,
               fontSize: 12,
-              background: mode === 'flow' ? '#eef2ff' : '#f3f4f6',
-              color: mode === 'flow' ? '#4338ca' : '#4b5563',
+              background: mode === 'flow' ? 'var(--ds-pill-flow-bg)' : 'var(--ds-pill-custom-bg)',
+              color: mode === 'flow' ? 'var(--ds-pill-flow-text)' : 'var(--ds-pill-custom-text)',
             }}
           >
             {mode === 'flow' ? 'Flow' : 'Custom'}
@@ -473,10 +473,10 @@ export function ChatAgentsView({ admin }) {
           {mode === 'flow' && landLabel ? <Tag color="purple">{landLabel}</Tag> : null}
         </div>
         {description ? (
-          <div style={{ fontSize: 12, color: '#4b5563', lineHeight: '18px' }}>{description}</div>
+          <div style={{ fontSize: 12, color: 'var(--ds-text-secondary)', lineHeight: '18px' }}>{description}</div>
         ) : null}
-        <div style={{ fontSize: 12, color: '#6b7280' }}>{modelName ? `Model: ${modelName}` : 'Model: —'}</div>
-        <div style={{ fontSize: 12, color: '#6b7280' }}>{`Apps: ${appsSummary}${appsExtra}`}</div>
+        <div style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{modelName ? `Model: ${modelName}` : 'Model: —'}</div>
+        <div style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{`Apps: ${appsSummary}${appsExtra}`}</div>
         {tags.length > 0 ? (
           <Space size={[6, 6]} wrap>
             {tags.slice(0, 4).map((tag) => (
@@ -485,9 +485,9 @@ export function ChatAgentsView({ admin }) {
                 style={{
                   marginInlineEnd: 0,
                   borderRadius: 10,
-                  background: '#f3f4f6',
+                  background: 'var(--ds-tag-bg)',
                   border: 'none',
-                  color: '#374151',
+                  color: 'var(--ds-tag-text)',
                   fontSize: 12,
                 }}
               >
@@ -525,8 +525,8 @@ export function ChatAgentsView({ admin }) {
           }}
         >
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontWeight: 650, fontSize: 20, color: '#111827' }}>Agent Management</div>
-            <div style={{ color: '#4b5563', fontSize: 13 }}>
+            <div style={{ fontWeight: 650, fontSize: 20, color: 'var(--ds-text-primary)' }}>Agent Management</div>
+            <div style={{ color: 'var(--ds-text-secondary)', fontSize: 13 }}>
               Manage chat agents, models, prompts, and app capabilities.
             </div>
           </div>
@@ -535,7 +535,7 @@ export function ChatAgentsView({ admin }) {
               allowClear
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
-              prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
+              prefix={<SearchOutlined style={{ color: 'var(--ds-text-subtle)' }} />}
               placeholder="Search agents, models, tags"
               style={{ width: 240 }}
             />
@@ -582,7 +582,7 @@ export function ChatAgentsView({ admin }) {
           {showFilters ? (
             <div style={{ ...BASE_PANEL_STYLE, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 650, color: '#111827', fontSize: 14 }}>Filters</div>
+                <div style={{ fontWeight: 650, color: 'var(--ds-text-primary)', fontSize: 14 }}>Filters</div>
                 <Button type="link" onClick={handleClearFilters} style={{ padding: 0, fontSize: 12 }}>
                   Clear all
                 </Button>
@@ -605,8 +605,8 @@ export function ChatAgentsView({ admin }) {
                 flexWrap: 'wrap',
               }}
             >
-              <div style={{ fontWeight: 650, fontSize: 14, color: '#111827' }}>Agents</div>
-              <div style={{ color: '#6b7280', fontSize: 12 }}>Last sync: {formatTimeAgo(lastSyncAt, now)}</div>
+              <div style={{ fontWeight: 650, fontSize: 14, color: 'var(--ds-text-primary)' }}>Agents</div>
+              <div style={{ color: 'var(--ds-text-muted)', fontSize: 12 }}>Last sync: {formatTimeAgo(lastSyncAt, now)}</div>
               <div style={{ flex: 1 }} />
               {bulkMode && selectedIds.length > 0 ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>

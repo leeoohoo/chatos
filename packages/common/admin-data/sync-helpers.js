@@ -52,8 +52,18 @@ export function buildModelsYamlPayload(models = [], options = {}) {
             ? m.tool_followup_mode
             : '';
       const supportsVision = Boolean(m.supportsVision ?? m.supports_vision);
+      const supportsReasoning =
+        typeof m.supportsReasoning === 'boolean'
+          ? m.supportsReasoning
+          : typeof m.supports_reasoning === 'boolean'
+            ? m.supports_reasoning
+            : undefined;
       entry.supports_vision = supportsVision || undefined;
       entry.supportsVision = supportsVision || undefined;
+      if (supportsReasoning !== undefined) {
+        entry.supports_reasoning = supportsReasoning;
+        entry.supportsReasoning = supportsReasoning;
+      }
       entry.reasoning_effort = reasoningEffort || undefined;
       entry.reasoningEffort = reasoningEffort || undefined;
       entry.tool_followup_mode = toolFollowupMode || undefined;

@@ -127,11 +127,18 @@ function createAppConfigFromModels(modelsList = [], secretsList = []) {
     const resolvedKey = apiKeyEnv
       ? secretValueByName.get(normalizeSecretName(apiKeyEnv)) || null
       : null;
+    const supportsReasoning =
+      typeof m.supportsReasoning === 'boolean'
+        ? m.supportsReasoning
+        : typeof m.supports_reasoning === 'boolean'
+          ? m.supports_reasoning
+          : undefined;
     models[m.name] = {
       name: m.name,
       provider: m.provider,
       model: m.model,
       supports_vision: Boolean(m.supportsVision ?? m.supports_vision),
+      supports_reasoning: supportsReasoning,
       reasoning_effort: reasoningEffort || null,
       tool_followup_mode: toolFollowupMode || null,
       api_key_env: apiKeyEnv,
@@ -164,11 +171,18 @@ function createModelSettings(name, raw) {
   const headers = normalizeMapping(raw.extra_headers || raw.extraHeaders, `extra_headers for ${name}`);
   const body = normalizeMapping(raw.extra_body || raw.extraBody, `extra_body for ${name}`);
   const tools = normalizeStringList(raw.tools, `tools for ${name}`);
+  const supportsReasoning =
+    typeof raw.supports_reasoning === 'boolean'
+      ? raw.supports_reasoning
+      : typeof raw.supportsReasoning === 'boolean'
+        ? raw.supportsReasoning
+        : undefined;
   return {
     name,
     provider: String(raw.provider),
     model: String(raw.model),
     supports_vision: Boolean(raw.supports_vision ?? raw.supportsVision),
+    supports_reasoning: supportsReasoning,
     reasoning_effort: normalizeReasoningEffort(raw.reasoning_effort || raw.reasoningEffort || null) || null,
     tool_followup_mode: normalizeToolFollowupMode(raw.tool_followup_mode || raw.toolFollowupMode || null) || null,
     api_key_env: raw.api_key_env || raw.apiKeyEnv || null,

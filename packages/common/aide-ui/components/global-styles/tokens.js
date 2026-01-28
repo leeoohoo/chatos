@@ -18,6 +18,17 @@ export const GLOBAL_STYLE_TOKENS = `
         --ds-selected-bg: linear-gradient(90deg, rgba(0, 212, 255, 0.14), rgba(124, 58, 237, 0.08));
         --ds-splitter-bg: #d9d9d9;
 
+        --ds-text-primary: #111827;
+        --ds-text-secondary: #4b5563;
+        --ds-text-muted: #6b7280;
+        --ds-text-subtle: #9ca3af;
+        --ds-tag-bg: #f3f4f6;
+        --ds-tag-text: #374151;
+        --ds-pill-flow-bg: #eef2ff;
+        --ds-pill-flow-text: #4338ca;
+        --ds-pill-custom-bg: #f3f4f6;
+        --ds-pill-custom-text: #4b5563;
+
         --ds-floating-bg: rgba(255, 255, 255, 0.82);
         --ds-floating-border: rgba(15, 23, 42, 0.1);
         --ds-floating-shadow: 0 14px 40px rgba(15, 23, 42, 0.12);
@@ -69,6 +80,17 @@ export const GLOBAL_STYLE_TOKENS = `
         --ds-subtle-bg: rgba(255, 255, 255, 0.04);
         --ds-selected-bg: linear-gradient(90deg, rgba(0, 212, 255, 0.18), rgba(168, 85, 247, 0.14));
         --ds-splitter-bg: #30363d;
+
+        --ds-text-primary: #e2e8f0;
+        --ds-text-secondary: #cbd5e1;
+        --ds-text-muted: #94a3b8;
+        --ds-text-subtle: #64748b;
+        --ds-tag-bg: rgba(148, 163, 184, 0.16);
+        --ds-tag-text: #e2e8f0;
+        --ds-pill-flow-bg: rgba(99, 102, 241, 0.2);
+        --ds-pill-flow-text: #c7d2fe;
+        --ds-pill-custom-bg: rgba(148, 163, 184, 0.16);
+        --ds-pill-custom-text: #e2e8f0;
 
         --ds-floating-bg: rgba(10, 12, 18, 0.78);
         --ds-floating-border: rgba(255, 255, 255, 0.14);
