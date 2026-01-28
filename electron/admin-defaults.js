@@ -2,11 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import {
   buildAdminSeed,
+  buildBuiltinMcpServers,
   extractVariables,
   loadBuiltinPromptFiles,
   parseMcpServers,
   parseModelsWithDefault,
   safeRead,
+  upsertBuiltinMcpServers,
 } from '../packages/aide/shared/data/legacy.js';
 
 export { resolveSessionRoot, persistSessionRoot } from '../src/session-root.js';
@@ -155,7 +157,25 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
     const raw =
       safeRead(path.join(defaultsRoot, 'shared', 'defaults', 'mcp-servers.json')) ||
       safeRead(defaultPaths.mcpServers);
-    return parseMcpServers(raw);
+    const builtin = buildBuiltinMcpServers(defaultPaths, { env });
+    const hostApp = builtin[0]?.app_id || (env?.MODEL_CLI_HOST_APP ? env.MODEL_CLI_HOST_APP : 'chatos');
+    const parsed = parseMcpServers(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return builtin;
+    }
+    const byKey = new Map();
+    builtin.forEach((entry) => {
+      const key = entry?.id || entry?.name;
+      if (key) byKey.set(String(key), entry);
+    });
+    parsed.forEach((entry) => {
+      if (!entry) return;
+      const key = entry.id || entry.name;
+      if (!key) return;
+      const appId = entry.app_id || entry.appId || hostApp || '';
+      byKey.set(String(key), { ...entry, app_id: appId });
+    });
+    return Array.from(byKey.values());
   }
 
   function refreshModelsFromDefaults() {
@@ -231,6 +251,15 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
     }
   }
 
+  function refreshMcpServersFromDefaults() {
+    try {
+      return upsertBuiltinMcpServers({ adminDb, adminServices, defaultPaths, env });
+    } catch (err) {
+      console.error('[MCP] 同步内置 MCP servers 失败', err);
+      return { inserted: 0, updated: 0, skipped: 0, error: err?.message || String(err) };
+    }
+  }
+
   function maybeReseedModelsFromYaml() {
     const current = adminServices.models.list();
     const looksBroken =
@@ -262,6 +291,7 @@ export function createAdminDefaultsManager({ defaultPaths, adminDb, adminService
     readDefaultModels,
     readDefaultPrompts,
     refreshBuiltinsFromDefaults,
+    refreshMcpServersFromDefaults,
     refreshModelsFromDefaults,
     maybeReseedModelsFromYaml,
     maybeReseedSubagentsFromPlugins,

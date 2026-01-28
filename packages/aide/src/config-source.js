@@ -9,6 +9,7 @@ import {
   extractVariables,
   loadBuiltinPromptFiles,
   safeRead,
+  upsertBuiltinMcpServers,
 } from '../shared/data/legacy.js';
 import { syncAdminToFiles } from '../shared/data/sync.js';
 import { getHostApp } from '../shared/host-app.js';
@@ -56,6 +57,7 @@ export function getAdminServices() {
   const services = createAdminServices(adminDb);
   maybeReseedModels(adminDb, services, seed);
   refreshBuiltinPrompts(adminDb, services, defaultPaths);
+  upsertBuiltinMcpServers({ adminDb, adminServices: services, defaultPaths, env: process.env });
   maybePurgeUiAppsSyncedAdminData({ stateDir, services });
   syncAdminToFiles(services.snapshot(), {
     modelsPath: defaultPaths.models,

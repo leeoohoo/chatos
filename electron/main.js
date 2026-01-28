@@ -202,6 +202,7 @@ if (ENABLE_ALL_SUBAGENTS) {
 }
 adminDefaults.refreshModelsFromDefaults();
 adminDefaults.refreshBuiltinsFromDefaults();
+adminDefaults.refreshMcpServersFromDefaults();
 if (!UIAPPS_SYNC_AI_CONTRIBUTES) {
   maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostApp, env: runtimeEnv });
 }

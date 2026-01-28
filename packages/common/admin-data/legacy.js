@@ -128,6 +128,206 @@ export function parseMcpServers(raw) {
   return [];
 }
 
+function quoteCmdArg(token) {
+  const raw = String(token ?? '');
+  if (!raw) return '';
+  if (/[\\\s"]/g.test(raw)) return JSON.stringify(raw);
+  return raw;
+}
+
+function buildCmdUrl(command, args = []) {
+  const parts = [command, ...(Array.isArray(args) ? args : [])].map(quoteCmdArg).filter(Boolean);
+  return parts.length > 0 ? `cmd://${parts.join(' ')}` : '';
+}
+
+function resolveHostApp(options = {}) {
+  const env = options?.env && typeof options.env === 'object' ? options.env : null;
+  if (env) {
+    return getHostApp(env) || 'chatos';
+  }
+  const hostApp = typeof options?.hostApp === 'string' ? options.hostApp.trim() : '';
+  if (hostApp) {
+    return getHostApp({ MODEL_CLI_HOST_APP: hostApp }) || 'chatos';
+  }
+  return getHostApp() || 'chatos';
+}
+
+export function buildBuiltinMcpServers(defaultPaths = {}, options = {}) {
+  const defaultsRoot = path.resolve(defaultPaths.defaultsRoot || '');
+  if (!defaultsRoot) return [];
+  const appId = resolveHostApp(options);
+  const resolveEntry = (relPath) => path.resolve(defaultsRoot, relPath);
+  const makeCmdUrl = (relPath, args = []) => buildCmdUrl('node', [resolveEntry(relPath), ...args]);
+
+  const entries = [
+    {
+      id: '8fe4e8f4-b8d1-4f59-967d-374a55f61417',
+      name: 'project_files',
+      entry: 'mcp_servers/filesystem-server.js',
+      locked: true,
+      enabled: true,
+      description: 'Project files (read-only)',
+    },
+    {
+      id: 'f2d0dbcb-e86e-493a-86b1-05cff71a14cb',
+      name: 'code_writer',
+      entry: 'mcp_servers/filesystem-server.js',
+      args: ['--write', '--name', 'code_writer'],
+      locked: true,
+      enabled: true,
+      description: 'Project files (write)',
+    },
+    {
+      id: 'b10599fb-bda3-439f-9143-565fc2a2700c',
+      name: 'code_maintainer',
+      entry: 'mcp_servers/code-maintainer-server.js',
+      args: ['--write'],
+      locked: true,
+      enabled: true,
+      description: 'Code maintenance tools',
+    },
+    {
+      id: 'a176d672-15f4-43c5-8c5f-6516cad8240f',
+      name: 'shell_tasks',
+      entry: 'mcp_servers/shell-server.js',
+      locked: true,
+      enabled: true,
+      description: 'Shell task runner',
+    },
+    {
+      id: '56b1ee50-8160-4ec8-89ed-b65c81b8a3fd',
+      name: 'task_manager',
+      entry: 'mcp_servers/task-server.js',
+      locked: true,
+      enabled: true,
+      description: 'Task manager',
+    },
+    {
+      id: '36bb1921-66e8-4901-9739-2177349f5dd4',
+      name: 'subagent_router',
+      entry: 'mcp_servers/subagent-server.js',
+      locked: true,
+      enabled: true,
+      description: 'Subagent router',
+    },
+    {
+      id: '9efd2c3e-435a-4aa5-8838-e4289f2b616a',
+      name: 'project_journal',
+      entry: 'mcp_servers/project-journal-server.js',
+      locked: true,
+      enabled: true,
+      description: 'Project journal',
+    },
+    {
+      id: 'bdc91c89-b9d8-44d2-a572-5afa9c0cccb9',
+      name: 'ui_prompter',
+      entry: 'mcp_servers/ui-prompt-server.js',
+      locked: true,
+      enabled: true,
+      description: 'UI prompt helper',
+    },
+    {
+      id: 'ba246952-8140-4f8e-ab46-33757b209585',
+      name: 'lsp_bridge',
+      entry: 'mcp_servers/lsp-bridge-server.js',
+      locked: true,
+      enabled: true,
+      description: 'LSP bridge',
+    },
+    {
+      id: 'cb5baaba-ab78-4189-b210-716be799268c',
+      name: 'chrome_devtools',
+      entry: 'mcp_servers/chrome-devtools-mcp-server.js',
+      args: ['--browser-url=http://127.0.0.1:9222'],
+      locked: false,
+      enabled: false,
+      description: 'Chrome DevTools MCP',
+    },
+  ];
+
+  return entries
+    .map((entry) => {
+      const url = entry.url || (entry.entry ? makeCmdUrl(entry.entry, entry.args || []) : '');
+      return {
+        id: entry.id,
+        app_id: entry.app_id || appId,
+        name: entry.name || '',
+        url,
+        description: entry.description || '',
+        tags: Array.isArray(entry.tags) ? entry.tags : [],
+        locked: entry.locked === true,
+        enabled: entry.enabled !== false,
+        auth: entry.auth || undefined,
+        callMeta: entry.callMeta || entry.call_meta || undefined,
+        timeout_ms: Number.isFinite(entry.timeout_ms) ? entry.timeout_ms : undefined,
+        max_timeout_ms: Number.isFinite(entry.max_timeout_ms) ? entry.max_timeout_ms : undefined,
+      };
+    })
+    .filter((entry) => entry.name && entry.url);
+}
+
+export function upsertBuiltinMcpServers({ adminDb, adminServices, defaultPaths, env, hostApp } = {}) {
+  if (!adminDb) return { inserted: 0, updated: 0, skipped: 0 };
+  const builtins = buildBuiltinMcpServers(defaultPaths, { env, hostApp });
+  if (builtins.length === 0) return { inserted: 0, updated: 0, skipped: 0 };
+
+  const existing =
+    (adminServices?.mcpServers?.list ? adminServices.mcpServers.list() : null) ||
+    adminDb.list('mcpServers') ||
+    [];
+  const existingById = new Map(
+    (Array.isArray(existing) ? existing : []).filter((srv) => srv?.id).map((srv) => [String(srv.id), srv])
+  );
+  const now = new Date().toISOString();
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  builtins.forEach((entry) => {
+    if (!entry?.id) {
+      skipped += 1;
+      return;
+    }
+    const prev = existingById.get(String(entry.id)) || null;
+    const base = {
+      ...entry,
+      createdAt: prev?.createdAt || now,
+      updatedAt: now,
+    };
+
+    if (prev) {
+      const payload = { ...base };
+      if (typeof prev.enabled === 'boolean') {
+        payload.enabled = prev.enabled;
+      }
+      if (!base.locked) {
+        if (prev.url) payload.url = prev.url;
+        if (typeof prev.description === 'string' && prev.description.trim()) {
+          payload.description = prev.description;
+        }
+        if (Array.isArray(prev.tags) && prev.tags.length > 0) {
+          payload.tags = prev.tags;
+        }
+        if (prev.auth) payload.auth = prev.auth;
+        if (prev.callMeta) payload.callMeta = prev.callMeta;
+      }
+      adminDb.update('mcpServers', prev.id, payload);
+      updated += 1;
+      return;
+    }
+
+    adminDb.insert('mcpServers', {
+      ...base,
+      id: entry.id || crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    });
+    inserted += 1;
+  });
+
+  return { inserted, updated, skipped };
+}
+
 export function parseInstalledPlugins(raw, options = {}) {
   const parsed = parseJsonSafe(raw, {});
   let entries = [];
@@ -352,6 +552,16 @@ export function buildAdminSeed(defaultPaths = {}) {
     if (!seed.models.some((m) => m.isDefault) && seed.models.length > 0) {
       seed.models[0].isDefault = true;
     }
+  }
+
+  const builtinMcpServers = buildBuiltinMcpServers(defaultPaths, { hostApp });
+  if (builtinMcpServers.length > 0) {
+    seed.mcpServers = builtinMcpServers.map((srv) => ({
+      ...srv,
+      id: srv.id || crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    }));
   }
 
 
