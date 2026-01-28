@@ -58,10 +58,12 @@ export class SettingsService extends BaseService {
     if (!runtime) return null;
     const base = { ...DEFAULT_RUNTIME_SETTINGS, ...runtime };
     const normalizeWorkdir = (value) => (typeof value === 'string' ? value.trim() : '');
+    const normalizeModel = (value) => (typeof value === 'string' ? value.trim() : '');
     return {
       maxToolPasses: coerceRuntimeNumber(base.maxToolPasses),
       promptLanguage: normalizeRuntimeLanguage(base.promptLanguage, DEFAULT_RUNTIME_SETTINGS.promptLanguage),
       landConfigId: typeof base.landConfigId === 'string' ? base.landConfigId.trim() : '',
+      subagentDefaultModel: normalizeModel(base.subagentDefaultModel),
       summaryTokenThreshold: coerceRuntimeNumber(base.summaryTokenThreshold),
       autoRoute: Boolean(base.autoRoute),
       logRequests: Boolean(base.logRequests),

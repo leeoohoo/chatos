@@ -579,6 +579,343 @@ export const GLOBAL_TOOLING_STYLES = `
       :root[data-theme='dark'] .ds-subagent-step-label {
         color: rgba(148, 163, 184, 0.85);
       }
+      .ds-subagent-popover {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding: 0;
+      }
+      .ds-subagent-popover-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        background: var(--ds-subtle-bg);
+        border-bottom: 1px solid var(--ds-panel-border);
+      }
+      .ds-subagent-popover-header-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .ds-subagent-popover-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.14);
+        color: #6366f1;
+      }
+      .ds-subagent-popover-title {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .ds-subagent-popover-title-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-popover-title-text {
+        color: rgba(255, 255, 255, 0.92);
+      }
+      .ds-subagent-popover-subtitle {
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      :root[data-theme='dark'] .ds-subagent-popover-subtitle {
+        color: rgba(148, 163, 184, 0.9);
+      }
+      .ds-subagent-popover-header-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .ds-subagent-popover-chips {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .ds-subagent-header-chip {
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(99, 102, 241, 0.35);
+        background: rgba(99, 102, 241, 0.12);
+        font-size: 10px;
+        color: rgba(67, 56, 202, 0.9);
+      }
+      .ds-subagent-header-chip[data-status='pending'] {
+        border-color: rgba(245, 158, 11, 0.45);
+        background: rgba(245, 158, 11, 0.16);
+        color: rgba(180, 83, 9, 0.9);
+      }
+      .ds-subagent-header-chip[data-status='ok'] {
+        border-color: rgba(34, 197, 94, 0.45);
+        background: rgba(34, 197, 94, 0.16);
+        color: rgba(21, 128, 61, 0.9);
+      }
+      .ds-subagent-header-chip[data-status='error'],
+      .ds-subagent-header-chip[data-status='timeout'] {
+        border-color: rgba(239, 68, 68, 0.5);
+        background: rgba(239, 68, 68, 0.16);
+        color: rgba(153, 27, 27, 0.9);
+      }
+      .ds-subagent-header-chip[data-status='canceled'] {
+        border-color: rgba(249, 115, 22, 0.5);
+        background: rgba(249, 115, 22, 0.16);
+        color: rgba(154, 52, 18, 0.9);
+      }
+      .ds-subagent-header-chip[data-status='partial'] {
+        border-color: rgba(14, 165, 233, 0.5);
+        background: rgba(14, 165, 233, 0.16);
+        color: rgba(12, 74, 110, 0.9);
+      }
+      .ds-subagent-popover-actions {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .ds-subagent-header-btn {
+        border: 1px solid var(--ds-panel-border);
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 10px;
+        color: rgba(15, 23, 42, 0.8);
+        cursor: pointer;
+      }
+      .ds-subagent-header-btn:hover {
+        background: rgba(15, 23, 42, 0.05);
+      }
+      :root[data-theme='dark'] .ds-subagent-header-btn {
+        background: rgba(15, 23, 42, 0.25);
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-header-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .ds-subagent-popover-body {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 0;
+        padding: 10px 12px;
+      }
+      .ds-subagent-popover-column.is-left {
+        padding-right: 12px;
+        border-right: 1px solid var(--ds-panel-border);
+      }
+      .ds-subagent-popover-column.is-right {
+        padding-left: 12px;
+      }
+      .ds-subagent-popover-column {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .ds-subagent-popover-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ds-subagent-popover-section-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(71, 85, 105, 0.85);
+      }
+      :root[data-theme='dark'] .ds-subagent-popover-section-title {
+        color: rgba(148, 163, 184, 0.9);
+      }
+      .ds-subagent-meta-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ds-subagent-meta-card {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-subagent-meta-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: rgba(71, 85, 105, 0.7);
+      }
+      :root[data-theme='dark'] .ds-subagent-meta-label {
+        color: rgba(148, 163, 184, 0.75);
+      }
+      .ds-subagent-meta-value {
+        margin-top: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+        word-break: break-word;
+      }
+      :root[data-theme='dark'] .ds-subagent-meta-value {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .ds-subagent-stat-card {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-subagent-stat-value {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-stat-value {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-stat-label {
+        margin-top: 2px;
+        font-size: 10px;
+        color: rgba(71, 85, 105, 0.7);
+      }
+      :root[data-theme='dark'] .ds-subagent-stat-label {
+        color: rgba(148, 163, 184, 0.75);
+      }
+      .ds-subagent-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ds-subagent-timeline-item {
+        display: grid;
+        grid-template-columns: 16px 1fr;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .ds-subagent-timeline-track {
+        position: relative;
+        display: flex;
+        justify-content: center;
+      }
+      .ds-subagent-timeline-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--tool-accent);
+      }
+      .ds-subagent-timeline-line {
+        position: absolute;
+        top: 10px;
+        bottom: -8px;
+        width: 2px;
+        background: rgba(99, 102, 241, 0.35);
+      }
+      .ds-subagent-timeline-card {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-subagent-timeline-item.is-error .ds-subagent-timeline-card {
+        border-color: rgba(239, 68, 68, 0.45);
+        background: var(--ds-change-bg-error);
+      }
+      .ds-subagent-timeline-item.is-truncated .ds-subagent-timeline-card {
+        border-color: rgba(245, 158, 11, 0.45);
+        background: var(--ds-change-bg-warning);
+      }
+      .ds-subagent-timeline-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .ds-subagent-timeline-index {
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(71, 85, 105, 0.8);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-index {
+        color: rgba(148, 163, 184, 0.85);
+      }
+      .ds-subagent-timeline-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-title {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-timeline-chip {
+        padding: 1px 6px;
+        border-radius: 999px;
+        border: 1px solid var(--ds-panel-border);
+        font-size: 10px;
+        color: rgba(71, 85, 105, 0.75);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-chip {
+        color: rgba(148, 163, 184, 0.85);
+      }
+      .ds-subagent-timeline-call {
+        font-size: 10px;
+        color: rgba(71, 85, 105, 0.75);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-call {
+        color: rgba(148, 163, 184, 0.85);
+      }
+      .ds-subagent-timeline-time {
+        margin-left: auto;
+        font-size: 10px;
+        color: rgba(71, 85, 105, 0.75);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-time {
+        color: rgba(148, 163, 184, 0.85);
+      }
+      .ds-subagent-timeline-summary {
+        margin-top: 2px;
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.75);
+      }
+      :root[data-theme='dark'] .ds-subagent-timeline-summary {
+        color: rgba(148, 163, 184, 0.82);
+      }
+      .ds-subagent-preview {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+        font-size: 12px;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      :root[data-theme='dark'] .ds-subagent-preview {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .ds-subagent-popover-raw {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ds-subagent-raw-collapse .ant-collapse-header {
+        padding: 4px 0 !important;
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(71, 85, 105, 0.85);
+      }
+      :root[data-theme='dark'] .ds-subagent-raw-collapse .ant-collapse-header {
+        color: rgba(148, 163, 184, 0.9);
+      }
       .ds-tool-drawer .ant-drawer-content {
         background: var(--ds-panel-bg);
       }

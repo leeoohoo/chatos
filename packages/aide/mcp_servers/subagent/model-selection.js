@@ -14,13 +14,14 @@ export function resolveSubagentModels({
     commandModel || // model declared on the command, if any
     agentModel || // per-agent model from plugin manifest
     null;
-  const defaultModel =
+  const defaultModel = typeof defaultModelName === 'string' ? defaultModelName.trim() : '';
+  const configDefaultModel =
     config && typeof config.getModel === 'function' ? config.getModel(null).name : null;
   const targetModel = resolveSubagentInvocationModel({
     configuredModel,
     currentModel: normalizedCallerModel,
     client,
-    defaultModel: defaultModel || defaultModelName,
+    defaultModel,
   });
   if (!targetModel) {
     throw new Error('Target model could not be resolved; check configuration.');
@@ -31,6 +32,7 @@ export function resolveSubagentModels({
     configuredModel,
     normalizedCallerModel,
     defaultModel,
+    configDefaultModel,
     targetModel,
     fallbackModel,
   };

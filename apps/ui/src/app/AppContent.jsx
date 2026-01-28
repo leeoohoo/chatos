@@ -22,6 +22,7 @@ export function AppContent({
   promptActions,
   developerMode = false,
   onNavigate,
+  onSaveSettings,
 }) {
   const rawMenu = typeof menu === 'string' ? menu : 'chat/session';
   const normalizedMenu =
@@ -81,6 +82,7 @@ export function AppContent({
             promptActions={promptActions}
             subagentActions={subagentActions}
             onSetSubagentModel={onSetSubagentModel}
+            onSaveSettings={onSaveSettings}
             developerMode={developerMode}
           />
         </div>
@@ -97,6 +99,7 @@ export function AppContent({
             promptActions={promptActions}
             subagentActions={subagentActions}
             onSetSubagentModel={onSetSubagentModel}
+            onSaveSettings={onSaveSettings}
             developerMode={developerMode}
           />
         </div>

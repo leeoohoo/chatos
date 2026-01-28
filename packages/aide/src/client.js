@@ -13,7 +13,6 @@ import {
   sanitizeToolResultForSession,
   throwIfAborted,
 } from './client-helpers.js';
-
 export { _internal } from './client-helpers.js';
 
 export class ModelClient {

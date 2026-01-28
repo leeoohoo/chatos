@@ -19,9 +19,14 @@ function AdvancedSettingsManager({
   promptActions,
   subagentActions,
   onSetSubagentModel,
+  onSaveSettings,
   developerMode = false,
 }) {
   const [currentTab, setCurrentTab] = useState(() => normalizeTab(activeTab));
+  const runtimeSettings = useMemo(
+    () => (Array.isArray(admin?.settings) ? admin.settings.find((item) => item?.id === 'runtime') : null),
+    [admin?.settings]
+  );
 
   useEffect(() => {
     setCurrentTab(normalizeTab(activeTab));
@@ -72,12 +77,14 @@ function AdvancedSettingsManager({
           <SubagentsManager
             data={admin?.subagents}
             models={admin?.models}
+            runtimeSettings={runtimeSettings}
             onUpdateStatus={subagentActions?.updateStatus}
             onListMarketplace={subagentActions?.listMarketplace}
             onAddMarketplaceSource={subagentActions?.addMarketplaceSource}
             onInstallPlugin={subagentActions?.installPlugin}
             onUninstallPlugin={subagentActions?.uninstallPlugin}
             onSetModel={onSetSubagentModel}
+            onSaveSettings={onSaveSettings}
             loading={loading}
             developerMode={developerMode}
           />
@@ -98,8 +105,10 @@ function AdvancedSettingsManager({
       loading,
       mcpActions,
       onSetSubagentModel,
+      onSaveSettings,
       promptActions,
       subagentActions,
+      runtimeSettings,
     ]
   );
 

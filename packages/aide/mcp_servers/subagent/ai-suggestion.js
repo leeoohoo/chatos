@@ -1,3 +1,5 @@
+import { resolveSubagentDefaultModel } from '../../src/subagents/model.js';
+
 export function buildAgentSuggestionPrompt({ summaries = [], task = '', hints = {} } = {}) {
   const hintText = [
     hints.category ? `Preferred Category: ${hints.category}` : '',
@@ -25,11 +27,13 @@ Return a JSON object with the following structure (no markdown formatting, just 
 }`;
 }
 
-export function resolveSuggestionModel(config, defaultModelName) {
+export function resolveSuggestionModel({ config, client, defaultModelName } = {}) {
+  const preferred = resolveSubagentDefaultModel(client, { defaultModel: defaultModelName });
+  if (preferred) return preferred;
   const fromConfig =
     (config && config.defaultModel) ||
     (config && config.models ? Object.keys(config.models)[0] : '');
-  return fromConfig || defaultModelName || '';
+  return fromConfig || '';
 }
 
 export function parseAgentSuggestionResponse(text) {

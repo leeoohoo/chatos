@@ -10,6 +10,7 @@ const SUBAGENT_INSTALL_HINT =
 function SubagentsManager({
   data,
   models,
+  runtimeSettings,
   onUpdateStatus,
   onListMarketplace,
   onAddMarketplaceSource,
@@ -17,11 +18,14 @@ function SubagentsManager({
   onUninstallPlugin,
   loading,
   onSetModel,
+  onSaveSettings,
   developerMode = false,
 }) {
   const [form] = Form.useForm();
+  const [defaultForm] = Form.useForm();
   const [marketForm] = Form.useForm();
   const [settingModel, setSettingModel] = useState(false);
+  const [savingDefaultModel, setSavingDefaultModel] = useState(false);
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketplace, setMarketplace] = useState([]);
   const [sources, setSources] = useState([]);
@@ -61,6 +65,11 @@ function SubagentsManager({
     const fallback = list.find((m) => m?.name)?.name;
     return preferred || fallback || 'deepseek_chat';
   }, [models]);
+  const runtimeSubagentDefaultModel = useMemo(() => {
+    return typeof runtimeSettings?.subagentDefaultModel === 'string'
+      ? runtimeSettings.subagentDefaultModel.trim()
+      : '';
+  }, [runtimeSettings]);
   const configuredModelNames = useMemo(() => {
     const set = new Set();
     (Array.isArray(models) ? models : []).forEach((m) => {
@@ -70,8 +79,13 @@ function SubagentsManager({
     return set;
   }, [models]);
   const inferredSubagentDefaultModel = useMemo(() => {
-    return configuredModelNames.has('deepseek_chat') ? 'deepseek_chat' : null;
-  }, [configuredModelNames]);
+    return runtimeSubagentDefaultModel || null;
+  }, [runtimeSubagentDefaultModel]);
+
+  useEffect(() => {
+    if (!defaultForm) return;
+    defaultForm.setFieldsValue({ subagentDefaultModel: runtimeSubagentDefaultModel || undefined });
+  }, [defaultForm, runtimeSubagentDefaultModel]);
 
   const handleSetModel = async () => {
     if (!onSetModel) return;
@@ -102,6 +116,22 @@ function SubagentsManager({
       message.error(err?.message || '更新模型失败');
     } finally {
       setSettingModel(false);
+    }
+  };
+
+  const handleSaveDefaultModel = async () => {
+    if (!onSaveSettings) return;
+    try {
+      const values = await defaultForm.validateFields();
+      const selected = typeof values?.subagentDefaultModel === 'string' ? values.subagentDefaultModel.trim() : '';
+      setSavingDefaultModel(true);
+      await onSaveSettings({ subagentDefaultModel: selected || '' });
+      message.success('默认模型已更新');
+    } catch (err) {
+      if (err?.errorFields) return;
+      message.error(err?.message || '更新默认模型失败');
+    } finally {
+      setSavingDefaultModel(false);
     }
   };
 
@@ -616,6 +646,42 @@ function SubagentsManager({
 	          scroll={{ x: 1200 }}
 	        />
 	      </Card>
+      {typeof onSaveSettings === 'function' ? (
+        <Card title="子流程默认模型" size="small">
+          <Form
+            form={defaultForm}
+            layout="vertical"
+            initialValues={{ subagentDefaultModel: runtimeSubagentDefaultModel || undefined }}
+            onFinish={handleSaveDefaultModel}
+            style={{ width: '100%' }}
+          >
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={12} lg={10}>
+                <Form.Item name="subagentDefaultModel" label="默认模型">
+                  <Select
+                    showSearch
+                    allowClear
+                    optionFilterProp="label"
+                    placeholder="不选则继承主流程模型"
+                    options={modelOptions}
+                    disabled={modelOptions.length === 0}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12} lg={14}>
+                <Space wrap style={{ height: '100%', alignItems: 'center' }}>
+                  <Button type="primary" htmlType="submit" loading={savingDefaultModel}>
+                    保存
+                  </Button>
+                </Space>
+              </Col>
+            </Row>
+          </Form>
+          <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
+            仅当子流程/命令未指定模型时生效；未选择时将跟随主流程当前模型。
+          </Text>
+        </Card>
+      ) : null}
       {typeof onSetModel === 'function' ? (
         <Card title="批量设置模型" size="small">
           <Form

@@ -143,6 +143,13 @@ export function applyRuntimeSettingsToEnv(runtimeConfig, options = {}) {
   if (promptLogMode) {
     setStringEnv('MODEL_CLI_UI_PROMPTS_LOG_MODE', promptLogMode);
   }
+  const subagentDefaultModel =
+    typeof runtimeConfig.subagentDefaultModel === 'string'
+      ? runtimeConfig.subagentDefaultModel.trim()
+      : '';
+  if (subagentDefaultModel) {
+    setStringEnv('MODEL_CLI_SUBAGENT_DEFAULT_MODEL', subagentDefaultModel);
+  }
 }
 
 export function applyRuntimeSettings(runtimeConfig, options = {}) {

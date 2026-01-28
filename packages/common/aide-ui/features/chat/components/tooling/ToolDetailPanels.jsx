@@ -12,14 +12,14 @@ import { SubagentToolDetails } from './details/SubagentToolDetails.jsx';
 import { TaskToolDetails } from './details/TaskToolDetails.jsx';
 import { ToolMetaSection } from './details/ToolMetaSection.jsx';
 
-export function ToolDetails({ toolKind, structuredContent, liveSteps, ...props }) {
+export function ToolDetails({ toolKind, structuredContent, liveSteps, display, ...props }) {
   let body = null;
   if (toolKind === 'shell') body = <ShellToolDetails {...props} />;
   else if (toolKind === 'filesystem') body = <FilesystemToolDetails {...props} structuredContent={structuredContent} />;
   else if (toolKind === 'lsp') body = <LspToolDetails {...props} structuredContent={structuredContent} />;
   else if (toolKind === 'task') body = <TaskToolDetails {...props} structuredContent={structuredContent} />;
   else if (toolKind === 'subagent')
-    body = <SubagentToolDetails {...props} structuredContent={structuredContent} liveSteps={liveSteps} />;
+    body = <SubagentToolDetails {...props} structuredContent={structuredContent} liveSteps={liveSteps} display={display} />;
   else if (toolKind === 'prompt') body = <PromptToolDetails {...props} structuredContent={structuredContent} />;
   else if (toolKind === 'journal') body = <JournalToolDetails {...props} structuredContent={structuredContent} />;
   else if (toolKind === 'browser') body = <BrowserToolDetails {...props} structuredContent={structuredContent} />;
@@ -27,10 +27,12 @@ export function ToolDetails({ toolKind, structuredContent, liveSteps, ...props }
     body = <CodeMaintainerToolDetails {...props} structuredContent={structuredContent} />;
   else body = <DefaultToolDetails {...props} structuredContent={structuredContent} />;
 
+  const showMeta = !(toolKind === 'subagent' && display === 'popover');
+
   return (
     <>
       {body}
-      <ToolMetaSection structuredContent={structuredContent} showStructured={toolKind !== 'subagent'} />
+      {showMeta ? <ToolMetaSection structuredContent={structuredContent} showStructured={toolKind !== 'subagent'} /> : null}
     </>
   );
 }

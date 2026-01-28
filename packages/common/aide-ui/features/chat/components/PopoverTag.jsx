@@ -70,6 +70,7 @@ export function PopoverTag({
   maxHeight = 360,
   placement,
   autoAdjustOverflow = true,
+  hideHeader = false,
 }) {
   const [innerOpen, setInnerOpen] = useState(false);
   const safeText = normalizeToken(text) || 'tool';
@@ -105,6 +106,33 @@ export function PopoverTag({
   const resolvedMaxHeight = typeof maxHeight === 'number' ? `min(${maxHeight}px, 78vh)` : maxHeight;
   const overlayStyle = resolvedMaxWidth ? { maxWidth: resolvedMaxWidth } : undefined;
 
+  const headerNode = hideHeader ? null : (
+    <div className="ds-tool-popover-header">
+      <div className="ds-tool-popover-title">
+        <span className="ds-tool-popover-icon">
+          <Icon />
+        </span>
+        <div className="ds-tool-popover-text">
+          <div className="ds-tool-popover-name">{headerTitle}</div>
+          {headerSubtitle ? <div className="ds-tool-popover-subtitle">{headerSubtitle}</div> : null}
+        </div>
+      </div>
+      <div className="ds-tool-popover-meta">
+        <div className="ds-tool-popover-chips">
+          <span className="ds-tool-chip" data-kind={derivedKind}>
+            {kindMeta.label}
+          </span>
+          {statusMeta ? (
+            <span className="ds-tool-chip" data-status={normalizedStatus}>
+              {statusMeta.label}
+            </span>
+          ) : null}
+        </div>
+        {actions ? <div className="ds-tool-popover-actions">{actions}</div> : null}
+      </div>
+    </div>
+  );
+
   return (
     <Popover
       trigger="click"
@@ -114,32 +142,7 @@ export function PopoverTag({
       autoAdjustOverflow={autoAdjustOverflow}
       overlayStyle={overlayStyle}
       classNames={{ root: popoverClassName }}
-      title={
-        <div className="ds-tool-popover-header">
-          <div className="ds-tool-popover-title">
-            <span className="ds-tool-popover-icon">
-              <Icon />
-            </span>
-            <div className="ds-tool-popover-text">
-              <div className="ds-tool-popover-name">{headerTitle}</div>
-              {headerSubtitle ? <div className="ds-tool-popover-subtitle">{headerSubtitle}</div> : null}
-            </div>
-          </div>
-          <div className="ds-tool-popover-meta">
-            <div className="ds-tool-popover-chips">
-              <span className="ds-tool-chip" data-kind={derivedKind}>
-                {kindMeta.label}
-              </span>
-              {statusMeta ? (
-                <span className="ds-tool-chip" data-status={normalizedStatus}>
-                  {statusMeta.label}
-                </span>
-              ) : null}
-            </div>
-            {actions ? <div className="ds-tool-popover-actions">{actions}</div> : null}
-          </div>
-        </div>
-      }
+      title={headerNode}
       content={
         <div
           className="ds-tool-popover-body"

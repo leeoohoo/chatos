@@ -73,6 +73,17 @@ function isModelAvailable(client, name) {
   }
 }
 
+function resolveExplicitSubagentDefault(client, defaultModel) {
+  const explicit = typeof defaultModel === 'string' ? defaultModel.trim() : '';
+  const env =
+    typeof process.env.MODEL_CLI_SUBAGENT_DEFAULT_MODEL === 'string'
+      ? process.env.MODEL_CLI_SUBAGENT_DEFAULT_MODEL.trim()
+      : '';
+  const candidate = explicit || env;
+  if (!candidate) return null;
+  return isModelAvailable(client, candidate) ? candidate : null;
+}
+
 export function describeModelError(err) {
   const rawStatus = err?.status ?? err?.statusCode ?? err?.response?.status;
   const statusNum = Number(rawStatus);
@@ -144,43 +155,24 @@ export function shouldFallbackToCurrentModelOnError(err) {
 }
 
 export function resolveSubagentDefaultModel(client, options = {}) {
-  const explicit =
-    typeof options?.defaultModel === 'string' ? options.defaultModel.trim() : '';
-  const env =
-    typeof process.env.MODEL_CLI_SUBAGENT_DEFAULT_MODEL === 'string'
-      ? process.env.MODEL_CLI_SUBAGENT_DEFAULT_MODEL.trim()
-      : '';
-  const candidate = explicit || env || DEFAULT_SUBAGENT_MODEL_NAME;
-  if (!candidate) return null;
-
-  if (isModelAvailable(client, candidate)) return candidate;
-  return null;
+  return resolveExplicitSubagentDefault(client, options?.defaultModel);
 }
 
 export function resolveSubagentInvocationModel({ configuredModel, currentModel, client, defaultModel } = {}) {
   const explicit = typeof configuredModel === 'string' ? configuredModel.trim() : '';
+  const current = typeof currentModel === 'string' ? currentModel.trim() : '';
+  const explicitDefault = resolveExplicitSubagentDefault(client, defaultModel);
+
   if (explicit) {
     if (isModelAvailable(client, explicit)) {
       return explicit;
     }
     // 子流程配置的模型不可用时：本轮优先回退到主流程当前模型。
-    const current = typeof currentModel === 'string' ? currentModel.trim() : '';
     if (current) return current;
+    return null;
+  } else {
+    if (explicitDefault) return explicitDefault;
+    if (current) return current;
+    return null;
   }
-
-  const preferred = resolveSubagentDefaultModel(client, { defaultModel });
-  if (preferred) return preferred;
-
-  const current = typeof currentModel === 'string' ? currentModel.trim() : '';
-  if (current) return current;
-
-  if (client && typeof client.getDefaultModel === 'function') {
-    try {
-      return client.getDefaultModel();
-    } catch {
-      // ignore
-    }
-  }
-  return null;
 }
-

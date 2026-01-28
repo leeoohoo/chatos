@@ -64,7 +64,7 @@ async function suggestAgentWithAI({
   const client = getClient(config);
 
   // Use the default model for routing (matching CLI behavior).
-  const model = resolveSuggestionModel(config, defaultModelName);
+  const model = resolveSuggestionModel({ config, client, defaultModelName });
   if (!model) {
     return null;
   }

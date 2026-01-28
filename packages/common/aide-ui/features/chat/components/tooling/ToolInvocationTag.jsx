@@ -56,6 +56,8 @@ export function ToolInvocationTag({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const toolNameText = normalizeText(name).toLowerCase();
+  const isRunSubAgent = toolNameText.includes('run_sub_agent');
   const resolvedStructuredContent = structuredContent ?? pickToolStructuredContent(results);
   const resolvedIsError = toolIsError === true || pickToolIsError(results);
 
@@ -73,6 +75,7 @@ export function ToolInvocationTag({
 
   const { argsInfo, toolKind, shellResult, status, subtitle, color } = presentation;
   const isSubagent = toolKind === 'subagent';
+  const hidePopoverHeader = isSubagent && isRunSubAgent;
   const popoverMaxWidth = maxWidth;
   const popoverMaxHeight = maxHeight;
   const popoverPlacement = isSubagent ? 'bottomLeft' : undefined;
@@ -153,6 +156,7 @@ export function ToolInvocationTag({
         maxWidth={popoverMaxWidth}
         maxHeight={popoverMaxHeight}
         placement={popoverPlacement}
+        hideHeader={hidePopoverHeader}
       >
         <ToolDetails
           toolName={name}
@@ -163,6 +167,15 @@ export function ToolInvocationTag({
           shellResult={shellResult}
           structuredContent={resolvedStructuredContent}
           liveSteps={liveSteps}
+          display="popover"
+          callId={callId}
+          status={status}
+          canCopyArgs={canCopyArgs}
+          canCopyResult={canCopyResult}
+          canExpand={canExpand}
+          onCopyArgs={onCopyArgs}
+          onCopyResult={onCopyResult}
+          onExpand={onExpand}
         />
       </PopoverTag>
       <Drawer
@@ -196,6 +209,9 @@ export function ToolInvocationTag({
           shellResult={shellResult}
           structuredContent={resolvedStructuredContent}
           liveSteps={liveSteps}
+          display="drawer"
+          callId={callId}
+          status={status}
         />
       </Drawer>
     </>

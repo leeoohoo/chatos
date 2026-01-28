@@ -106,7 +106,16 @@ const eventLogPath =
 const eventLogger = createEventLogger(eventLogPath);
 const HEARTBEAT_INTERVAL_MS = 10000;
 const HEARTBEAT_STALE_MS = 120000;
-const DEFAULT_MODEL_NAME = 'deepseek_chat';
+const runtimeSettings =
+  adminServices?.settings?.getRuntimeConfig ? adminServices.settings.getRuntimeConfig() : null;
+const runtimeSubagentDefaultModel =
+  typeof runtimeSettings?.subagentDefaultModel === 'string'
+    ? runtimeSettings.subagentDefaultModel.trim()
+    : '';
+if (runtimeSubagentDefaultModel) {
+  process.env.MODEL_CLI_SUBAGENT_DEFAULT_MODEL = runtimeSubagentDefaultModel;
+}
+const DEFAULT_MODEL_NAME = runtimeSubagentDefaultModel;
 const runtimeConfigManager = createRuntimeConfigManager({
   adminServices,
   createAppConfigFromModels,
@@ -225,4 +234,3 @@ if (isWorkerMode) {
     process.exit(1);
   });
 }
-
