@@ -66,6 +66,25 @@ export function useChatAgents({ models } = {}) {
     setAgentModalOpen(true);
   };
 
+  const openCloneAgentModal = (agent) => {
+    if (!agent) return;
+    const baseName = typeof agent?.name === 'string' ? agent.name.trim() : '';
+    const nextName = baseName ? `${baseName} Copy` : 'New Agent';
+    setAgentModalInitial({
+      mode: agent.mode || 'custom',
+      landConfigId: agent.landConfigId || '',
+      name: nextName,
+      description: agent.description || '',
+      prompt: agent.prompt || '',
+      modelId: agent.modelId || defaultModelId,
+      workspaceRoot: agent.workspaceRoot || '',
+      mcpServerIds: Array.isArray(agent.mcpServerIds) ? agent.mcpServerIds : [],
+      promptIds: Array.isArray(agent.promptIds) ? agent.promptIds : [],
+      uiApps: Array.isArray(agent.uiApps) ? agent.uiApps : [],
+    });
+    setAgentModalOpen(true);
+  };
+
   const closeAgentModal = () => {
     setAgentModalOpen(false);
     setAgentModalInitial(null);
@@ -116,6 +135,7 @@ export function useChatAgents({ models } = {}) {
     agentModalInitial,
     openNewAgentModal,
     openEditAgentModal,
+    openCloneAgentModal,
     closeAgentModal,
     saveAgent,
     deleteAgent,
