@@ -11,6 +11,7 @@ export function useChatSessions() {
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [workbarMessages, setWorkbarMessages] = useState([]);
   const [messagesHasMore, setMessagesHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState('');
@@ -28,6 +29,7 @@ export function useChatSessions() {
   const streamBuffersRef = useRef({});
   const mcpStreamsRef = useRef({});
   const subagentStreamsRef = useRef({});
+  const workbarRefreshSeqRef = useRef(0);
 
   const currentSession = useMemo(
     () => sessions.find((s) => normalizeId(s?.id) === normalizeId(selectedSessionId)) || null,
@@ -154,11 +156,34 @@ export function useChatSessions() {
 
   const PAGE_SIZE = 50;
 
+  const refreshWorkbarMessages = async (sessionId, { silent = false } = {}) => {
+    const sid = normalizeId(sessionId);
+    if (!sid) {
+      setWorkbarMessages([]);
+      return;
+    }
+    const seq = (workbarRefreshSeqRef.current || 0) + 1;
+    workbarRefreshSeqRef.current = seq;
+    try {
+      const res = await api.invoke('chat:messages:list', { sessionId: sid });
+      if (res?.ok === false) throw new Error(res?.message || '加载 Workbar 消息失败');
+      const list = Array.isArray(res?.messages) ? res.messages : [];
+      if (workbarRefreshSeqRef.current === seq) {
+        setWorkbarMessages(list);
+      }
+    } catch (err) {
+      if (!silent) {
+        toast.error(err?.message || '加载 Workbar 消息失败');
+      }
+    }
+  };
+
   const refreshMessages = async (sessionId, options = {}) => {
     const sid = normalizeId(sessionId);
     if (!sid) {
       setMessages([]);
       setMessagesHasMore(false);
+      setWorkbarMessages([]);
       return;
     }
     const limit = Number.isFinite(options?.limit) ? options.limit : PAGE_SIZE;
@@ -167,6 +192,7 @@ export function useChatSessions() {
     const list = Array.isArray(res?.messages) ? res.messages : [];
     setMessages(mergeStreamBuffer(sid, list));
     setMessagesHasMore(Boolean(res?.hasMore));
+    void refreshWorkbarMessages(sid, { silent: true }).catch(() => {});
   };
 
   const refreshAll = async () => {
@@ -302,6 +328,9 @@ export function useChatSessions() {
         const hasSubagentStream = Boolean(subagentStreamsRef.current?.[sid]?.[callId]);
         if (sid && callId && !isRunSubAgentToolName(record?.toolName) && !hasSubagentStream) {
           clearSubagentStream(sid, callId);
+        }
+        if (sid) {
+          void refreshWorkbarMessages(sid, { silent: true }).catch(() => {});
         }
         if (normalizeId(record?.sessionId) !== normalizeId(selectedSessionIdRef.current)) return;
         setMessages((prev) => {
@@ -573,15 +602,10 @@ export function useChatSessions() {
       const userMessageId = normalizeId(res?.userMessageId);
       const assistantMessageId = normalizeId(res?.assistantMessageId);
       const now = new Date().toISOString();
-      setComposerText('');
-      setComposerAttachments([]);
-      setMessages((prev) => {
-        const list = Array.isArray(prev) ? prev : [];
-        const seen = new Set(list.map((m) => normalizeId(m?.id)).filter(Boolean));
-        const next = list.slice();
-        const userId = userMessageId || `user_${now}`;
-        if (userId && !seen.has(userId)) {
-          next.push({
+      const userId = userMessageId || `user_${now}`;
+      const assistantId = assistantMessageId || `assistant_${now}`;
+      const userRecord = userId
+        ? {
             id: userId,
             sessionId: sid,
             role: 'user',
@@ -590,10 +614,18 @@ export function useChatSessions() {
             createdAt: now,
             updatedAt: now,
             userMessageId: userId,
-          });
+          }
+        : null;
+      setComposerText('');
+      setComposerAttachments([]);
+      setMessages((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        const seen = new Set(list.map((m) => normalizeId(m?.id)).filter(Boolean));
+        const next = list.slice();
+        if (userId && !seen.has(userId)) {
+          next.push(userRecord);
           seen.add(userId);
         }
-        const assistantId = assistantMessageId || `assistant_${now}`;
         if (assistantId && !seen.has(assistantId)) {
           next.push({
             id: assistantId,
@@ -607,6 +639,7 @@ export function useChatSessions() {
         }
         return next;
       });
+      void refreshWorkbarMessages(sid, { silent: true }).catch(() => {});
       if (sid) {
         setStreamStates((prev) => ({ ...prev, [sid]: { sessionId: sid, messageId: assistantMessageId } }));
         if (assistantMessageId) {
@@ -632,6 +665,7 @@ export function useChatSessions() {
     loading,
     sessions,
     messages,
+    workbarMessages,
     messagesHasMore,
     loadingMore,
     selectedSessionId,

@@ -23,6 +23,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     agents,
     sessions,
     messages,
+    workbarMessages,
     messagesHasMore,
     loadingMore,
     selectedAgentId,
@@ -344,7 +345,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
                 <div style={{ marginBottom: 10 }}>
                   <Workbar
-                    messages={messages}
+                    messages={Array.isArray(workbarMessages) && workbarMessages.length > 0 ? workbarMessages : messages}
                     subagentStreams={subagentStreamState}
                     tasks={sessionTasks}
                     fileChanges={fileChanges}
