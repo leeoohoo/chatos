@@ -286,8 +286,13 @@ export function registerFilesystemTools({
       const content = buffer.toString('utf8');
       const lines = content.split(/\r?\n/);
       const numberedContent = lines.map((line, i) => `${(i + 1).toString().padStart(6, ' ')} | ${line}`).join('\n');
-      const header = `# ${relativePath(target)} (size: ${formatBytes(stats.size)})`;
-      return textResponse(`${header}\n\n${numberedContent}`);
+      const rel = relativePath(target);
+      const header = `# ${rel} (size: ${formatBytes(stats.size)})`;
+      return structuredResponse(`${header}\n\n${numberedContent}`, {
+        path: rel,
+        size_bytes: stats.size,
+        line_count: lines.length,
+      });
     }
   );
 

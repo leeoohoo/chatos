@@ -59,6 +59,7 @@ export function PopoverTag({
   onOpenChange,
   color,
   text,
+  dataToolName,
   title,
   subtitle,
   badgeSubtitle,
@@ -76,6 +77,8 @@ export function PopoverTag({
   const [innerOpen, setInnerOpen] = useState(false);
   const safeText = normalizeToken(text) || 'tool';
   const safeTextLower = safeText.toLowerCase();
+  const dataToolNameText = normalizeToken(dataToolName) || safeText;
+  const dataToolNameLower = dataToolNameText.toLowerCase();
   const requestedKind = normalizeLower(kind);
   const derivedKind = TOOL_KIND_META[requestedKind] ? requestedKind : inferToolKind(safeText);
   const normalizedStatus = normalizeToolStatus(status, { color, fallback: 'unknown' });
@@ -165,7 +168,7 @@ export function PopoverTag({
         className="ds-tool-badge"
         data-kind={derivedKind}
         data-status={normalizedStatus}
-        data-tool-name={safeTextLower}
+        data-tool-name={dataToolNameLower}
         aria-label={headerTitle}
       >
         <span className="ds-tool-dot" />

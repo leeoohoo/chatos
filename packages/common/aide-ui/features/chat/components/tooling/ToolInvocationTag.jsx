@@ -4,12 +4,14 @@ import { CopyOutlined, ExpandOutlined } from '@ant-design/icons';
 
 import { copyPlainText } from '../../../../lib/clipboard.js';
 import { truncateText } from '../../../../lib/format.js';
+import { normalizeRunId } from '../../../../lib/runs.js';
 import { PopoverTag } from '../PopoverTag.jsx';
 import { ToolDetails } from './ToolDetailPanels.jsx';
 import { buildToolPresentation } from './tool-utils.js';
 import { formatJson } from './details/detail-utils.js';
 import runSubAgentIconSpin from '../../../../../../../assets/robot_head_spin.svg';
 import runSubAgentIconStatic from '../../../../../../../assets/robot_head_static.svg';
+import { FloatingIslandPrompt } from '../../../session/floating-island/FloatingIslandPrompt.jsx';
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -29,6 +31,18 @@ function pickToolStructuredContent(results = []) {
 function pickToolIsError(results = []) {
   const list = Array.isArray(results) ? results : [];
   return list.some((msg) => msg?.toolIsError === true);
+}
+
+function normalizeLower(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function isUiPrompterToolName(value) {
+  const raw = normalizeLower(value);
+  if (!raw) return false;
+  if (raw.includes('ui_prompter_prompt_key_values')) return true;
+  if (raw.includes('ui_prompter_prompt_choices')) return true;
+  return false;
 }
 
 function buildDrawerTitle(name, callId) {
@@ -54,6 +68,9 @@ export function ToolInvocationTag({
   fileChanges,
   structuredContent,
   toolIsError,
+  uiPrompt,
+  uiPromptCount,
+  onUiPromptRespond,
   maxWidth = 720,
   maxHeight = 360,
 }) {
@@ -77,17 +94,24 @@ export function ToolInvocationTag({
   );
 
   const { argsInfo, toolKind, shellResult, status, subtitle, color } = presentation;
+  const displayName = useMemo(() => {
+    const parsedTitle = normalizeText(argsInfo?.parsed?.title);
+    if (parsedTitle) return truncateText(parsedTitle, 48);
+    if (isUiPrompterToolName(name)) {
+      return toolNameText.includes('prompt_choices') ? '交互选择' : '信息补充';
+    }
+    return normalizeText(name) || 'tool';
+  }, [argsInfo?.parsed?.title, name, toolNameText]);
   const isSubagent = toolKind === 'subagent';
   const hidePopoverHeader = isSubagent && isRunSubAgent;
   const popoverMaxWidth = isRunSubAgent ? 960 : maxWidth;
-  const popoverMaxHeight = isRunSubAgent ? 520 : maxHeight;
   const popoverPlacement = isSubagent ? 'bottomLeft' : undefined;
   const drawerWidth = isSubagent ? '100vw' : 780;
   const drawerClassName = isSubagent
     ? 'ds-tool-drawer ds-tool-drawer-wide ds-tool-drawer-full ds-tool-drawer-subagent'
     : 'ds-tool-drawer';
   const badgeSubtitle = subtitle ? truncateText(subtitle, 28) : '';
-  const title = buildDrawerTitle(name, callId);
+  const title = buildDrawerTitle(displayName || name, callId);
   const copyableArgs = normalizeText(argsInfo?.raw);
   const copyableResult = buildCopyResultText(resultText, resolvedStructuredContent);
   const canCopyArgs = Boolean(copyableArgs);
@@ -103,7 +127,7 @@ export function ToolInvocationTag({
         body: { padding: 0, height: '100%', display: 'flex', flexDirection: 'column' },
       }
     : undefined;
-  const drawerTitle = isRunSubAgent ? null : title;
+  const drawerTitle = isRunSubAgent ? null : buildDrawerTitle(name, callId);
   const runSubAgentIcon = isRunSubAgent ? (
     <img
       className="ds-tool-icon-img"
@@ -154,6 +178,26 @@ export function ToolInvocationTag({
   };
   const onCloseDrawer = () => setDrawerOpen(false);
 
+  const activeUiPrompt = uiPrompt && typeof uiPrompt === 'object' ? uiPrompt : null;
+  const uiPromptRequestId = typeof activeUiPrompt?.requestId === 'string' ? activeUiPrompt.requestId.trim() : '';
+  const uiPromptPrompt = activeUiPrompt?.prompt && typeof activeUiPrompt.prompt === 'object' ? activeUiPrompt.prompt : null;
+  const uiPromptKind = typeof uiPromptPrompt?.kind === 'string' ? uiPromptPrompt.kind.trim() : '';
+  const uiPromptActive = Boolean(
+    uiPromptRequestId &&
+      (uiPromptKind === 'kv' ||
+        uiPromptKind === 'choice' ||
+        uiPromptKind === 'task_confirm' ||
+        uiPromptKind === 'file_change_confirm' ||
+        uiPromptKind === 'result')
+  );
+  const uiPromptRunId = normalizeRunId(activeUiPrompt?.runId);
+  const uiPromptAllowCancel = uiPromptPrompt?.allowCancel !== false;
+  const showUiPrompt =
+    uiPromptActive &&
+    isUiPrompterToolName(name) &&
+    typeof onUiPromptRespond === 'function';
+  const popoverMaxHeight = isRunSubAgent ? 520 : showUiPrompt ? Math.max(maxHeight, 520) : maxHeight;
+
   const actions = (
     <Space size={4} className="ds-tool-popover-actions">
       {canCopyArgs ? (
@@ -180,7 +224,8 @@ export function ToolInvocationTag({
         open={popoverOpen}
         onOpenChange={setPopoverOpen}
         color={color}
-        text={name || 'tool'}
+        text={displayName || name || 'tool'}
+        dataToolName={name || ''}
         title={title}
         subtitle={subtitle}
         badgeSubtitle={badgeSubtitle}
@@ -193,26 +238,39 @@ export function ToolInvocationTag({
         placement={popoverPlacement}
         hideHeader={hidePopoverHeader}
       >
-        <ToolDetails
-          toolName={name}
-          toolKind={toolKind}
-          argsRaw={argsInfo.raw}
-          argsParsed={argsInfo.parsed}
-          resultText={resultText}
-        shellResult={shellResult}
-        structuredContent={resolvedStructuredContent}
-        liveSteps={liveSteps}
-        fileChanges={fileChanges}
-        display="popover"
-        callId={callId}
-        status={status}
-        canCopyArgs={canCopyArgs}
-          canCopyResult={canCopyResult}
-          canExpand={canExpand}
-          onCopyArgs={onCopyArgs}
-          onCopyResult={onCopyResult}
-          onExpand={onExpand}
-        />
+        {showUiPrompt ? (
+          <FloatingIslandPrompt
+            promptActive={uiPromptActive}
+            promptKind={uiPromptKind}
+            prompt={uiPromptPrompt}
+            requestId={uiPromptRequestId}
+            promptRunId={uiPromptRunId}
+            allowCancel={uiPromptAllowCancel}
+            pendingCount={uiPromptCount}
+            onUiPromptRespond={onUiPromptRespond}
+          />
+        ) : (
+          <ToolDetails
+            toolName={name}
+            toolKind={toolKind}
+            argsRaw={argsInfo.raw}
+            argsParsed={argsInfo.parsed}
+            resultText={resultText}
+            shellResult={shellResult}
+            structuredContent={resolvedStructuredContent}
+            liveSteps={liveSteps}
+            fileChanges={fileChanges}
+            display="popover"
+            callId={callId}
+            status={status}
+            canCopyArgs={canCopyArgs}
+            canCopyResult={canCopyResult}
+            canExpand={canExpand}
+            onCopyArgs={onCopyArgs}
+            onCopyResult={onCopyResult}
+            onExpand={onExpand}
+          />
+        )}
       </PopoverTag>
       <Drawer
         open={drawerOpen}

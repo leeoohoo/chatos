@@ -4,12 +4,15 @@ import { CloseCircleOutlined, FolderOpenOutlined, MenuUnfoldOutlined } from '@an
 
 import { api, hasApi } from '../../lib/api.js';
 import { parseTasks } from '../../lib/parse.js';
+import { listPendingUiPrompts, pickActiveUiPrompt } from '../../lib/ui-prompts.js';
+import { normalizeRunId } from '../../lib/runs.js';
 import { ChatSidebar } from './components/ChatSidebar.jsx';
 import { ChatSessionHeader } from './components/ChatSessionHeader.jsx';
 import { ChatMessages } from './components/ChatMessages.jsx';
 import { ChatComposer } from './components/ChatComposer.jsx';
 import { Workbar, WORKBAR_TABS } from './components/Workbar.jsx';
 import { McpStreamPanel } from './components/McpStreamPanel.jsx';
+import { FloatingIslandPrompt } from '../session/floating-island/FloatingIslandPrompt.jsx';
 import { useChatController } from './hooks/useChatController.js';
 import { normalizeId } from '../../../text-utils.js';
 
@@ -54,6 +57,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
   const [tasks, setTasks] = useState([]);
   const [fileChanges, setFileChanges] = useState({ entries: [] });
+  const [uiPrompts, setUiPrompts] = useState({ entries: [] });
   const [workbarExpanded, setWorkbarExpanded] = useState(false);
   const [workbarTab, setWorkbarTab] = useState(WORKBAR_TABS.tools);
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
@@ -153,6 +157,29 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
     (async () => {
       try {
+        const data = await api.invoke('uiPrompts:read');
+        if (!canceled) setUiPrompts(data || { entries: [] });
+      } catch {
+        // ignore prompt load errors (older builds may not support this channel)
+      }
+    })();
+
+    const unsub = api.on('uiPrompts:update', (data) => {
+      if (!canceled) setUiPrompts(data || { entries: [] });
+    });
+
+    return () => {
+      canceled = true;
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasApi) return undefined;
+    let canceled = false;
+
+    (async () => {
+      try {
         const data = await api.invoke('fileChanges:read');
         if (canceled) return;
         setFileChanges(data || { entries: [] });
@@ -178,6 +205,27 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     const list = Array.isArray(tasks) ? tasks : [];
     return list.filter((task) => normalizeId(task?.sessionId) === sid);
   }, [selectedSessionId, tasks]);
+
+  const uiPromptEntries = useMemo(() => (Array.isArray(uiPrompts?.entries) ? uiPrompts.entries : []), [uiPrompts]);
+  const pendingUiPrompts = useMemo(() => listPendingUiPrompts(uiPromptEntries), [uiPromptEntries]);
+  const activeUiPrompt = useMemo(() => pickActiveUiPrompt(pendingUiPrompts), [pendingUiPrompts]);
+  const pendingUiPromptCount = pendingUiPrompts.length;
+
+  const handleUiPromptRespond = async ({ requestId, runId, response } = {}) => {
+    if (!hasApi) throw new Error('IPC bridge not available');
+    const rid = typeof requestId === 'string' ? requestId.trim() : '';
+    if (!rid) throw new Error('requestId is required');
+    const payload = {
+      requestId: rid,
+      runId: typeof runId === 'string' ? runId : '',
+      response: response && typeof response === 'object' ? response : null,
+    };
+    const result = await api.invoke('uiPrompts:respond', payload);
+    if (result?.ok === false) {
+      throw new Error(result?.message || '提交失败');
+    }
+    return result;
+  };
 
   // task drawer removed: no auto-open side effects
 
@@ -354,8 +402,51 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                     onToggleExpanded={() => setWorkbarExpanded((prev) => !prev)}
                     activeTab={workbarTab}
                     onTabChange={setWorkbarTab}
+                    uiPrompt={activeUiPrompt}
+                    uiPromptCount={pendingUiPromptCount}
+                    onUiPromptRespond={handleUiPromptRespond}
                   />
                 </div>
+
+                {(() => {
+                  const requestId = typeof activeUiPrompt?.requestId === 'string' ? activeUiPrompt.requestId.trim() : '';
+                  const prompt = activeUiPrompt?.prompt && typeof activeUiPrompt.prompt === 'object' ? activeUiPrompt.prompt : null;
+                  const promptKind = typeof prompt?.kind === 'string' ? prompt.kind.trim() : '';
+                  const promptActive = Boolean(
+                    requestId &&
+                      (promptKind === 'kv' ||
+                        promptKind === 'choice' ||
+                        promptKind === 'task_confirm' ||
+                        promptKind === 'file_change_confirm' ||
+                        promptKind === 'result')
+                  );
+                  if (!promptActive) return null;
+                  const promptRunId = normalizeRunId(activeUiPrompt?.runId);
+                  const allowCancel = prompt?.allowCancel !== false;
+                  return (
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        padding: 12,
+                        borderRadius: 12,
+                        border: '1px solid var(--ds-panel-border)',
+                        background: 'var(--ds-panel-bg)',
+                        boxShadow: 'var(--ds-panel-shadow)',
+                      }}
+                    >
+                      <FloatingIslandPrompt
+                        promptActive={promptActive}
+                        promptKind={promptKind}
+                        prompt={prompt}
+                        requestId={requestId}
+                        promptRunId={promptRunId}
+                        allowCancel={allowCancel}
+                        pendingCount={pendingUiPromptCount}
+                        onUiPromptRespond={handleUiPromptRespond}
+                      />
+                    </div>
+                  );
+                })()}
 
                 <ChatComposer
                   value={composerText}

@@ -311,6 +311,9 @@ export function Workbar({
   tasks,
   fileChanges,
   sessionId,
+  uiPrompt,
+  uiPromptCount,
+  onUiPromptRespond,
   expanded = true,
   onToggleExpanded,
   activeTab = TAB_KEYS.tools,
@@ -492,6 +495,9 @@ export function Workbar({
                         fileChanges={fallbackFileChanges}
                         maxWidth={640}
                         maxHeight={360}
+                        uiPrompt={uiPrompt}
+                        uiPromptCount={uiPromptCount}
+                        onUiPromptRespond={onUiPromptRespond}
                       />
                     ))}
                   </div>
@@ -514,6 +520,9 @@ export function Workbar({
                         fileChanges={groupFileChanges}
                         maxWidth={640}
                         maxHeight={360}
+                        uiPrompt={uiPrompt}
+                        uiPromptCount={uiPromptCount}
+                        onUiPromptRespond={onUiPromptRespond}
                       />
                     ))}
                   </div>

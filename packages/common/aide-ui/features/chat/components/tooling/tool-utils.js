@@ -126,6 +126,14 @@ function pickStructuredValue(structuredContent, key) {
 export function buildToolSubtitle(toolName, argsParsed, structuredContent) {
   if (argsParsed && typeof argsParsed === 'object') {
     const rawName = typeof toolName === 'string' ? toolName.toLowerCase() : '';
+    if (rawName.includes('prompt')) {
+      if (typeof argsParsed.message === 'string' && argsParsed.message.trim()) {
+        return truncateText(argsParsed.message.trim(), 90);
+      }
+      if (typeof argsParsed.title === 'string' && argsParsed.title.trim()) {
+        return truncateText(argsParsed.title.trim(), 90);
+      }
+    }
     if (typeof argsParsed.command === 'string' && argsParsed.command.trim()) {
       return truncateText(argsParsed.command.trim(), 90);
     }

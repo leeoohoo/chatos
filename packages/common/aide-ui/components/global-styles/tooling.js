@@ -327,6 +327,10 @@ export const GLOBAL_TOOLING_STYLES = `
         flex-direction: column;
         padding: 0;
       }
+      .ds-tool-popover-kind-subagent .ds-tool-popover-body {
+        max-height: none !important;
+        overflow: hidden;
+      }
       .ds-tool-section {
         padding: 10px 12px;
       }
@@ -621,6 +625,8 @@ export const GLOBAL_TOOLING_STYLES = `
         flex-direction: column;
         gap: 0;
         padding: 0;
+        max-height: min(520px, 78vh);
+        min-height: 0;
       }
       .ds-subagent-popover-header {
         display: flex;
@@ -747,6 +753,9 @@ export const GLOBAL_TOOLING_STYLES = `
         grid-template-columns: 260px 1fr;
         gap: 0;
         padding: 10px 12px;
+        overflow: auto;
+        min-height: 0;
+        flex: 1 1 auto;
       }
       .ds-subagent-popover-column.is-left {
         padding-right: 12px;
