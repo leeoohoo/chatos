@@ -14,6 +14,7 @@ export function registerSessionIpcHandlers({ ipcMain, sessionApi, workspaceOps }
     return sessionApi.readEventsPayload();
   });
   ipcMain.handle('fileChanges:read', async () => {
+    sessionApi.startTasksWatcher();
     sessionApi.startFileChangesWatcher();
     return sessionApi.readFileChangesPayload();
   });

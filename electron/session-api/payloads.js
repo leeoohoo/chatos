@@ -132,10 +132,16 @@ export function createSessionPayloadReaders({
   };
 
   const readFileChangesPayload = () => {
-    const entries = parseJsonLines(safeRead(defaultPaths.fileChanges));
+    const dbEntries =
+      typeof adminServices?.fileChanges?.list === 'function' ? adminServices.fileChanges.list() : null;
+    const list = Array.isArray(dbEntries) ? dbEntries : [];
+    const sorted = list
+      .slice()
+      .sort((a, b) => String(a?.ts || a?.createdAt || '').localeCompare(String(b?.ts || b?.createdAt || '')));
     return {
-      path: defaultPaths.fileChanges,
-      entries,
+      path: defaultPaths.adminDb,
+      entries: sorted,
+      source: 'db',
     };
   };
 

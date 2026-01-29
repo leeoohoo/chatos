@@ -110,6 +110,14 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     }
 
     try {
+      const existing = adminDb.list('fileChanges') || [];
+      adminDb.reset('fileChanges', []);
+      summary.fileChangesDbCleared = existing.length;
+    } catch (err) {
+      summary.fileChangesDbError = err?.message || String(err);
+    }
+
+    try {
       const existingEvents = adminServices.events.list();
       adminDb.reset('events', []);
       ensureDir(path.dirname(defaultPaths.events));
@@ -192,9 +200,15 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
       win.webContents.send('runs:update', readRunsPayload());
     }
 
-    const errors = ['tasksError', 'eventsError', 'sessionError', 'fileChangesError', 'uiPromptsError', 'runsError'].filter(
-      (key) => summary[key]
-    );
+    const errors = [
+      'tasksError',
+      'eventsError',
+      'sessionError',
+      'fileChangesError',
+      'fileChangesDbError',
+      'uiPromptsError',
+      'runsError',
+    ].filter((key) => summary[key]);
     return { ok: errors.length === 0, ...summary };
   }
 

@@ -5,6 +5,7 @@ import { McpService } from './mcp-service.js';
 import { SubagentService } from './subagent-service.js';
 import { PromptService } from './prompt-service.js';
 import { EventService } from './event-service.js';
+import { FileChangeService } from './file-change-service.js';
 import { TaskService } from './task-service.js';
 import { SettingsService } from './settings-service.js';
 import { LandConfigService } from './land-config-service.js';
@@ -30,6 +31,7 @@ export function createAdminServices(db) {
   const subagents = new SubagentService(db);
   const prompts = new PromptService(db);
   const events = new EventService(db);
+  const fileChanges = new FileChangeService(db);
   const tasks = new TaskService(db);
   const settings = new SettingsService(db);
   const landConfigs = new LandConfigService(db);
@@ -54,6 +56,7 @@ export function createAdminServices(db) {
     subagents,
     prompts,
     events,
+    fileChanges,
     tasks,
     settings,
     landConfigs,

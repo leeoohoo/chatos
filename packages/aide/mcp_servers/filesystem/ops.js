@@ -22,6 +22,7 @@ export function createFilesystemOps({
   root: rootArg,
   serverName: serverNameArg,
   fileChangeLogPath: logPathArg,
+  fileChangesService: fileChangesServiceArg,
   logProgress: logProgressArg,
   appendRunPid: appendRunPidArg,
   allowSymlinkEscape = true,
@@ -34,6 +35,8 @@ export function createFilesystemOps({
       : resolveFileChangesPath(resolveSessionRoot());
 
   const logProgress = typeof logProgressArg === 'function' ? logProgressArg : (msg) => console.error(`[${serverName}] ${msg}`);
+  const fileChangesService =
+    fileChangesServiceArg && typeof fileChangesServiceArg === 'object' ? fileChangesServiceArg : null;
   const appendRunPid = typeof appendRunPidArg === 'function' ? appendRunPidArg : () => {};
 
   const { ensurePath, buildOutsideRootMessage, relativePath, resolvePathWithinWorkspace, isInsideWorkspace } =
@@ -527,16 +530,27 @@ export function createFilesystemOps({
 
   function appendFileChanges(entries = []) {
     if (!entries || entries.length === 0) return;
-    const payload = entries
-        .filter(Boolean)
-        .map((entry) => JSON.stringify(entry))
-        .join('\n');
-    if (!payload) return;
     try {
-      fs.mkdirSync(path.dirname(fileChangeLogPath), { recursive: true });
-      fs.appendFileSync(fileChangeLogPath, `${payload}\n`, 'utf8');
+      persistFileChanges(entries);
     } catch (err) {
-      console.error(`[${serverName}] Failed to append file changes: ${err?.message || err}`);
+      console.error(`[${serverName}] Failed to persist file changes: ${err?.message || err}`);
+    }
+  }
+
+  function persistFileChanges(entries = []) {
+    if (!fileChangesService) return;
+    const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+    if (list.length === 0) return;
+    if (typeof fileChangesService.appendMany === 'function') {
+      fileChangesService.appendMany(list);
+      return;
+    }
+    if (typeof fileChangesService.append === 'function') {
+      list.forEach((entry) => fileChangesService.append(entry));
+      return;
+    }
+    if (typeof fileChangesService.create === 'function') {
+      list.forEach((entry) => fileChangesService.create(entry));
     }
   }
 

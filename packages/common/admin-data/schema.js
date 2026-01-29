@@ -112,6 +112,27 @@ export const TABLE_SCHEMAS = {
       { name: 'updatedAt', type: 'datetime', required: true },
     ],
   },
+  fileChanges: {
+    name: 'fileChanges',
+    description: '文件变更记录（持久化）',
+    columns: [
+      { name: 'id', type: 'string', required: true, note: 'UUID 主键' },
+      { name: 'ts', type: 'datetime', required: false, note: '变更时间' },
+      { name: 'runId', type: 'string', required: false, note: '终端运行实例 ID' },
+      { name: 'sessionId', type: 'string', required: false, note: '关联的会话 ID' },
+      { name: 'userMessageId', type: 'string', required: false, note: '关联的用户消息 ID' },
+      { name: 'path', type: 'string', required: false, note: '相对路径' },
+      { name: 'absolutePath', type: 'string', required: false, note: '绝对路径' },
+      { name: 'workspaceRoot', type: 'string', required: false, note: 'workspace 根目录' },
+      { name: 'changeType', type: 'enum(created|modified|deleted)', required: false },
+      { name: 'tool', type: 'string', required: false },
+      { name: 'mode', type: 'string', required: false },
+      { name: 'server', type: 'string', required: false },
+      { name: 'diff', type: 'string', required: false },
+      { name: 'createdAt', type: 'datetime', required: true },
+      { name: 'updatedAt', type: 'datetime', required: true },
+    ],
+  },
   tasks: {
     name: 'tasks',
     description: '任务列表（legacy，兼容旧数据）',
@@ -270,6 +291,24 @@ export const eventSchema = z.object({
   type: z.string().trim().min(1, 'type is required'),
   payload: z.any().optional(),
   meta: z.record(z.any()).optional(),
+});
+
+export const fileChangeSchema = z.object({
+  id: z.string().uuid().optional(),
+  ts: z.string().datetime().optional(),
+  runId: z.string().trim().optional().default(''),
+  sessionId: z.string().trim().optional().default(''),
+  userMessageId: z.string().trim().optional().default(''),
+  path: z.string().trim().optional().default(''),
+  absolutePath: z.string().trim().optional().default(''),
+  workspaceRoot: z.string().trim().optional().default(''),
+  changeType: z.enum(['created', 'modified', 'deleted']).optional().default('modified'),
+  tool: z.string().trim().optional().default(''),
+  mode: z.string().trim().optional().default(''),
+  server: z.string().trim().optional().default(''),
+  diff: z.string().optional().default(''),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
 });
 
 export const taskSchema = z.object({

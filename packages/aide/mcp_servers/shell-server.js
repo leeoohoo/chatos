@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createPromptFileChangeConfirm } from './shell/prompt-file-change-confirm.js';
 import { createDb } from '../shared/data/storage.js';
+import { FileChangeService } from '../shared/data/services/file-change-service.js';
 import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createFilesystemOps } from './filesystem/ops.js';
 import { createSessionManager } from './shell/session-manager.js';
@@ -60,17 +61,19 @@ const fileChangeLogPath =
 const adminDbPath =
   process.env.MODEL_CLI_TASK_DB ||
   ensureAppDbPath(sessionRoot);
-const fsOps = createFilesystemOps({ root, serverName, fileChangeLogPath });
-const { textResponse, structuredResponse } = createToolResponder({ serverName });
-
 let settingsDb = null;
+let fileChangesDb = null;
 try {
   const db = createDb({ dbPath: adminDbPath });
   settingsDb = new SettingsService(db);
   settingsDb.ensureRuntime();
+  fileChangesDb = new FileChangeService(db);
 } catch {
   settingsDb = null;
+  fileChangesDb = null;
 }
+const fsOps = createFilesystemOps({ root, serverName, fileChangeLogPath, fileChangesService: fileChangesDb });
+const { textResponse, structuredResponse } = createToolResponder({ serverName });
 const explicitMode = normalizeShellSafetyMode(args['shell-mode'] || process.env.MODEL_CLI_SHELL_SAFETY_MODE, {
   allowAliases: true,
 });
@@ -100,7 +103,6 @@ const workspaceNote = [
 ].join(' ');
 
 ensureFileExists(promptLogPath);
-ensureFileExists(fileChangeLogPath);
 ensureDir(root, { requireDirectory: true });
 sessions.registerCleanupHandlers();
 

@@ -49,14 +49,7 @@ export function createSessionWatchers({
   };
 
   const startFileChangesWatcher = () => {
-    if (fileChangesWatcher) return;
-    ensureFileExists(defaultPaths.fileChanges);
-    fileChangesWatcher = fs.watch(defaultPaths.fileChanges, { persistent: false }, () => {
-      const win = resolveWindow();
-      if (win) {
-        win.webContents.send('fileChanges:update', readFileChangesPayload());
-      }
-    });
+    startTasksWatcher();
   };
 
   const startUiPromptsWatcher = () => {
@@ -93,6 +86,7 @@ export function createSessionWatchers({
       const win = resolveWindow();
       if (win) {
         win.webContents.send('config:update', readConfigPayload());
+        win.webContents.send('fileChanges:update', readFileChangesPayload());
       }
     };
 

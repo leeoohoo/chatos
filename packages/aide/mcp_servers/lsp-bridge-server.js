@@ -5,7 +5,15 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
-import { resolveAppStateDir, resolveAppStatePath, resolveFileChangesPath, STATE_ROOT_DIRNAME } from '../shared/state-paths.js';
+import { createDb } from '../shared/data/storage.js';
+import { FileChangeService } from '../shared/data/services/file-change-service.js';
+import {
+  ensureAppDbPath,
+  resolveAppStateDir,
+  resolveAppStatePath,
+  resolveFileChangesPath,
+  STATE_ROOT_DIRNAME,
+} from '../shared/state-paths.js';
 import { createToolResponder } from './shared/tool-helpers.js';
 import { createMcpServer } from './shared/server-bootstrap.js';
 import { ensureDir } from './shared/fs-utils.js';
@@ -32,6 +40,15 @@ ensureDir(root, { readable: true });
 const sessionRoot = resolveSessionRoot();
 const fileChangeLogPath =
   process.env.MODEL_CLI_FILE_CHANGES || resolveFileChangesPath(sessionRoot);
+const adminDbPath = process.env.MODEL_CLI_TASK_DB || ensureAppDbPath(sessionRoot);
+
+let fileChangesDb = null;
+try {
+  const db = createDb({ dbPath: adminDbPath });
+  fileChangesDb = new FileChangeService(db);
+} catch {
+  fileChangesDb = null;
+}
 
 const workspaceNote = `Workspace root: ${root}. Paths must stay inside this directory; absolute or relative paths resolving outside will be rejected.`;
 
@@ -39,6 +56,7 @@ const fsOps = createFilesystemOps({
   root,
   serverName,
   fileChangeLogPath,
+  fileChangesService: fileChangesDb,
   logProgress: (msg) => console.error(`[${serverName}] ${msg}`),
 });
 const { textResponse, structuredResponse } = createToolResponder({ serverName });

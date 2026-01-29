@@ -5,6 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { clampNumber, parseArgs } from './cli-utils.js';
 import { createDb } from '../shared/data/storage.js';
+import { FileChangeService } from '../shared/data/services/file-change-service.js';
 import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createFilesystemOps, resolveSessionRoot } from './filesystem/ops.js';
 import { registerFilesystemTools } from './filesystem/register-tools.js';
@@ -40,12 +41,15 @@ const fileChangeLogPath =
 const adminDbPath = process.env.MODEL_CLI_TASK_DB || ensureAppDbPath(sessionRoot);
 
 let settingsDb = null;
+let fileChangesDb = null;
 try {
   const db = createDb({ dbPath: adminDbPath });
   settingsDb = new SettingsService(db);
   settingsDb.ensureRuntime();
+  fileChangesDb = new FileChangeService(db);
 } catch {
   settingsDb = null;
+  fileChangesDb = null;
 }
 
 const runtimeConfig = settingsDb?.getRuntime?.() || null;
@@ -74,6 +78,7 @@ const fsOps = createFilesystemOps({
   root,
   serverName,
   fileChangeLogPath,
+  fileChangesService: fileChangesDb,
   logProgress,
   allowSymlinkEscape,
 });
