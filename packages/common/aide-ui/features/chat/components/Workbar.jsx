@@ -17,6 +17,85 @@ function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function parseTimestampMs(ts) {
+  if (!ts) return 0;
+  if (typeof ts === 'number') {
+    if (!Number.isFinite(ts)) return 0;
+    return ts < 1e12 ? ts * 1000 : ts;
+  }
+  if (typeof ts === 'string') {
+    const trimmed = ts.trim();
+    if (!trimmed) return 0;
+    const asNum = Number(trimmed);
+    if (Number.isFinite(asNum)) {
+      return asNum < 1e12 ? asNum * 1000 : asNum;
+    }
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  const date = new Date(ts);
+  const ms = date.getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function buildUserMessageGroups(messages = []) {
+  const list = Array.isArray(messages) ? messages.filter(Boolean) : [];
+  const groups = [];
+  list.forEach((msg, idx) => {
+    if (msg.role !== 'user') return;
+    const contentRaw = typeof msg?.content === 'string' ? msg.content : String(msg?.content || '');
+    const previewRaw = contentRaw.trim();
+    const attachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
+    const preview = previewRaw
+      ? truncateText(previewRaw, 64)
+      : attachments.length > 0
+        ? '（附件）'
+        : '';
+    const timeText = formatTimeShort(msg?.createdAt || msg?.ts || msg?.created_at);
+    const startMs = parseTimestampMs(msg?.createdAt || msg?.ts || msg?.created_at);
+    groups.push({
+      key: normalizeId(msg?.id) || `user_${idx}`,
+      userMessage: msg,
+      preview,
+      timeText,
+      startMs,
+    });
+  });
+  return groups;
+}
+
+function assignItemsToUserGroups(groups = [], items = [], getItemMs) {
+  const base = (Array.isArray(groups) ? groups : []).map((group) => ({
+    ...group,
+    items: [],
+  }));
+  const fallback = {
+    key: 'system',
+    userMessage: null,
+    preview: '（无用户消息）',
+    timeText: '',
+    startMs: 0,
+    items: [],
+  };
+  const list = Array.isArray(items) ? items : [];
+  list.forEach((item) => {
+    const ms = typeof getItemMs === 'function' ? getItemMs(item) : 0;
+    let target = null;
+    for (let i = base.length - 1; i >= 0; i -= 1) {
+      if (ms >= (base[i].startMs || 0)) {
+        target = base[i];
+        break;
+      }
+    }
+    if (!target) {
+      fallback.items.push(item);
+    } else {
+      target.items.push(item);
+    }
+  });
+  return [...base, fallback].filter((group) => group.items.length > 0);
+}
+
 function formatTimeShort(ts) {
   const ms = Date.parse(ts);
   if (!Number.isFinite(ms)) return '';
@@ -248,15 +327,12 @@ export function Workbar({
     [toolGroups]
   );
 
+  const userGroups = useMemo(() => buildUserMessageGroups(messages), [messages]);
   const tasksList = useMemo(() => (Array.isArray(tasks) ? tasks.filter(Boolean) : []), [tasks]);
   const taskRows = useMemo(() => {
-    const parseMs = (ts) => {
-      const ms = Date.parse(ts);
-      return Number.isFinite(ms) ? ms : 0;
-    };
     return [...tasksList].sort((a, b) => {
-      const aMs = parseMs(a?.updatedAt || a?.createdAt || '');
-      const bMs = parseMs(b?.updatedAt || b?.createdAt || '');
+      const aMs = parseTimestampMs(a?.updatedAt || a?.createdAt || '');
+      const bMs = parseTimestampMs(b?.updatedAt || b?.createdAt || '');
       return bMs - aMs;
     });
   }, [tasksList]);
@@ -279,6 +355,30 @@ export function Workbar({
       ...(prev || {}),
       [key]: !prev?.[key],
     }));
+  };
+
+  const renderGroupHeader = (group, label, count) => {
+    const previewText = normalizeText(group.preview);
+    const timeText = group.timeText || (group.userMessage?.createdAt ? formatDateTime(group.userMessage.createdAt) : '');
+    const metaParts = [timeText, `${label} ${count}`].filter(Boolean);
+    const metaText = metaParts.join(' · ');
+    const expandedGroup = Boolean(expandedGroups?.[group.key]);
+    return (
+      <>
+        <div className="ds-workbar-group-head">
+          <div className="ds-workbar-group-title">用户消息</div>
+          {metaText ? <div className="ds-workbar-group-meta">{metaText}</div> : null}
+          <button
+            type="button"
+            className="ds-workbar-group-toggle"
+            onClick={() => toggleGroup(group.key)}
+          >
+            {expandedGroup ? '折叠' : '展开'}
+          </button>
+        </div>
+        {previewText ? <div className="ds-workbar-group-preview">“{previewText}”</div> : null}
+      </>
+    );
   };
 
   const renderTools = () => {
@@ -304,27 +404,10 @@ export function Workbar({
           const expandedGroup = Boolean(expandedGroups?.[group.key]);
           const list = expandedGroup ? group.invocations : group.invocations.slice(0, previewLimit);
           const hiddenCount = Math.max(group.invocations.length - list.length, 0);
-          const previewText = normalizeText(group.preview);
-          const timeText =
-            group.timeText ||
-            (group.userMessage?.createdAt ? formatDateTime(group.userMessage.createdAt) : '');
-          const metaParts = [timeText, `工具 ${group.invocations.length}`].filter(Boolean);
-          const metaText = metaParts.join(' · ');
 
           return (
             <div key={group.key} className="ds-workbar-group">
-              <div className="ds-workbar-group-head">
-                <div className="ds-workbar-group-title">用户消息</div>
-                {metaText ? <div className="ds-workbar-group-meta">{metaText}</div> : null}
-                <button
-                  type="button"
-                  className="ds-workbar-group-toggle"
-                  onClick={() => toggleGroup(group.key)}
-                >
-                  {expandedGroup ? '折叠' : '展开'}
-                </button>
-              </div>
-              {previewText ? <div className="ds-workbar-group-preview">“{previewText}”</div> : null}
+              {renderGroupHeader(group, '工具', group.invocations.length)}
               <div className="ds-workbar-tool-grid">
                 {list.map((invocation) => (
                   <ToolInvocationTag
@@ -360,55 +443,101 @@ export function Workbar({
 
   const renderTasks = () => {
     if (taskRows.length === 0) return <Empty description="暂无任务" />;
-    const list = taskRows.slice(0, previewLimit);
-    const hiddenCount = Math.max(taskRows.length - list.length, 0);
+    const taskGroups = assignItemsToUserGroups(userGroups, taskRows, (task) =>
+      parseTimestampMs(task?.createdAt || task?.updatedAt || '')
+    );
+    if (taskGroups.length === 0) return <Empty description="暂无任务" />;
+
     return (
-      <div className="ds-workbar-list">
-        {list.map((task, idx) => {
-          const title = typeof task?.title === 'string' ? task.title.trim() : '';
-          const subtitle = typeof task?.details === 'string' ? truncateText(task.details.trim(), 80) : '';
-          const key = normalizeId(task?.id) || `task_${idx}`;
+      <div className="ds-workbar-groups">
+        {taskGroups.map((group) => {
+          const expandedGroup = Boolean(expandedGroups?.[group.key]);
+          const list = expandedGroup ? group.items : group.items.slice(0, previewLimit);
+          const hiddenCount = Math.max(group.items.length - list.length, 0);
           return (
-            <div key={key} className="ds-workbar-list-item">
-              <div className="ds-workbar-item-content">
-                <div className="ds-workbar-item-title">{title || '未命名任务'}</div>
-                {subtitle ? <div className="ds-workbar-item-subtitle">{subtitle}</div> : null}
+            <div key={group.key} className="ds-workbar-group">
+              {renderGroupHeader(group, '任务', group.items.length)}
+              <div className="ds-workbar-list">
+                {list.map((task, idx) => {
+                  const title = typeof task?.title === 'string' ? task.title.trim() : '';
+                  const subtitle = typeof task?.details === 'string' ? truncateText(task.details.trim(), 80) : '';
+                  const key = normalizeId(task?.id) || `task_${idx}`;
+                  return (
+                    <div key={key} className="ds-workbar-list-item">
+                      <div className="ds-workbar-item-content">
+                        <div className="ds-workbar-item-title">{title || '未命名任务'}</div>
+                        {subtitle ? <div className="ds-workbar-item-subtitle">{subtitle}</div> : null}
+                      </div>
+                      <div className="ds-workbar-item-meta">
+                        <TaskStatusTag status={task?.status} />
+                        <TaskPriorityTag priority={task?.priority} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="ds-workbar-item-meta">
-                <TaskStatusTag status={task?.status} />
-                <TaskPriorityTag priority={task?.priority} />
-              </div>
+              {hiddenCount > 0 ? (
+                <button
+                  type="button"
+                  className="ds-workbar-more"
+                  onClick={() => toggleGroup(group.key)}
+                >
+                  +{hiddenCount} 更多
+                </button>
+              ) : null}
             </div>
           );
         })}
-        {hiddenCount > 0 ? <div className="ds-workbar-more">+{hiddenCount} 更多</div> : null}
       </div>
     );
   };
 
   const renderFileChanges = () => {
     if (dedupedFileChanges.length === 0) return <Empty description="暂无文件变更" />;
-    const list = dedupedFileChanges.slice(0, previewLimit);
-    const hiddenCount = Math.max(dedupedFileChanges.length - list.length, 0);
+    const fileGroups = assignItemsToUserGroups(userGroups, dedupedFileChanges, (item) =>
+      parseTimestampMs(item?.ts)
+    );
+    if (fileGroups.length === 0) return <Empty description="暂无文件变更" />;
+
     return (
-      <div className="ds-workbar-list">
-        {list.map((item, idx) => {
-          const key = getFileChangeKey(item) || item?.ts || `file_${idx}`;
-          const pathLabel = item?.path || item?.absolutePath || '未知文件';
-          const timeText = item?.ts ? formatDateTime(item.ts) : '';
+      <div className="ds-workbar-groups">
+        {fileGroups.map((group) => {
+          const expandedGroup = Boolean(expandedGroups?.[group.key]);
+          const list = expandedGroup ? group.items : group.items.slice(0, previewLimit);
+          const hiddenCount = Math.max(group.items.length - list.length, 0);
           return (
-            <div key={key} className="ds-workbar-list-item">
-              <div className="ds-workbar-item-content">
-                <div className="ds-workbar-item-title">{pathLabel}</div>
-                {timeText ? <div className="ds-workbar-item-subtitle">{timeText}</div> : null}
+            <div key={group.key} className="ds-workbar-group">
+              {renderGroupHeader(group, '文件变更', group.items.length)}
+              <div className="ds-workbar-list">
+                {list.map((item, idx) => {
+                  const key = getFileChangeKey(item) || item?.ts || `file_${idx}`;
+                  const pathLabel = item?.path || item?.absolutePath || '未知文件';
+                  const timeText = item?.ts ? formatDateTime(item.ts) : '';
+                  return (
+                    <div key={key} className="ds-workbar-list-item">
+                      <div className="ds-workbar-item-content">
+                        <div className="ds-workbar-item-title">{pathLabel}</div>
+                        {timeText ? <div className="ds-workbar-item-subtitle">{timeText}</div> : null}
+                      </div>
+                      <div className="ds-workbar-item-meta">
+                        <FileChangeTag changeType={item?.changeType} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="ds-workbar-item-meta">
-                <FileChangeTag changeType={item?.changeType} />
-              </div>
+              {hiddenCount > 0 ? (
+                <button
+                  type="button"
+                  className="ds-workbar-more"
+                  onClick={() => toggleGroup(group.key)}
+                >
+                  +{hiddenCount} 更多
+                </button>
+              ) : null}
             </div>
           );
         })}
-        {hiddenCount > 0 ? <div className="ds-workbar-more">+{hiddenCount} 更多</div> : null}
       </div>
     );
   };
