@@ -10,7 +10,8 @@ const EXTRA_CSS = `
         max-width: 100%;
         display: inline-flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
+        flex-wrap: nowrap;
         overflow-x: auto;
         overflow-y: hidden;
         scrollbar-width: none;
@@ -27,8 +28,17 @@ const EXTRA_CSS = `
       .ds-nav-merged.ds-nav-fixed .ant-segmented-group {
         width: auto;
         min-width: 0;
+        align-items: center;
+      }
+      .ds-nav-merged.ds-nav-fixed .ant-segmented-item {
+        flex: 0 0 auto;
+      }
+      .ds-nav-merged.ds-nav-fixed .ds-nav-divider {
+        flex: 0 0 auto;
       }
       .ds-seg .ant-segmented-item-label {
+        display: inline-flex;
+        align-items: center;
         white-space: nowrap;
       }
       .ds-admin-page {
