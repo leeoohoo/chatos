@@ -16,8 +16,8 @@ export class TaskService extends BaseService {
     return this.db.reset(this.tableName, tasks);
   }
 
-  addTask({ title, details, priority, status, tags, sessionId, runId }) {
-    const task = this.#buildTask({ title, details, priority, status, tags, sessionId, runId });
+  addTask({ title, details, priority, status, tags, sessionId, runId, userMessageId }) {
+    const task = this.#buildTask({ title, details, priority, status, tags, sessionId, runId, userMessageId });
     this.db.insert(this.tableName, this.schema.parse(task));
     return task;
   }
@@ -141,6 +141,7 @@ export class TaskService extends BaseService {
     const now = new Date().toISOString();
     const normalizedRunId = this.#normalizeRunId(task.runId);
     const normalizedSession = this.#normalizeSessionId(task.sessionId);
+    const normalizedUserMessageId = this.#normalizeUserMessageId(task.userMessageId);
     return this.schema.parse({
       id: String(task.id || this.#generateId()),
       title: this.#requireTitle(task.title),
@@ -150,15 +151,17 @@ export class TaskService extends BaseService {
       tags: this.#normalizeTags(task.tags),
       runId: normalizedRunId,
       sessionId: normalizedSession,
+      userMessageId: normalizedUserMessageId,
       createdAt: task.createdAt || now,
       updatedAt: task.updatedAt || now,
     });
   }
 
-  #buildTask({ title, details, priority, status, tags, sessionId, runId }) {
+  #buildTask({ title, details, priority, status, tags, sessionId, runId, userMessageId }) {
     const now = new Date().toISOString();
     const resolvedRunId = this.#resolveRunId(runId);
     const resolvedSessionId = this.#resolveSessionId(sessionId);
+    const resolvedUserMessageId = this.#normalizeUserMessageId(userMessageId);
     const normalizedTitle = this.#requireTitle(title);
     return {
       id: this.#generateId(),
@@ -169,6 +172,7 @@ export class TaskService extends BaseService {
       tags: this.#normalizeTags(tags),
       runId: resolvedRunId,
       sessionId: resolvedSessionId,
+      userMessageId: resolvedUserMessageId,
       createdAt: now,
       updatedAt: now,
     };
@@ -206,6 +210,10 @@ export class TaskService extends BaseService {
 
   #normalizeSessionId(sessionId) {
     return typeof sessionId === 'string' ? sessionId.trim() : '';
+  }
+
+  #normalizeUserMessageId(userMessageId) {
+    return typeof userMessageId === 'string' ? userMessageId.trim() : '';
   }
 
   #normalizeRunId(runId) {

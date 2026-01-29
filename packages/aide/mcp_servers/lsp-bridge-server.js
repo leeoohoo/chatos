@@ -47,6 +47,17 @@ const lspConfig = loadLspConfig({ root, configPathRaw });
 
 const { server } = createMcpServer({ serverName, version: '0.1.0' });
 
+function pickUserMessageId(extra) {
+  const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : {};
+  const raw =
+    typeof meta.userMessageId === 'string'
+      ? meta.userMessageId
+      : typeof meta.user_message_id === 'string'
+        ? meta.user_message_id
+        : '';
+  return raw.trim();
+}
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -252,7 +263,8 @@ function registerTools() {
       }),
     },
     async (input, extra) => {
-      const result = await lspManager.formatDocument({ ...input, signal: extra?.signal });
+      const userMessageId = pickUserMessageId(extra);
+      const result = await lspManager.formatDocument({ ...input, signal: extra?.signal, userMessageId });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -276,7 +288,8 @@ function registerTools() {
       }),
     },
     async (input, extra) => {
-      const result = await lspManager.rename({ ...input, signal: extra?.signal });
+      const userMessageId = pickUserMessageId(extra);
+      const result = await lspManager.rename({ ...input, signal: extra?.signal, userMessageId });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -550,7 +563,15 @@ class LspManager {
     });
   }
 
-  async formatDocument({ path: filePath, server_id: serverIdOverride, tab_size, insert_spaces, apply, signal } = {}) {
+  async formatDocument({
+    path: filePath,
+    server_id: serverIdOverride,
+    tab_size,
+    insert_spaces,
+    apply,
+    signal,
+    userMessageId,
+  } = {}) {
     return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
       const doc = await client.syncDocument({ path: filePath });
       const options = {
@@ -568,7 +589,7 @@ class LspManager {
 
       let applied = null;
       if (apply) {
-        applied = await client.applyTextEditsToDisk({ uri: doc.uri, edits });
+        applied = await client.applyTextEditsToDisk({ uri: doc.uri, edits, userMessageId });
       }
 
       return {
@@ -582,7 +603,16 @@ class LspManager {
     });
   }
 
-  async rename({ path: filePath, line, character, new_name, server_id: serverIdOverride, apply, signal } = {}) {
+  async rename({
+    path: filePath,
+    line,
+    character,
+    new_name,
+    server_id: serverIdOverride,
+    apply,
+    signal,
+    userMessageId,
+  } = {}) {
     return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
       const doc = await client.syncDocument({ path: filePath });
       const position = toLspPosition({ line, character });
@@ -598,7 +628,7 @@ class LspManager {
 
       let applied = null;
       if (apply) {
-        applied = await client.applyWorkspaceEditToDisk(edit);
+        applied = await client.applyWorkspaceEditToDisk(edit, { userMessageId });
       }
 
       return {
@@ -823,5 +853,3 @@ main().catch((err) => {
   console.error(`[${serverName}] crashed:`, err);
   process.exit(1);
 });
-
-

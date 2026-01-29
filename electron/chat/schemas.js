@@ -67,6 +67,7 @@ export const chatSessionSchema = z.object({
 export const chatMessageSchema = z.object({
   id: z.string().uuid().optional(),
   sessionId: z.string().trim().min(1, 'sessionId is required'),
+  userMessageId: z.string().trim().optional().default(''),
   role: z.enum(['user', 'assistant', 'tool', 'system']),
   content: z.string().optional().default(''),
   reasoning: z.string().optional().default(''),

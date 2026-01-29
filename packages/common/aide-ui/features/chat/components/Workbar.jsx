@@ -55,6 +55,7 @@ function buildUserMessageGroups(messages = []) {
     const startMs = parseTimestampMs(msg?.createdAt || msg?.ts || msg?.created_at);
     groups.push({
       key: normalizeId(msg?.id) || `user_${idx}`,
+      userMessageId: normalizeId(msg?.id),
       userMessage: msg,
       preview,
       timeText,
@@ -64,36 +65,30 @@ function buildUserMessageGroups(messages = []) {
   return groups;
 }
 
-function assignItemsToUserGroups(groups = [], items = [], getItemMs) {
+function assignItemsToUserGroups(groups = [], items = [], _getItemMs, getItemUserMessageId) {
   const base = (Array.isArray(groups) ? groups : []).map((group) => ({
     ...group,
     items: [],
   }));
-  const fallback = {
-    key: 'system',
-    userMessage: null,
-    preview: '（无用户消息）',
-    timeText: '',
-    startMs: 0,
-    items: [],
-  };
+  const groupByUserId = new Map(
+    base
+      .map((group) => {
+        const key = normalizeId(group.userMessageId || group.key);
+        return key ? [key, group] : null;
+      })
+      .filter(Boolean)
+  );
   const list = Array.isArray(items) ? items : [];
   list.forEach((item) => {
-    const ms = typeof getItemMs === 'function' ? getItemMs(item) : 0;
-    let target = null;
-    for (let i = base.length - 1; i >= 0; i -= 1) {
-      if (ms >= (base[i].startMs || 0)) {
-        target = base[i];
-        break;
-      }
-    }
-    if (!target) {
-      fallback.items.push(item);
-    } else {
-      target.items.push(item);
-    }
+    const userMessageId = normalizeId(
+      typeof getItemUserMessageId === 'function' ? getItemUserMessageId(item) : item?.userMessageId
+    );
+    if (!userMessageId) return;
+    const group = groupByUserId.get(userMessageId);
+    if (!group) return;
+    group.items.push(item);
   });
-  return [...base, fallback].filter((group) => group.items.length > 0);
+  return base.filter((group) => group.items.length > 0);
 }
 
 function formatTimeShort(ts) {
@@ -170,56 +165,57 @@ function buildToolGroupsByUser(messages = [], subagentStreams = {}) {
   });
 
   const groups = [];
+  const groupByUserId = new Map();
   const consumedToolMessageIds = new Set();
-  let currentGroup = null;
 
-  const pushGroup = (msg, idx) => {
-    const contentRaw = typeof msg?.content === 'string' ? msg.content : String(msg?.content || '');
-    const previewRaw = contentRaw.trim();
-    const attachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
-    const preview = previewRaw
-      ? truncateText(previewRaw, 64)
-      : attachments.length > 0
-        ? '（附件）'
-        : '';
-    const timeText = formatTimeShort(msg?.createdAt || msg?.ts || msg?.created_at);
+  const ensureGroupForUserId = (userMessageId) => {
+    const normalized = normalizeId(userMessageId);
+    if (!normalized) return null;
+    if (groupByUserId.has(normalized)) return groupByUserId.get(normalized);
     const group = {
-      key: normalizeId(msg?.id) || `user_${idx}`,
-      userMessage: msg,
-      preview,
-      timeText,
-      invocations: [],
-    };
-    groups.push(group);
-    return group;
-  };
-
-  const ensureFallbackGroup = () => {
-    if (currentGroup) return currentGroup;
-    const fallback = {
-      key: 'system',
+      key: normalized,
+      userMessageId: normalized,
       userMessage: null,
-      preview: '（无用户消息）',
+      preview: '',
       timeText: '',
       invocations: [],
     };
-    groups.push(fallback);
-    currentGroup = fallback;
-    return fallback;
+    groups.push(group);
+    groupByUserId.set(normalized, group);
+    return group;
   };
 
   list.forEach((msg, msgIdx) => {
     if (!msg) return;
 
     if (msg.role === 'user') {
-      currentGroup = pushGroup(msg, msgIdx);
+      const contentRaw = typeof msg?.content === 'string' ? msg.content : String(msg?.content || '');
+      const previewRaw = contentRaw.trim();
+      const attachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
+      const preview = previewRaw
+        ? truncateText(previewRaw, 64)
+        : attachments.length > 0
+          ? '（附件）'
+          : '';
+      const timeText = formatTimeShort(msg?.createdAt || msg?.ts || msg?.created_at);
+      const userMessageId = normalizeId(msg?.id);
+      if (!userMessageId) return;
+      const group = ensureGroupForUserId(userMessageId);
+      if (group) {
+        group.userMessage = msg;
+        group.preview = preview;
+        group.timeText = timeText;
+      }
       return;
     }
 
     if (msg.role === 'assistant') {
+      const userMessageId = normalizeId(msg?.userMessageId);
+      if (!userMessageId) return;
+      const group = ensureGroupForUserId(userMessageId);
+      if (!group) return;
       const calls = Array.isArray(msg?.toolCalls) ? msg.toolCalls.filter(Boolean) : [];
       if (calls.length === 0) return;
-      const group = currentGroup || ensureFallbackGroup();
       calls.forEach((call, idx) => {
         const callId = normalizeId(call?.id);
         const results = callId ? toolResultsByCallId.get(callId) || [] : [];
@@ -256,7 +252,10 @@ function buildToolGroupsByUser(messages = [], subagentStreams = {}) {
     if (msg.role === 'tool') {
       const mid = normalizeId(msg?.id);
       if (mid && consumedToolMessageIds.has(mid)) return;
-      const group = currentGroup || ensureFallbackGroup();
+      const userMessageId = normalizeId(msg?.userMessageId);
+      if (!userMessageId) return;
+      const group = ensureGroupForUserId(userMessageId);
+      if (!group) return;
       const name = typeof msg?.toolName === 'string' ? msg.toolName.trim() : '';
       const callId = normalizeId(msg?.toolCallId);
       const content = typeof msg?.content === 'string' ? msg.content : String(msg?.content || '');
@@ -328,6 +327,10 @@ export function Workbar({
   );
 
   const userGroups = useMemo(() => buildUserMessageGroups(messages), [messages]);
+  const userMessageIdSet = useMemo(
+    () => new Set(userGroups.map((group) => normalizeId(group.userMessageId || group.key)).filter(Boolean)),
+    [userGroups]
+  );
   const tasksList = useMemo(() => (Array.isArray(tasks) ? tasks.filter(Boolean) : []), [tasks]);
   const taskRows = useMemo(() => {
     return [...tasksList].sort((a, b) => {
@@ -342,11 +345,25 @@ export function Workbar({
     return dedupeFileChanges(list);
   }, [fileChanges]);
 
-  const fileChangesCount = dedupedFileChanges.length;
+  const boundTaskRows = useMemo(() => {
+    return taskRows.filter((task) => {
+      const id = normalizeId(task?.userMessageId);
+      return id && userMessageIdSet.has(id);
+    });
+  }, [taskRows, userMessageIdSet]);
+
+  const boundFileChanges = useMemo(() => {
+    return dedupedFileChanges.filter((item) => {
+      const id = normalizeId(item?.userMessageId);
+      return id && userMessageIdSet.has(id);
+    });
+  }, [dedupedFileChanges, userMessageIdSet]);
+
+  const fileChangesCount = boundFileChanges.length;
 
   const tabs = [
     { key: TAB_KEYS.tools, label: '工具', count: toolCount },
-    { key: TAB_KEYS.tasks, label: '任务', count: taskRows.length },
+    { key: TAB_KEYS.tasks, label: '任务', count: boundTaskRows.length },
     { key: TAB_KEYS.files, label: '文件变更', count: fileChangesCount },
   ];
 
@@ -442,9 +459,12 @@ export function Workbar({
   };
 
   const renderTasks = () => {
-    if (taskRows.length === 0) return <Empty description="暂无任务" />;
-    const taskGroups = assignItemsToUserGroups(userGroups, taskRows, (task) =>
-      parseTimestampMs(task?.createdAt || task?.updatedAt || '')
+    if (boundTaskRows.length === 0) return <Empty description="暂无任务" />;
+    const taskGroups = assignItemsToUserGroups(
+      userGroups,
+      boundTaskRows,
+      (task) => parseTimestampMs(task?.createdAt || task?.updatedAt || ''),
+      (task) => task?.userMessageId
     );
     if (taskGroups.length === 0) return <Empty description="暂无任务" />;
 
@@ -493,9 +513,12 @@ export function Workbar({
   };
 
   const renderFileChanges = () => {
-    if (dedupedFileChanges.length === 0) return <Empty description="暂无文件变更" />;
-    const fileGroups = assignItemsToUserGroups(userGroups, dedupedFileChanges, (item) =>
-      parseTimestampMs(item?.ts)
+    if (boundFileChanges.length === 0) return <Empty description="暂无文件变更" />;
+    const fileGroups = assignItemsToUserGroups(
+      userGroups,
+      boundFileChanges,
+      (item) => parseTimestampMs(item?.ts),
+      (item) => item?.userMessageId
     );
     if (fileGroups.length === 0) return <Empty description="暂无文件变更" />;
 

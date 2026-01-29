@@ -256,7 +256,19 @@ export function registerChatApi(ipcMain, options = {}) {
     }
 
     const userMessage = store.messages.create({ sessionId, role: 'user', content: text, attachments });
-    const assistantMessage = store.messages.create({ sessionId, role: 'assistant', content: '' });
+    try {
+      if (userMessage?.id) {
+        store.messages.update(userMessage.id, { userMessageId: userMessage.id });
+      }
+    } catch {
+      // ignore
+    }
+    const assistantMessage = store.messages.create({
+      sessionId,
+      role: 'assistant',
+      content: '',
+      ...(userMessage?.id ? { userMessageId: userMessage.id } : {}),
+    });
     store.sessions.update(sessionId, { updatedAt: new Date().toISOString() });
 
     void Promise.resolve()

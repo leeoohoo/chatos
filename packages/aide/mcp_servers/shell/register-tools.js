@@ -41,6 +41,16 @@ export function registerShellTools(context = {}) {
   if (!server) throw new Error('Missing MCP server');
   if (!z) throw new Error('Missing zod');
   if (!sessions) throw new Error('Missing session manager');
+  const pickUserMessageId = (extra) => {
+    const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : {};
+    const raw =
+      typeof meta.userMessageId === 'string'
+        ? meta.userMessageId
+        : typeof meta.user_message_id === 'string'
+          ? meta.user_message_id
+          : '';
+    return raw.trim();
+  };
 
   server.registerTool(
     'run_shell_command',
@@ -61,6 +71,7 @@ export function registerShellTools(context = {}) {
       }),
     },
     async ({ command, cwd = '.', timeout_ms: timeout, shell, env }, extra) => {
+      const userMessageId = pickUserMessageId(extra);
       const workingDir = await ensurePath(cwd);
       const usedShell = shell || defaultShell;
       const analysis = typeof analyzeShellCommand === 'function' ? analyzeShellCommand(command) : null;
@@ -226,6 +237,7 @@ export function registerShellTools(context = {}) {
             fsOps,
             tool: 'run_shell_command',
             mode: 'shell',
+            userMessageId,
           });
           return textResponse(formatted);
         }
@@ -253,6 +265,7 @@ export function registerShellTools(context = {}) {
           fsOps,
           tool: 'run_shell_command',
           mode: 'shell',
+          userMessageId,
         });
 
         const remark = review.remark ? `\n\nUser remark: ${review.remark}` : '';
@@ -308,6 +321,7 @@ export function registerShellTools(context = {}) {
               tool: 'run_shell_command',
               mode: 'shell',
               patchText: entry.diff,
+              userMessageId,
             });
           }
           return textResponse(formatted);
@@ -358,6 +372,7 @@ export function registerShellTools(context = {}) {
             tool: 'run_shell_command',
             mode: 'shell',
             patchText: entry.diff,
+            userMessageId,
           });
         }
 

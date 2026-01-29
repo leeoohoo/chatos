@@ -72,6 +72,7 @@ export function registerAddTaskTool({
       dedupe_key: z.string().optional().describe('Optional idempotency key to dedupe repeated calls'),
       runId: z.string().optional().describe('Run ID (optional; defaults to current run)'),
       sessionId: z.string().optional().describe('Session ID (optional; defaults to current session)'),
+      userMessageId: z.string().optional().describe('User message ID (optional; binds task to a chat turn)'),
       caller: z
         .string()
         .optional()
@@ -95,6 +96,7 @@ export function registerAddTaskTool({
         .describe('Batch of tasks to create (array or JSON string)'),
       runId: z.string().optional().describe('Run ID (optional; defaults to current run)'),
       sessionId: z.string().optional().describe('Session ID (optional; defaults to current session)'),
+      userMessageId: z.string().optional().describe('User message ID (optional; binds task to a chat turn)'),
       caller: z
         .string()
         .optional()
@@ -207,10 +209,16 @@ export function registerAddTaskTool({
         ].join('\n'),
       inputSchema: addTaskInputSchema,
     },
-    async (payload) => {
+    async (payload, extra) => {
       const normalizedPayload = normalizeAddTaskPayload(payload);
       const runDefault = pickRunId(normalizedPayload.runId);
       const sessionDefault = pickSessionId(normalizedPayload.sessionId);
+      const metaUserMessageId = safeTrim(
+        extra?._meta && typeof extra._meta === 'object'
+          ? extra._meta.userMessageId || extra._meta.user_message_id
+          : ''
+      );
+      const userMessageDefault = metaUserMessageId || safeTrim(normalizedPayload.userMessageId);
       const inputs =
         Array.isArray(normalizedPayload.tasks) && normalizedPayload.tasks.length > 0
           ? normalizedPayload.tasks
@@ -221,6 +229,7 @@ export function registerAddTaskTool({
       const draftTasks = inputs.map((item, idx) => {
         const resolvedRunId = pickRunId(item?.runId) || runDefault;
         const resolvedSessionId = pickSessionId(item?.sessionId) || sessionDefault;
+        const resolvedUserMessageId = metaUserMessageId || safeTrim(item?.userMessageId) || userMessageDefault;
         const dedupeKey = buildTaskDedupeKey(item?.dedupe_key, {
           runId: resolvedRunId,
           sessionId: resolvedSessionId,
@@ -234,6 +243,7 @@ export function registerAddTaskTool({
           tags: Array.isArray(item?.tags) ? item.tags : [],
           runId: resolvedRunId,
           sessionId: resolvedSessionId,
+          userMessageId: resolvedUserMessageId,
           dedupeKey,
           _index: idx,
         };
@@ -305,6 +315,8 @@ export function registerAddTaskTool({
           const prev = item?.draftId ? draftById.get(item.draftId) : null;
           const runIdResolved = pickRunId(prev?.runId) || runDefault;
           const sessionIdResolved = pickSessionId(prev?.sessionId) || sessionDefault;
+          const resolvedUserMessageId =
+            metaUserMessageId || safeTrim(item?.userMessageId) || safeTrim(prev?.userMessageId) || userMessageDefault;
           return {
             title: safeTrim(item.title),
             details: typeof item.details === 'string' ? item.details : '',
@@ -313,6 +325,7 @@ export function registerAddTaskTool({
             tags: normalizeTags(item.tags),
             runId: runIdResolved,
             sessionId: sessionIdResolved,
+            userMessageId: resolvedUserMessageId,
             dedupeKey: prev?.dedupeKey || '',
           };
         });

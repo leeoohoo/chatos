@@ -413,7 +413,7 @@ export function createFilesystemOps({
     return map;
   }
 
-  async function buildChangeEntry({ relPath, absolutePath, before, after, tool, mode, patchText }) {
+  async function buildChangeEntry({ relPath, absolutePath, before, after, tool, mode, patchText, userMessageId }) {
     const resolvedRel = relPath || (absolutePath ? relativePath(absolutePath) : '');
     if (!resolvedRel && !absolutePath) {
       return null;
@@ -432,9 +432,11 @@ export function createFilesystemOps({
     const diffText =
         patchText || (await generateUnifiedDiff(resolvedRel, beforeContent, afterContent));
     const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+    const normalizedUserMessageId = typeof userMessageId === 'string' ? userMessageId.trim() : '';
     return {
       ts: new Date().toISOString(),
       ...(runId ? { runId } : {}),
+      ...(normalizedUserMessageId ? { userMessageId: normalizedUserMessageId } : {}),
       path: resolvedRel,
       absolutePath,
       workspaceRoot: root,
@@ -461,7 +463,7 @@ export function createFilesystemOps({
     }
   }
 
-  async function logPatchChanges({ affectedPaths = [], before, after, patchText, workDir }) {
+  async function logPatchChanges({ affectedPaths = [], before, after, patchText, workDir, userMessageId }) {
     try {
       const entries = [];
       const keys = new Set();
@@ -490,6 +492,7 @@ export function createFilesystemOps({
             after: afterSnap,
             tool: 'apply_patch',
             mode: 'patch',
+            userMessageId,
           });
           if (entry) {
             entries.push(entry);
@@ -502,9 +505,11 @@ export function createFilesystemOps({
       }
       if (entries.length === 0 && patchText) {
         const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+        const normalizedUserMessageId = typeof userMessageId === 'string' ? userMessageId.trim() : '';
         entries.push({
           ts: new Date().toISOString(),
           ...(runId ? { runId } : {}),
+          ...(normalizedUserMessageId ? { userMessageId: normalizedUserMessageId } : {}),
           path: 'patch',
           workspaceRoot: root,
           changeType: 'modified',

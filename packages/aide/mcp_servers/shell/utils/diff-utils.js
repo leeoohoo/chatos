@@ -87,7 +87,7 @@ export function isInsideWorkspaceRoot(workspaceRoot, targetPath) {
   return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep);
 }
 
-export async function logFileChangesFromDiff({ diffText, workspaceRoot, fsOps, tool, mode } = {}) {
+export async function logFileChangesFromDiff({ diffText, workspaceRoot, fsOps, tool, mode, userMessageId } = {}) {
   if (!fsOps || typeof fsOps.logFileChange !== 'function') return;
   const root = typeof workspaceRoot === 'string' ? workspaceRoot.trim() : '';
   if (!root) return;
@@ -106,6 +106,7 @@ export async function logFileChangesFromDiff({ diffText, workspaceRoot, fsOps, t
       tool: tool || 'run_shell_command',
       mode: mode || 'shell',
       patchText: block,
+      userMessageId,
     });
   }
 }

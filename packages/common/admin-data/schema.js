@@ -5,6 +5,7 @@ const TASK_COLUMNS = [
   { name: 'title', type: 'string', required: true },
   { name: 'runId', type: 'string', required: false, note: '终端运行实例 ID（用于隔离多终端）' },
   { name: 'sessionId', type: 'string', required: false, note: '关联的会话 ID' },
+  { name: 'userMessageId', type: 'string', required: false, note: '关联的用户消息 ID' },
   { name: 'status', type: 'string', required: false },
   { name: 'priority', type: 'string', required: false },
   { name: 'tags', type: 'string[]', required: false },
@@ -276,6 +277,7 @@ export const taskSchema = z.object({
   title: z.string().trim().min(1, 'title is required'),
   runId: z.string().trim().optional().default(''),
   sessionId: z.string().trim().optional().default(''),
+  userMessageId: z.string().trim().optional().default(''),
   details: z.string().trim().optional().default(''),
   status: z
     .enum(['todo', 'doing', 'blocked', 'done'])

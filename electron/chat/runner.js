@@ -987,7 +987,12 @@ export function createChatRunner({
       }
       let record = null;
       try {
-        record = store.messages.create({ sessionId: sid, role: 'assistant', content: '' });
+        record = store.messages.create({
+          sessionId: sid,
+          role: 'assistant',
+          content: '',
+          ...(userMessageId ? { userMessageId } : {}),
+        });
       } catch (err) {
         scopedSendEvent({ type: 'notice', message: `[Chat] 创建消息失败：${err?.message || String(err)}` });
         return;
@@ -1041,6 +1046,7 @@ export function createChatRunner({
         callId: toolCallId,
         ...(argsText ? { args: argsText } : {}),
         sessionId: sid,
+        ...(userMessageId ? { userMessageId } : {}),
         agentId: effectiveAgentId,
         caller: 'main',
         ...(traceMeta ? { trace: traceMeta } : {}),
@@ -1069,6 +1075,7 @@ export function createChatRunner({
         content,
         ...(hasStructuredContent ? { toolStructuredContent } : {}),
         ...(toolIsError ? { toolIsError } : {}),
+        ...(userMessageId ? { userMessageId } : {}),
       });
       const resultText = formatLogValue(rawContent, 6000);
       const traceMeta = extractTraceMeta(trace);
@@ -1077,6 +1084,7 @@ export function createChatRunner({
         callId: toolCallId,
         ...(resultText ? { result: resultText } : {}),
         sessionId: sid,
+        ...(userMessageId ? { userMessageId } : {}),
         agentId: effectiveAgentId,
         caller: 'main',
         ...(traceMeta ? { trace: traceMeta } : {}),
@@ -1116,9 +1124,16 @@ export function createChatRunner({
 
         await summarizeConversation({ force: false, signal: controller.signal });
 
-        const toolContext = Array.isArray(subagentMcpAllowPrefixes)
-          ? { subagentMcpAllowPrefixes }
-          : null;
+        const toolContext = (() => {
+          const base = {};
+          if (Array.isArray(subagentMcpAllowPrefixes)) {
+            base.subagentMcpAllowPrefixes = subagentMcpAllowPrefixes;
+          }
+          if (userMessageId) {
+            base.userMessageId = userMessageId;
+          }
+          return Object.keys(base).length > 0 ? base : null;
+        })();
         const runChat = async () =>
           client.chat(modelRecord.name, chatSession, {
             stream: true,

@@ -581,12 +581,29 @@ export function useChatSessions() {
         const next = list.slice();
         const userId = userMessageId || `user_${now}`;
         if (userId && !seen.has(userId)) {
-          next.push({ id: userId, sessionId: sid, role: 'user', content: text, attachments, createdAt: now, updatedAt: now });
+          next.push({
+            id: userId,
+            sessionId: sid,
+            role: 'user',
+            content: text,
+            attachments,
+            createdAt: now,
+            updatedAt: now,
+            userMessageId: userId,
+          });
           seen.add(userId);
         }
         const assistantId = assistantMessageId || `assistant_${now}`;
         if (assistantId && !seen.has(assistantId)) {
-          next.push({ id: assistantId, sessionId: sid, role: 'assistant', content: '', createdAt: now, updatedAt: now });
+          next.push({
+            id: assistantId,
+            sessionId: sid,
+            role: 'assistant',
+            content: '',
+            createdAt: now,
+            updatedAt: now,
+            ...(userId ? { userMessageId: userId } : {}),
+          });
         }
         return next;
       });

@@ -209,6 +209,16 @@ export function registerFilesystemTools({
   const safeMaxWriteBytes = clampNumber(maxWriteBytes, 1024, 100 * 1024 * 1024, safeMaxFileBytes);
   const safeSearchLimit = clampNumber(searchLimit, 1, 200, 40);
   const safeRoot = typeof root === 'string' && root.trim() ? root.trim() : process.cwd();
+  const pickUserMessageId = (extra) => {
+    const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : {};
+    const raw =
+      typeof meta.userMessageId === 'string'
+        ? meta.userMessageId
+        : typeof meta.user_message_id === 'string'
+          ? meta.user_message_id
+          : '';
+    return raw.trim();
+  };
 
   server.registerTool(
     'list_directory',
@@ -346,7 +356,8 @@ ${note}`,
         mode: z.enum(['overwrite', 'append']).optional().describe('Write mode (default overwrite)'),
       }),
     },
-    async (args) => {
+    async (args, extra) => {
+      const userMessageId = pickUserMessageId(extra);
       const target = await ensurePath(args.path);
       const relPathLabel = relativePath(target);
       const before = await readFileSnapshot(target);
@@ -397,6 +408,7 @@ ${note}`,
         after,
         tool: 'write_file',
         mode,
+        userMessageId,
       });
       const summary = mode === 'append' ? 'Appended' : 'Overwrote';
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
@@ -439,7 +451,8 @@ ${note}`,
           .describe('Expected number of matches (default 1)'),
       }),
     },
-    async ({ path: filePath, old_string: oldRaw, new_string: newRaw, expected_replacements: expectedRaw }) => {
+    async ({ path: filePath, old_string: oldRaw, new_string: newRaw, expected_replacements: expectedRaw }, extra) => {
+      const userMessageId = pickUserMessageId(extra);
       const target = await ensurePath(filePath);
       const relPathLabel = relativePath(target);
       const expectedReplacements = Number.isFinite(Number(expectedRaw)) ? Number(expectedRaw) : 1;
@@ -614,6 +627,7 @@ ${note}`,
         after,
         tool: 'edit_file',
         mode: isCreateNewFile ? 'create' : 'edit',
+        userMessageId,
       });
 
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
@@ -644,7 +658,8 @@ ${note}`,
         path: z.string().describe('Path relative to root'),
       }),
     },
-    async ({ path: targetPath }) => {
+    async ({ path: targetPath }, extra) => {
+      const userMessageId = pickUserMessageId(extra);
       const target = await ensurePath(targetPath);
       const relPathLabel = relativePath(target);
       const before = await readFileSnapshot(target);
@@ -670,6 +685,7 @@ ${note}`,
         after: { exists: false, content: '' },
         tool: 'delete_path',
         mode: 'delete',
+        userMessageId,
       });
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
       return structuredResponse(`✓ Deleted ${relativePath(target)}.${remark}`, {
@@ -704,7 +720,8 @@ ${note}`,
         encoding: z.enum(['plain', 'base64']).optional().describe('Default plain'),
       }),
     },
-    async (args) => {
+    async (args, extra) => {
+      const userMessageId = pickUserMessageId(extra);
       const rawPath = args.path || '.';
 
       // 解析工作目录
@@ -879,6 +896,7 @@ ${note}`,
         after: afterSnapshots,
         patchText: normalizedPatch,
         workDir: applyDir,
+        userMessageId,
       });
 
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
@@ -895,4 +913,3 @@ ${note}`,
     }
   );
 }
-

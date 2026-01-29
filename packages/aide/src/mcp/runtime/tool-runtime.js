@@ -57,9 +57,19 @@ function maybeInjectCallerArgs({ server, tool, args, toolContext }) {
     return '';
   };
   const caller = normalizeCaller(toolContext?.caller);
-  if (!caller) return args;
-  if (normalizeCaller(args.caller) === caller) return args;
-  return { ...args, caller };
+  const injected = caller && normalizeCaller(args.caller) !== caller ? { ...args, caller } : { ...args };
+  const userMessageId = normalizeSessionId(toolContext?.userMessageId);
+  if (userMessageId) {
+    if (Array.isArray(injected.tasks) && injected.tasks.length > 0) {
+      injected.tasks = injected.tasks.map((task) => ({
+        ...(task || {}),
+        userMessageId,
+      }));
+    } else {
+      injected.userMessageId = userMessageId;
+    }
+  }
+  return injected;
 }
 
 function buildToolIdentifier(serverName, toolName) {
@@ -168,6 +178,18 @@ function buildCallMeta(serverEntry, runtimeMeta, toolContext) {
       next = { sessionId: contextSessionId };
     } else if (!Object.prototype.hasOwnProperty.call(next, 'sessionId')) {
       next = { ...next, sessionId: contextSessionId };
+    }
+  }
+  const contextUserMessageId = normalizeSessionId(toolContext?.userMessageId);
+  if (contextUserMessageId) {
+    const hasUserMessageId =
+      next &&
+      (Object.prototype.hasOwnProperty.call(next, 'userMessageId') ||
+        Object.prototype.hasOwnProperty.call(next, 'user_message_id'));
+    if (!next) {
+      next = { userMessageId: contextUserMessageId, user_message_id: contextUserMessageId };
+    } else if (!hasUserMessageId) {
+      next = { ...next, userMessageId: contextUserMessageId, user_message_id: contextUserMessageId };
     }
   }
   const contextToolCallId = normalizeSessionId(toolContext?.toolCallId);

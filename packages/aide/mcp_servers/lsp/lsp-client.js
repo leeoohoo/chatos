@@ -388,7 +388,7 @@ class LspClient {
     return { uri, path: this.fsOps.relativePath(absPath), version: existing.version, sha256: existing.sha256, language_id: languageId };
   }
 
-  async applyTextEditsToDisk({ uri, edits }) {
+  async applyTextEditsToDisk({ uri, edits, userMessageId }) {
     if (!this.writesEnabled) {
       throw new Error('Writes are disabled. Start this MCP server with --write to apply edits.');
     }
@@ -419,11 +419,12 @@ class LspClient {
       after,
       tool: 'lsp_apply_text_edits',
       mode: 'edit',
+      userMessageId,
     });
     return { status: 'ok', path: this.fsOps.relativePath(target), edits: normalizedEdits.length };
   }
 
-  async applyWorkspaceEditToDisk(edit) {
+  async applyWorkspaceEditToDisk(edit, { userMessageId } = {}) {
     if (!this.writesEnabled) {
       throw new Error('Writes are disabled. Start this MCP server with --write to apply edits.');
     }
@@ -442,7 +443,7 @@ class LspClient {
     const results = [];
     for (const uri of uris) {
       const edits = changes[uri];
-      const applied = await this.applyTextEditsToDisk({ uri, edits });
+      const applied = await this.applyTextEditsToDisk({ uri, edits, userMessageId });
       totalEdits += Array.isArray(edits) ? edits.length : 0;
       results.push({ uri, ...applied });
     }
@@ -519,4 +520,3 @@ function waitForExit(proc, timeoutMs) {
 }
 
 export { LspClient };
-
