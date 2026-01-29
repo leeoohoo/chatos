@@ -13,7 +13,7 @@ function shouldAutoScroll(el) {
   return distance < 80;
 }
 
-export function ChatMessages({ messages, streaming, subagentStreams, hasMore, loadingMore, onLoadMore }) {
+export function ChatMessages({ messages, streaming, hasMore, loadingMore, onLoadMore }) {
   const allMessages = useMemo(() => (Array.isArray(messages) ? messages.filter(Boolean) : []), [messages]);
   const summaryMessage = useMemo(() => pickLatestSummaryMessage(allMessages), [allMessages]);
   const summaryId = normalizeId(summaryMessage?.id);
@@ -76,7 +76,7 @@ export function ChatMessages({ messages, streaming, subagentStreams, hasMore, lo
 
   return (
     <div ref={containerRef} style={{ height: '100%', overflow: 'auto', paddingRight: 6 }}>
-      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+      <Space direction="vertical" size={6} style={{ width: '100%' }}>
         {hasMore ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0' }}>
             <Button size="small" onClick={() => onLoadMore?.()} loading={loadingMore}>
@@ -88,14 +88,7 @@ export function ChatMessages({ messages, streaming, subagentStreams, hasMore, lo
           if (turn.type === 'user') {
             return <UserMessageCard key={turn.key} message={turn.message} />;
           }
-          return (
-            <AssistantTurnCard
-              key={turn.key}
-              messages={turn.messages}
-              streaming={streaming}
-              subagentStreams={subagentStreams}
-            />
-          );
+          return <AssistantTurnCard key={turn.key} messages={turn.messages} streaming={streaming} />;
         })}
         {summaryContent ? <SystemMessageCard message={summaryMessage} /> : null}
       </Space>

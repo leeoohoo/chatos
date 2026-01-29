@@ -1,0 +1,144 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bg { fill:#F7F8FA; }
+    .card { fill:#FFFFFF; stroke:#E6E8EC; stroke-width:1; }
+    .title { font: 600 14px "Inter", "PingFang SC", sans-serif; fill:#2F343A; }
+    .muted { font: 400 11px "Inter", "PingFang SC", sans-serif; fill:#9AA1AC; }
+    .divider { stroke:#E6E8EC; stroke-width:1; }
+
+    .tab { fill:#F3F4F6; }
+    .tab-active { fill:#EEF2FF; stroke:#D6D9FF; }
+    .tab-text { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#4B5563; }
+    .tab-text-active { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#3F51B5; }
+    .count { fill:#E5E7EB; }
+    .count-active { fill:#D6D9FF; }
+    .count-text { font: 600 11px "Inter", "PingFang SC", sans-serif; fill:#4B5563; }
+
+    .chip { fill:#F8FAFF; stroke:#E4E7FF; }
+    .chip2 { fill:#F3FFF8; stroke:#D3F1E1; }
+    .chip3 { fill:#FFF8F1; stroke:#FFE3C2; }
+    .chip-title { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#2F343A; }
+    .chip-sub { font: 400 11px "Inter", "PingFang SC", sans-serif; fill:#6B7280; }
+
+    .pill { fill:#F3F4F6; }
+    .pill-text { font: 600 11px "Inter", "PingFang SC", sans-serif; fill:#4B5563; }
+
+    .input { fill:#FFFFFF; stroke:#D9DEE5; }
+    .input-placeholder { font: 400 12px "Inter", "PingFang SC", sans-serif; fill:#9AA1AC; }
+    .btn { fill:#F3F4F6; }
+    .btn-primary { fill:#4F46E5; }
+    .btn-text { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#4B5563; }
+    .btn-text-primary { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#FFFFFF; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1200" height="760" rx="16"/>
+
+  <!-- Expanded state -->
+  <rect class="card" x="24" y="24" width="1152" height="360" rx="12"/>
+  <text class="title" x="48" y="58">工作条（展开）</text>
+  <text class="muted" x="150" y="58">展开时显示列表内容</text>
+
+  <!-- Tabs -->
+  <rect class="tab-active" x="48" y="74" width="120" height="28" rx="14"/>
+  <text class="tab-text-active" x="68" y="92">工具</text>
+  <rect class="count-active" x="110" y="80" width="28" height="16" rx="8"/>
+  <text class="count-text" x="120" y="92">8</text>
+
+  <rect class="tab" x="178" y="74" width="120" height="28" rx="14"/>
+  <text class="tab-text" x="198" y="92">任务</text>
+  <rect class="count" x="238" y="80" width="28" height="16" rx="8"/>
+  <text class="count-text" x="248" y="92">3</text>
+
+  <rect class="tab" x="308" y="74" width="140" height="28" rx="14"/>
+  <text class="tab-text" x="328" y="92">文件变更</text>
+  <rect class="count" x="394" y="80" width="28" height="16" rx="8"/>
+  <text class="count-text" x="404" y="92">5</text>
+
+  <!-- Right actions -->
+  <rect class="pill" x="878" y="74" width="110" height="24" rx="12"/>
+  <text class="pill-text" x="900" y="90">收起</text>
+  <rect class="pill" x="998" y="74" width="120" height="24" rx="12"/>
+  <text class="pill-text" x="1022" y="90">仅看失败</text>
+
+  <!-- Expanded list preview -->
+  <rect class="chip" x="48" y="112" width="320" height="44" rx="10"/>
+  <circle cx="66" cy="130" r="5" fill="#6366F1"/>
+  <text class="chip-title" x="80" y="129">mcp_code_maintainer.search_text</text>
+  <text class="chip-sub" x="80" y="146">query: tool tags layout</text>
+
+  <rect class="chip2" x="396" y="112" width="320" height="44" rx="10"/>
+  <circle cx="414" cy="130" r="5" fill="#22C55E"/>
+  <text class="chip-title" x="428" y="129">mcp_code_maintainer.read_file_raw</text>
+  <text class="chip-sub" x="428" y="146">path: ChatComposer.jsx</text>
+
+  <rect class="chip3" x="744" y="112" width="320" height="44" rx="10"/>
+  <circle cx="762" cy="130" r="5" fill="#F59E0B"/>
+  <text class="chip-title" x="776" y="129">mcp_shell_tasks.exec</text>
+  <text class="chip-sub" x="776" y="146">$ rg -n "input"</text>
+
+  <rect class="chip" x="48" y="166" width="320" height="44" rx="10"/>
+  <circle cx="66" cy="184" r="5" fill="#38BDF8"/>
+  <text class="chip-title" x="80" y="183">mcp_shell_tasks.list_workspace_files</text>
+  <text class="chip-sub" x="80" y="200">cwd: /nova_dreamer/chatos</text>
+
+  <rect class="pill" x="396" y="174" width="110" height="26" rx="13"/>
+  <text class="pill-text" x="410" y="192">+4 更多</text>
+
+  <line class="divider" x1="48" y1="222" x2="1128" y2="222"/>
+
+  <!-- Composer area (context) -->
+  <text class="title" x="48" y="250">输入区域</text>
+  <rect class="input" x="48" y="264" width="1080" height="96" rx="10"/>
+  <text class="input-placeholder" x="64" y="292">输入消息，Enter 发送（Shift+Enter 换行）</text>
+
+  <rect class="btn" x="48" y="372" width="110" height="30" rx="8"/>
+  <text class="btn-text" x="72" y="392">添加图片</text>
+  <text class="muted" x="170" y="392">可粘贴图片</text>
+
+  <rect class="btn" x="932" y="368" width="90" height="36" rx="8"/>
+  <text class="btn-text" x="955" y="390">停止</text>
+
+  <rect class="btn-primary" x="1032" y="368" width="96" height="36" rx="8"/>
+  <text class="btn-text-primary" x="1060" y="390">发送</text>
+
+  <!-- Collapsed state -->
+  <rect class="card" x="24" y="420" width="1152" height="300" rx="12"/>
+  <text class="title" x="48" y="454">工作条（收起）</text>
+  <text class="muted" x="150" y="454">收起时仅显示三个 Tab</text>
+
+  <!-- Tabs (collapsed) -->
+  <rect class="tab-active" x="48" y="470" width="120" height="28" rx="14"/>
+  <text class="tab-text-active" x="68" y="488">工具</text>
+  <rect class="count-active" x="110" y="476" width="28" height="16" rx="8"/>
+  <text class="count-text" x="120" y="488">8</text>
+
+  <rect class="tab" x="178" y="470" width="120" height="28" rx="14"/>
+  <text class="tab-text" x="198" y="488">任务</text>
+  <rect class="count" x="238" y="476" width="28" height="16" rx="8"/>
+  <text class="count-text" x="248" y="488">3</text>
+
+  <rect class="tab" x="308" y="470" width="140" height="28" rx="14"/>
+  <text class="tab-text" x="328" y="488">文件变更</text>
+  <rect class="count" x="394" y="476" width="28" height="16" rx="8"/>
+  <text class="count-text" x="404" y="488">5</text>
+
+  <!-- Right actions -->
+  <rect class="pill" x="1008" y="470" width="110" height="24" rx="12"/>
+  <text class="pill-text" x="1030" y="486">展开</text>
+
+  <line class="divider" x1="48" y1="514" x2="1128" y2="514"/>
+
+  <!-- Composer area (context) -->
+  <rect class="input" x="48" y="530" width="1080" height="96" rx="10"/>
+  <text class="input-placeholder" x="64" y="558">输入消息，Enter 发送（Shift+Enter 换行）</text>
+
+  <rect class="btn" x="48" y="638" width="110" height="30" rx="8"/>
+  <text class="btn-text" x="72" y="658">添加图片</text>
+  <text class="muted" x="170" y="658">可粘贴图片</text>
+
+  <rect class="btn" x="932" y="634" width="90" height="36" rx="8"/>
+  <text class="btn-text" x="955" y="656">停止</text>
+
+  <rect class="btn-primary" x="1032" y="634" width="96" height="36" rx="8"/>
+  <text class="btn-text-primary" x="1060" y="656">发送</text>
+</svg>

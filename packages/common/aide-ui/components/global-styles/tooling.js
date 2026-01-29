@@ -1236,4 +1236,193 @@ export const GLOBAL_TOOLING_STYLES = `
       .ds-tool-drawer-full .ant-drawer-header {
         border-radius: 0;
       }
+
+      .ds-workbar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--ds-panel-border);
+        border-radius: 12px;
+        background: var(--ds-panel-bg);
+      }
+      .ds-workbar-tabs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .ds-workbar-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        background: var(--ds-subtle-bg);
+        color: rgba(71, 85, 105, 0.85);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .ds-workbar-tab[data-active='true'] {
+        background: rgba(99, 102, 241, 0.12);
+        border-color: rgba(99, 102, 241, 0.4);
+        color: #3f51b5;
+      }
+      .ds-workbar-tab-count {
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .ds-workbar-tab[data-active='true'] .ds-workbar-tab-count {
+        background: rgba(99, 102, 241, 0.18);
+        color: #3f51b5;
+      }
+      .ds-workbar-spacer {
+        flex: 1;
+      }
+      .ds-workbar-action {
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+        color: rgba(71, 85, 105, 0.85);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .ds-workbar-action[data-active='true'] {
+        border-color: rgba(99, 102, 241, 0.4);
+        color: #3f51b5;
+      }
+      .ds-workbar-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ds-workbar-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ds-workbar-group {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ds-workbar-group-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .ds-workbar-group-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      .ds-workbar-group-meta {
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.8);
+      }
+      .ds-workbar-group-toggle {
+        margin-left: auto;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-panel-bg);
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.8);
+        cursor: pointer;
+      }
+      .ds-workbar-group-preview {
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.85);
+      }
+      .ds-workbar-tool-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 8px;
+      }
+      .ds-workbar .ds-tool-badge {
+        width: 100%;
+        border-radius: 10px;
+        padding: 6px 10px;
+        justify-content: flex-start;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-panel-bg);
+        box-shadow: none;
+      }
+      .ds-workbar .ds-tool-badge:hover {
+        transform: none;
+        box-shadow: none;
+        border-color: var(--tool-accent-strong);
+        background: var(--tool-accent-weak);
+      }
+      .ds-workbar .ds-tool-badge-subtitle {
+        max-width: 100%;
+      }
+      .ds-workbar-more {
+        align-self: flex-start;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-panel-bg);
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.8);
+      }
+      .ds-workbar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ds-workbar-list-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--ds-panel-border);
+        background: var(--ds-subtle-bg);
+      }
+      .ds-workbar-item-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+      }
+      .ds-workbar-item-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.9);
+      }
+      .ds-workbar-item-subtitle {
+        font-size: 11px;
+        color: rgba(71, 85, 105, 0.75);
+      }
+      .ds-workbar-item-meta {
+        margin-left: auto;
+        display: inline-flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      :root[data-theme='dark'] .ds-workbar-tab,
+      :root[data-theme='dark'] .ds-workbar-action,
+      :root[data-theme='dark'] .ds-workbar-group-title,
+      :root[data-theme='dark'] .ds-workbar-item-title {
+        color: rgba(255, 255, 255, 0.9);
+      }
+      :root[data-theme='dark'] .ds-workbar-group-meta,
+      :root[data-theme='dark'] .ds-workbar-group-preview,
+      :root[data-theme='dark'] .ds-workbar-item-subtitle {
+        color: rgba(148, 163, 184, 0.85);
+      }
 `;

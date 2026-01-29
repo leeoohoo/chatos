@@ -1,0 +1,106 @@
+<svg width="1200" height="640" viewBox="0 0 1200 640" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bg { fill:#F7F8FA; }
+    .card { fill:#FFFFFF; stroke:#E6E8EC; stroke-width:1; }
+    .title { font: 600 14px "Inter", "PingFang SC", sans-serif; fill:#2F343A; }
+    .muted { font: 400 11px "Inter", "PingFang SC", sans-serif; fill:#9AA1AC; }
+    .pill { fill:#F3F4F6; }
+    .pill-text { font: 600 11px "Inter", "PingFang SC", sans-serif; fill:#4B5563; }
+    .divider { stroke:#E6E8EC; stroke-width:1; }
+
+    .group { fill:#F9FAFB; stroke:#E6E8EC; }
+    .group-title { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#2F343A; }
+    .group-sub { font: 400 11px "Inter", "PingFang SC", sans-serif; fill:#6B7280; }
+    .group-quote { font: 400 11px "Inter", "PingFang SC", sans-serif; fill:#6B7280; }
+
+    .chip { fill:#F8FAFF; stroke:#E4E7FF; }
+    .chip2 { fill:#F3FFF8; stroke:#D3F1E1; }
+    .chip3 { fill:#FFF8F1; stroke:#FFE3C2; }
+    .chip4 { fill:#F6F7FF; stroke:#DADFFF; }
+    .chip5 { fill:#FFF1F5; stroke:#FFD1DF; }
+    .chip6 { fill:#F4FBFF; stroke:#D7ECFF; }
+
+    .chip-title { font: 600 12px "Inter", "PingFang SC", sans-serif; fill:#2F343A; }
+    .chip-sub { font: 400 11px "Inter", "PingFang SC", sans-serif; fill:#6B7280; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1200" height="640" rx="16"/>
+  <rect class="card" x="24" y="24" width="1152" height="592" rx="12"/>
+
+  <!-- header -->
+  <text class="title" x="48" y="58">工具调用（按用户消息分组）</text>
+  <text class="muted" x="238" y="58">共 3 条用户消息 · 14 个调用</text>
+  <rect class="pill" x="888" y="40" width="110" height="24" rx="12"/>
+  <text class="pill-text" x="910" y="56">展开全部</text>
+  <rect class="pill" x="1008" y="40" width="120" height="24" rx="12"/>
+  <text class="pill-text" x="1032" y="56">仅看失败</text>
+  <line class="divider" x1="48" y1="72" x2="1128" y2="72"/>
+
+  <!-- User message group 1 -->
+  <rect class="group" x="48" y="88" width="1080" height="48" rx="8"/>
+  <text class="group-title" x="64" y="111">用户消息</text>
+  <text class="group-sub" x="130" y="111">14:41:12 · 4 个调用 · 耗时 12s</text>
+  <text class="group-quote" x="64" y="128">“帮我重新设计工具标签排版，现在太乱了...”</text>
+  <rect class="pill" x="1010" y="96" width="90" height="20" rx="10"/>
+  <text class="pill-text" x="1032" y="110">折叠</text>
+
+  <!-- Group 1 grid -->
+  <rect class="chip" x="64" y="148" width="320" height="44" rx="10"/>
+  <circle cx="82" cy="166" r="5" fill="#6366F1"/>
+  <text class="chip-title" x="96" y="165">mcp_code_maintainer.search_text</text>
+  <text class="chip-sub" x="96" y="182">query: agent ui</text>
+
+  <rect class="chip2" x="412" y="148" width="320" height="44" rx="10"/>
+  <circle cx="430" cy="166" r="5" fill="#22C55E"/>
+  <text class="chip-title" x="444" y="165">mcp_code_maintainer.read_file_raw</text>
+  <text class="chip-sub" x="444" y="182">path: ToolInvocationTag.jsx</text>
+
+  <rect class="chip3" x="760" y="148" width="320" height="44" rx="10"/>
+  <circle cx="778" cy="166" r="5" fill="#F59E0B"/>
+  <text class="chip-title" x="792" y="165">mcp_shell_tasks.exec</text>
+  <text class="chip-sub" x="792" y="182">$ rg -n "tool"</text>
+
+  <rect class="chip4" x="64" y="202" width="320" height="44" rx="10"/>
+  <circle cx="82" cy="220" r="5" fill="#38BDF8"/>
+  <text class="chip-title" x="96" y="219">mcp_shell_tasks.list_workspace_files</text>
+  <text class="chip-sub" x="96" y="236">cwd: /nova_dreamer/chatos</text>
+
+  <!-- User message group 2 -->
+  <rect class="group" x="48" y="264" width="1080" height="48" rx="8"/>
+  <text class="group-title" x="64" y="287">用户消息</text>
+  <text class="group-sub" x="130" y="287">14:42:06 · 6 个调用 · 耗时 25s</text>
+  <text class="group-quote" x="64" y="304">“把 svg 放在根目录让我看看”</text>
+  <rect class="pill" x="1000" y="272" width="100" height="20" rx="10"/>
+  <text class="pill-text" x="1022" y="286">展开</text>
+
+  <rect class="pill" x="64" y="318" width="110" height="26" rx="13"/>
+  <text class="pill-text" x="78" y="336">+6 更多</text>
+  <text class="muted" x="190" y="336">该消息已折叠，点击展开</text>
+
+  <!-- User message group 3 -->
+  <rect class="group" x="48" y="370" width="1080" height="48" rx="8"/>
+  <text class="group-title" x="64" y="393">用户消息</text>
+  <text class="group-sub" x="130" y="393">14:43:22 · 4 个调用 · 耗时 9s</text>
+  <text class="group-quote" x="64" y="410">“都放在一起也可以，但要区分每一轮”</text>
+  <rect class="pill" x="1010" y="378" width="90" height="20" rx="10"/>
+  <text class="pill-text" x="1032" y="392">折叠</text>
+
+  <rect class="chip5" x="64" y="430" width="320" height="44" rx="10"/>
+  <circle cx="82" cy="448" r="5" fill="#EC4899"/>
+  <text class="chip-title" x="96" y="447">run_sub_agent</text>
+  <text class="chip-sub" x="96" y="464">agent: code_maintainer</text>
+
+  <rect class="chip6" x="412" y="430" width="320" height="44" rx="10"/>
+  <circle cx="430" cy="448" r="5" fill="#0EA5E9"/>
+  <text class="chip-title" x="444" y="447">mcp_browser.open</text>
+  <text class="chip-sub" x="444" y="464">url: docs...</text>
+
+  <rect class="chip" x="760" y="430" width="320" height="44" rx="10"/>
+  <circle cx="778" cy="448" r="5" fill="#6366F1"/>
+  <text class="chip-title" x="792" y="447">mcp_code_maintainer.search_text</text>
+  <text class="chip-sub" x="792" y="464">query: tool tags layout</text>
+
+  <line class="divider" x1="48" y1="508" x2="1128" y2="508"/>
+  <text class="muted" x="48" y="532">分组策略：以“用户消息”为一组，标题展示时间 + 用户内容预览，避免“第 N 轮”称呼</text>
+  <text class="muted" x="48" y="550">交互建议：每组默认展示前 4 个工具标签，剩余折叠为 “+N 更多”</text>
+</svg>

@@ -8,6 +8,7 @@ import { ChatSidebar } from './components/ChatSidebar.jsx';
 import { ChatSessionHeader } from './components/ChatSessionHeader.jsx';
 import { ChatMessages } from './components/ChatMessages.jsx';
 import { ChatComposer } from './components/ChatComposer.jsx';
+import { Workbar, WORKBAR_TABS } from './components/Workbar.jsx';
 import { TasksWorkbenchDrawer } from './components/TasksWorkbenchDrawer.jsx';
 import { McpStreamPanel } from './components/McpStreamPanel.jsx';
 import { useChatController } from './hooks/useChatController.js';
@@ -53,6 +54,9 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
   const [tasks, setTasks] = useState([]);
   const [tasksWorkbenchOpen, setTasksWorkbenchOpen] = useState(false);
+  const [fileChanges, setFileChanges] = useState({ entries: [] });
+  const [workbarExpanded, setWorkbarExpanded] = useState(true);
+  const [workbarTab, setWorkbarTab] = useState(WORKBAR_TABS.tools);
   const tasksSourceReadyRef = useRef(false);
   const tasksBaselineSessionIdRef = useRef('');
   const tasksBaselineIdsRef = useRef(new Set());
@@ -142,6 +146,31 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     const unsub = api.on('config:update', (payload) => {
       tasksSourceReadyRef.current = true;
       applyTaskSnapshot(payload);
+    });
+
+    return () => {
+      canceled = true;
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasApi) return undefined;
+    let canceled = false;
+
+    (async () => {
+      try {
+        const data = await api.invoke('fileChanges:read');
+        if (canceled) return;
+        setFileChanges(data || { entries: [] });
+      } catch {
+        // ignore (older hosts may not support fileChanges:read)
+      }
+    })();
+
+    const unsub = api.on('fileChanges:update', (data) => {
+      if (canceled) return;
+      setFileChanges(data || { entries: [] });
     });
 
     return () => {
@@ -294,7 +323,6 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                 <ChatMessages
                   messages={messages}
                   streaming={streamState}
-                  subagentStreams={subagentStreamState}
                   hasMore={messagesHasMore}
                   loadingMore={loadingMore}
                   onLoadMore={loadMoreMessages}
@@ -352,6 +380,19 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                       任务 ({sessionTasks.length})
                     </Button>
                   </Space>
+                </div>
+
+                <div style={{ marginBottom: 10 }}>
+                  <Workbar
+                    messages={messages}
+                    subagentStreams={subagentStreamState}
+                    tasks={sessionTasks}
+                    fileChanges={fileChanges}
+                    expanded={workbarExpanded}
+                    onToggleExpanded={() => setWorkbarExpanded((prev) => !prev)}
+                    activeTab={workbarTab}
+                    onTabChange={setWorkbarTab}
+                  />
                 </div>
 
                 <ChatComposer

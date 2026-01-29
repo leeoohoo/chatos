@@ -603,15 +603,16 @@ function renderInlineWithBreaks(text) {
   ));
 }
 
-function renderBlockContent(block) {
+function renderBlockContent(block, options = {}) {
   if (!block) return null;
+  const showCodeActions = options.showCodeActions !== false;
   if (block.type === 'hr') {
     return (
       <hr
         style={{
           border: 'none',
           borderTop: '1px solid var(--ds-panel-border)',
-          margin: '10px 0',
+          margin: '8px 0',
         }}
       />
     );
@@ -634,6 +635,7 @@ function renderBlockContent(block) {
         wrap={wrapCode}
         showLineNumbers={!wrapCode}
         disableScroll
+        showFooterActions={showCodeActions}
       />
     );
   }
@@ -644,7 +646,7 @@ function renderBlockContent(block) {
     const level = Math.min(Math.max(Number(block.level) || 1, 1), 6);
     const fontSize = level === 1 ? 16 : level === 2 ? 15 : level === 3 ? 14 : 13;
     return (
-      <div style={{ fontWeight: 600, fontSize, margin: '6px 0 2px' }}>
+      <div style={{ fontWeight: 600, fontSize, margin: '4px 0 2px' }}>
         {renderInlineNodes(block.text)}
       </div>
     );
@@ -655,7 +657,7 @@ function renderBlockContent(block) {
         style={{
           borderLeft: '3px solid var(--ds-blockquote-border)',
           paddingLeft: 10,
-          margin: '6px 0',
+          margin: '4px 0',
           color: 'var(--ds-blockquote-text)',
         }}
       >
@@ -666,7 +668,7 @@ function renderBlockContent(block) {
   if (block.type === 'ul' || block.type === 'ol') {
     const ListTag = block.type === 'ol' ? 'ol' : 'ul';
     return (
-      <ListTag style={{ paddingLeft: 20, margin: '6px 0' }}>
+      <ListTag style={{ paddingLeft: 20, margin: '4px 0' }}>
         {(Array.isArray(block.items) ? block.items : []).map((item, itemIdx) => {
           const raw = typeof item === 'string' ? item : String(item ?? '');
           const taskMatch = raw.match(/^\[(x| )\]\s+/i);
@@ -693,7 +695,7 @@ function renderBlockContent(block) {
   }
   if (block.type === 'p') {
     return (
-      <div style={{ margin: '6px 0', lineHeight: '1.65' }}>
+      <div style={{ margin: '4px 0', lineHeight: '1.6' }}>
         {renderInlineWithBreaks(block.text)}
       </div>
     );
@@ -704,7 +706,7 @@ function renderBlockContent(block) {
     const rows = Array.isArray(block.rows) ? block.rows : [];
     const columnCount = header.length;
     return (
-      <div style={{ margin: '8px 0', overflowX: 'auto' }}>
+      <div style={{ margin: '6px 0', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
           <thead>
             <tr>
@@ -758,7 +760,14 @@ function renderBlockContent(block) {
   return null;
 }
 
-export function MarkdownBlock({ text, maxHeight = 260, alwaysExpanded = false, container = true, copyable = false }) {
+export function MarkdownBlock({
+  text,
+  maxHeight = 260,
+  alwaysExpanded = false,
+  container = true,
+  copyable = false,
+  showCodeActions = true,
+}) {
   const [expanded, setExpanded] = useState(alwaysExpanded);
   useEffect(() => {
     setExpanded(alwaysExpanded);
@@ -807,7 +816,11 @@ export function MarkdownBlock({ text, maxHeight = 260, alwaysExpanded = false, c
       >
         {blocks.length === 0
           ? <Text type="secondary">无内容</Text>
-          : blocks.map((block, idx) => <React.Fragment key={idx}>{renderBlockContent(block)}</React.Fragment>)}
+          : blocks.map((block, idx) => (
+              <React.Fragment key={idx}>
+                {renderBlockContent(block, { showCodeActions })}
+              </React.Fragment>
+            ))}
       </div>
       {canCopy || (tooLong && !alwaysExpanded) ? (
         <Space size={8} wrap style={{ width: '100%', justifyContent: 'flex-end' }}>

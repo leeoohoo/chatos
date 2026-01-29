@@ -48,6 +48,7 @@ export function CodeBlock({
   showLineNumbers = false,
   disableScroll = false,
   constrainHeight = false,
+  showFooterActions = true,
 }) {
   const [expanded, setExpanded] = useState(alwaysExpanded);
   const [forceHighlight, setForceHighlight] = useState(false);
@@ -72,8 +73,6 @@ export function CodeBlock({
     [highlightEnabled, content, language]
   );
   const useHighlight = Boolean(highlightEnabled && highlightedHtml);
-  const showFooterActions = true;
-
   const useLineNumbers = showLineNumbers && !hasLongLine;
   const shouldWrap = wrap || hasLongLine;
   const effectiveWrap = useLineNumbers ? false : shouldWrap;

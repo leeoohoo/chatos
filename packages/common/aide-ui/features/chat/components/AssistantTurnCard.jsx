@@ -4,7 +4,6 @@ import { CopyOutlined } from '@ant-design/icons';
 
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
 import { copyPlainText } from '../../../lib/clipboard.js';
-import { ToolInvocationTag } from './tooling/ToolInvocationTag.jsx';
 import { normalizeId } from '../../../../text-utils.js';
 
 const { Text } = Typography;
@@ -13,30 +12,6 @@ function formatTime(ts) {
   const ms = Date.parse(ts);
   if (!Number.isFinite(ms)) return '';
   return new Date(ms).toLocaleTimeString();
-}
-
-function getToolName(call) {
-  const name = call?.function?.name;
-  return typeof name === 'string' ? name.trim() : '';
-}
-
-function getToolArgs(call) {
-  const args = call?.function?.arguments;
-  if (typeof args === 'string') return args;
-  if (args === undefined || args === null) return '';
-  return String(args);
-}
-
-function getToolResultText(results = []) {
-  const parts = (Array.isArray(results) ? results : [])
-    .map((msg) => {
-      if (!msg) return '';
-      if (typeof msg?.content === 'string') return msg.content;
-      return String(msg?.content || '');
-    })
-    .map((text) => (typeof text === 'string' ? text.trim() : String(text || '').trim()))
-    .filter(Boolean);
-  return parts.join('\n\n');
 }
 
 function extractThinkContent(text) {
@@ -71,7 +46,7 @@ function extractThinkContent(text) {
   return { content: cleaned, reasoning };
 }
 
-export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
+export function AssistantTurnCard({ messages, streaming }) {
   const list = useMemo(() => (Array.isArray(messages) ? messages.filter(Boolean) : []), [messages]);
   const [copying, setCopying] = useState(false);
   const createdAt = useMemo(() => {
@@ -82,22 +57,6 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
 
   const blocks = useMemo(() => {
     const out = [];
-    const toolResultsByCallId = new Map();
-
-    list.forEach((msg) => {
-      if (msg?.role !== 'tool') return;
-      const callId = normalizeId(msg?.toolCallId);
-      if (!callId) return;
-      const existing = toolResultsByCallId.get(callId);
-      if (existing) {
-        existing.push(msg);
-      } else {
-        toolResultsByCallId.set(callId, [msg]);
-      }
-    });
-
-    const consumedToolMessageIds = new Set();
-
     list.forEach((msg, msgIdx) => {
       if (!msg) return;
 
@@ -127,65 +86,14 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
           });
         }
 
-        const calls = Array.isArray(msg?.toolCalls) ? msg.toolCalls.filter(Boolean) : [];
-        if (calls.length > 0) {
-          const invocations = calls.map((call, idx) => {
-            const callId = normalizeId(call?.id);
-            const results = callId ? toolResultsByCallId.get(callId) || [] : [];
-            results.forEach((res) => {
-              const mid = normalizeId(res?.id);
-              if (mid) consumedToolMessageIds.add(mid);
-            });
-
-            const nameFromCall = getToolName(call);
-            const nameFromResult =
-              results.length > 0 && typeof results?.[0]?.toolName === 'string'
-                ? results[0].toolName.trim()
-                : '';
-            const name = nameFromCall || nameFromResult || 'tool';
-
-            const liveSteps =
-              callId && subagentStreams && typeof subagentStreams === 'object'
-                ? subagentStreams[callId]?.steps || []
-                : [];
-            return {
-              callId,
-              name,
-              args: getToolArgs(call),
-              resultText: getToolResultText(results),
-              results,
-              liveSteps,
-              key: callId || `${normalizeId(msg?.id) || `assistant_${msgIdx}`}_${name}_${idx}`,
-            };
-          });
-
-          out.push({
-            type: 'tool_invocations',
-            key: `${normalizeId(msg?.id) || `assistant_${msgIdx}`}_tool_invocations`,
-            invocations,
-            assistantId: normalizeId(msg?.id),
-          });
-        }
-
         return;
       }
 
-      if (msg.role === 'tool') {
-        const mid = normalizeId(msg?.id);
-        if (mid && consumedToolMessageIds.has(mid)) {
-          return;
-        }
-        const last = out[out.length - 1];
-        if (last && last.type === 'tool_orphans') {
-          last.results.push(msg);
-          return;
-        }
-        out.push({ type: 'tool_orphans', key: mid || `tool_${msgIdx}`, results: [msg] });
-      }
+      if (msg.role === 'tool') return;
     });
 
     return out;
-  }, [list, subagentStreams]);
+  }, [list]);
 
   const hasBlocks = blocks.length > 0;
   const isStreaming = Boolean(
@@ -216,7 +124,7 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
   };
 
   return (
-    <div style={{ width: '100%', padding: '4px 0' }}>
+    <div style={{ width: '100%', padding: '2px 0' }}>
       <Space size={8} wrap>
         <Tag color="green" style={{ marginRight: 0 }}>
           AI
@@ -233,12 +141,14 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
         ) : null}
       </Space>
 
-      <div style={{ marginTop: 6 }}>
+      <div style={{ marginTop: 4 }}>
         {hasBlocks ? (
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             {blocks.map((block) => {
               if (block.type === 'assistant') {
-                return <MarkdownBlock key={block.key} text={block.content} alwaysExpanded container={false} copyable />;
+                return (
+                  <MarkdownBlock key={block.key} text={block.content} alwaysExpanded container={false} showCodeActions={false} />
+                );
               }
 
               if (block.type === 'assistant_reasoning') {
@@ -265,65 +175,11 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
                           </Space>
                         ),
                         children: (
-                          <MarkdownBlock text={reasoningText} maxHeight={240} alwaysExpanded container={false} copyable />
+                          <MarkdownBlock text={reasoningText} maxHeight={240} alwaysExpanded container={false} showCodeActions={false} />
                         ),
                       },
                     ]}
                   />
-                );
-              }
-
-              if (block.type === 'tool_invocations') {
-                return (
-                  <Space key={block.key} size={[4, 4]} wrap>
-                    {(Array.isArray(block.invocations) ? block.invocations : []).map((invocation, idx) => {
-                      const name = invocation?.name || 'tool';
-                      const callId = normalizeId(invocation?.callId);
-                      const args = typeof invocation?.args === 'string' ? invocation.args : String(invocation?.args || '');
-                      const resultText =
-                        typeof invocation?.resultText === 'string'
-                          ? invocation.resultText
-                          : String(invocation?.resultText || '');
-                      const key = invocation?.key || callId || `${block.assistantId || block.key}_${name}_${idx}`;
-
-                      return (
-                        <ToolInvocationTag
-                          key={key}
-                          name={name}
-                          callId={callId}
-                          argsText={args}
-                          resultText={resultText}
-                          results={invocation?.results || []}
-                          liveSteps={invocation?.liveSteps}
-                        />
-                      );
-                    })}
-                  </Space>
-                );
-              }
-
-              if (block.type === 'tool_orphans') {
-                return (
-                  <Space key={block.key} size={[4, 4]} wrap>
-                    {(Array.isArray(block.results) ? block.results : []).map((result, idx) => {
-                      const name = typeof result?.toolName === 'string' ? result.toolName.trim() : '';
-                      const callId = normalizeId(result?.toolCallId);
-                      const content = typeof result?.content === 'string' ? result.content : String(result?.content || '');
-                      const key = normalizeId(result?.id) || `${name || 'tool'}_${callId || ''}_${idx}`;
-
-                      return (
-                        <ToolInvocationTag
-                          key={key}
-                          name={name || 'tool'}
-                          callId={callId}
-                          argsText=""
-                          resultText={content}
-                          structuredContent={result?.toolStructuredContent ?? result?.structuredContent ?? null}
-                          toolIsError={result?.toolIsError === true}
-                        />
-                      );
-                    })}
-                  </Space>
                 );
               }
 
@@ -338,7 +194,7 @@ export function AssistantTurnCard({ messages, streaming, subagentStreams }) {
       {copyText ? (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
           <Button size="small" type="text" icon={<CopyOutlined />} onClick={onCopy} loading={copying}>
-            复制全部
+            复制本轮
           </Button>
         </div>
       ) : null}

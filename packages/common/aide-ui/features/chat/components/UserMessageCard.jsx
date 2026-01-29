@@ -27,7 +27,7 @@ export function UserMessageCard({ message }) {
   }, [message?.attachments]);
 
   return (
-    <div style={{ width: '100%', padding: '4px 0' }}>
+    <div style={{ width: '100%', padding: '2px 0' }}>
       <Space size={8} wrap>
         <Tag color="blue" style={{ marginRight: 0 }}>
           你
@@ -39,14 +39,14 @@ export function UserMessageCard({ message }) {
         ) : null}
       </Space>
 
-      <div style={{ marginTop: 6 }}>
+      <div style={{ marginTop: 4 }}>
         {content ? (
           <MarkdownBlock text={content} alwaysExpanded container={false} />
         ) : images.length > 0 ? null : (
           <Text type="secondary">（空）</Text>
         )}
         {images.length > 0 ? (
-          <div style={{ marginTop: content ? 10 : 0, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ marginTop: content ? 8 : 0, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {images.map((img) => (
               <a
                 key={normalizeId(img.id) || img.dataUrl}
@@ -76,4 +76,3 @@ export function UserMessageCard({ message }) {
     </div>
   );
 }
-
