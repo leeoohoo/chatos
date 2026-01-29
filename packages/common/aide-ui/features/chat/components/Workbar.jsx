@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Empty, Tag } from 'antd';
 
 import { formatDateTime, truncateText } from '../../../lib/format.js';
 import { dedupeFileChanges, getFileChangeKey } from '../../../lib/file-changes.js';
 import { normalizeId } from '../../../../text-utils.js';
+import { isRunSubAgentToolName } from '../hooks/useChatSessions-streams.js';
 import { ToolInvocationTag } from './tooling/ToolInvocationTag.jsx';
 import { buildToolPresentation } from './tooling/tool-utils.js';
 
@@ -12,6 +13,8 @@ const TAB_KEYS = {
   tasks: 'tasks',
   files: 'files',
 };
+
+const DEFAULT_GROUP_PAGE_SIZE = 1;
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -307,6 +310,7 @@ export function Workbar({
   subagentStreams,
   tasks,
   fileChanges,
+  sessionId,
   expanded = true,
   onToggleExpanded,
   activeTab = TAB_KEYS.tools,
@@ -315,6 +319,19 @@ export function Workbar({
 }) {
   const [expandedGroups, setExpandedGroups] = useState({});
   const [onlyErrors, setOnlyErrors] = useState(false);
+  const [groupPageByTab, setGroupPageByTab] = useState(() => ({
+    [TAB_KEYS.tools]: DEFAULT_GROUP_PAGE_SIZE,
+    [TAB_KEYS.tasks]: DEFAULT_GROUP_PAGE_SIZE,
+    [TAB_KEYS.files]: DEFAULT_GROUP_PAGE_SIZE,
+  }));
+
+  useEffect(() => {
+    setGroupPageByTab({
+      [TAB_KEYS.tools]: DEFAULT_GROUP_PAGE_SIZE,
+      [TAB_KEYS.tasks]: DEFAULT_GROUP_PAGE_SIZE,
+      [TAB_KEYS.files]: DEFAULT_GROUP_PAGE_SIZE,
+    });
+  }, [sessionId]);
 
   const toolGroups = useMemo(
     () => buildToolGroupsByUser(messages, subagentStreams),
@@ -367,6 +384,19 @@ export function Workbar({
     { key: TAB_KEYS.files, label: '文件变更', count: fileChangesCount },
   ];
 
+  const getGroupPageSize = (tabKey) => {
+    const raw = groupPageByTab?.[tabKey];
+    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_GROUP_PAGE_SIZE;
+    return Math.floor(raw);
+  };
+
+  const loadMoreGroups = (tabKey) => {
+    setGroupPageByTab((prev) => {
+      const current = prev && Number.isFinite(prev[tabKey]) ? prev[tabKey] : DEFAULT_GROUP_PAGE_SIZE;
+      return { ...(prev || {}), [tabKey]: Math.max(DEFAULT_GROUP_PAGE_SIZE, current + 1) };
+    });
+  };
+
   const toggleGroup = (key) => {
     setExpandedGroups((prev) => ({
       ...(prev || {}),
@@ -415,33 +445,80 @@ export function Workbar({
 
     if (filteredGroups.length === 0) return <Empty description="暂无失败工具调用" />;
 
+    const visibleCount = getGroupPageSize(TAB_KEYS.tools);
+    const visibleGroups = filteredGroups.slice(-visibleCount);
+    const hiddenGroupCount = Math.max(filteredGroups.length - visibleGroups.length, 0);
+
     return (
       <div className="ds-workbar-groups">
-        {filteredGroups.map((group) => {
+        {visibleGroups.map((group) => {
           const expandedGroup = Boolean(expandedGroups?.[group.key]);
-          const list = expandedGroup ? group.invocations : group.invocations.slice(0, previewLimit);
-          const hiddenCount = Math.max(group.invocations.length - list.length, 0);
+          const runSubAgentInvocations = group.invocations.filter((inv) => isRunSubAgentToolName(inv?.name));
+          const otherInvocations = group.invocations.filter((inv) => !isRunSubAgentToolName(inv?.name));
+          const groupFileChanges = boundFileChanges.filter(
+            (item) => normalizeId(item?.userMessageId) === group.key
+          );
+          const fallbackFileChanges = groupFileChanges.length > 0 ? groupFileChanges : dedupedFileChanges;
+          const previewCount = Number.isFinite(previewLimit) && previewLimit > 0 ? previewLimit : 0;
+          let displayRunSubAgent = runSubAgentInvocations;
+          let displayOthers = otherInvocations;
+          if (!expandedGroup && previewCount > 0) {
+            const runCount = Math.min(runSubAgentInvocations.length, previewCount);
+            displayRunSubAgent = runSubAgentInvocations.slice(0, runCount);
+            const remaining = previewCount - displayRunSubAgent.length;
+            displayOthers = remaining > 0 ? otherInvocations.slice(0, remaining) : [];
+          }
+          const displayedCount = displayRunSubAgent.length + displayOthers.length;
+          const hiddenCount = Math.max(group.invocations.length - displayedCount, 0);
 
           return (
             <div key={group.key} className="ds-workbar-group">
               {renderGroupHeader(group, '工具', group.invocations.length)}
-              <div className="ds-workbar-tool-grid">
-                {list.map((invocation) => (
-                  <ToolInvocationTag
-                    key={invocation.key}
-                    name={invocation.name}
-                    callId={invocation.callId}
-                    argsText={invocation.argsText}
-                    resultText={invocation.resultText}
-                    results={invocation.results}
-                    liveSteps={invocation.liveSteps}
-                    structuredContent={invocation.structuredContent}
-                    toolIsError={invocation.toolIsError}
-                    maxWidth={640}
-                    maxHeight={360}
-                  />
-                ))}
-              </div>
+              {displayRunSubAgent.length > 0 ? (
+                <div className="ds-workbar-tool-section ds-workbar-tool-section-subagent" data-kind="subagent">
+                  <div className="ds-workbar-tool-section-title">子代理运行</div>
+                  <div className="ds-workbar-tool-stack">
+                    {displayRunSubAgent.map((invocation) => (
+                      <ToolInvocationTag
+                        key={invocation.key}
+                        name={invocation.name}
+                        callId={invocation.callId}
+                        argsText={invocation.argsText}
+                        resultText={invocation.resultText}
+                        results={invocation.results}
+                        liveSteps={invocation.liveSteps}
+                        structuredContent={invocation.structuredContent}
+                        toolIsError={invocation.toolIsError}
+                        fileChanges={fallbackFileChanges}
+                        maxWidth={640}
+                        maxHeight={360}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {displayOthers.length > 0 ? (
+                <div className="ds-workbar-tool-section">
+                  <div className="ds-workbar-tool-grid">
+                    {displayOthers.map((invocation) => (
+                      <ToolInvocationTag
+                        key={invocation.key}
+                        name={invocation.name}
+                        callId={invocation.callId}
+                        argsText={invocation.argsText}
+                        resultText={invocation.resultText}
+                        results={invocation.results}
+                        liveSteps={invocation.liveSteps}
+                        structuredContent={invocation.structuredContent}
+                        toolIsError={invocation.toolIsError}
+                        fileChanges={groupFileChanges}
+                        maxWidth={640}
+                        maxHeight={360}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {hiddenCount > 0 ? (
                 <button
                   type="button"
@@ -454,6 +531,15 @@ export function Workbar({
             </div>
           );
         })}
+        {hiddenGroupCount > 0 ? (
+          <button
+            type="button"
+            className="ds-workbar-more"
+            onClick={() => loadMoreGroups(TAB_KEYS.tools)}
+          >
+            加载更多
+          </button>
+        ) : null}
       </div>
     );
   };
@@ -468,9 +554,13 @@ export function Workbar({
     );
     if (taskGroups.length === 0) return <Empty description="暂无任务" />;
 
+    const visibleCount = getGroupPageSize(TAB_KEYS.tasks);
+    const visibleGroups = taskGroups.slice(-visibleCount);
+    const hiddenGroupCount = Math.max(taskGroups.length - visibleGroups.length, 0);
+
     return (
       <div className="ds-workbar-groups">
-        {taskGroups.map((group) => {
+        {visibleGroups.map((group) => {
           const expandedGroup = Boolean(expandedGroups?.[group.key]);
           const list = expandedGroup ? group.items : group.items.slice(0, previewLimit);
           const hiddenCount = Math.max(group.items.length - list.length, 0);
@@ -508,6 +598,15 @@ export function Workbar({
             </div>
           );
         })}
+        {hiddenGroupCount > 0 ? (
+          <button
+            type="button"
+            className="ds-workbar-more"
+            onClick={() => loadMoreGroups(TAB_KEYS.tasks)}
+          >
+            加载更多
+          </button>
+        ) : null}
       </div>
     );
   };
@@ -522,9 +621,13 @@ export function Workbar({
     );
     if (fileGroups.length === 0) return <Empty description="暂无文件变更" />;
 
+    const visibleCount = getGroupPageSize(TAB_KEYS.files);
+    const visibleGroups = fileGroups.slice(-visibleCount);
+    const hiddenGroupCount = Math.max(fileGroups.length - visibleGroups.length, 0);
+
     return (
       <div className="ds-workbar-groups">
-        {fileGroups.map((group) => {
+        {visibleGroups.map((group) => {
           const expandedGroup = Boolean(expandedGroups?.[group.key]);
           const list = expandedGroup ? group.items : group.items.slice(0, previewLimit);
           const hiddenCount = Math.max(group.items.length - list.length, 0);
@@ -561,6 +664,15 @@ export function Workbar({
             </div>
           );
         })}
+        {hiddenGroupCount > 0 ? (
+          <button
+            type="button"
+            className="ds-workbar-more"
+            onClick={() => loadMoreGroups(TAB_KEYS.files)}
+          >
+            加载更多
+          </button>
+        ) : null}
       </div>
     );
   };

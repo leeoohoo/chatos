@@ -8,6 +8,8 @@ import { PopoverTag } from '../PopoverTag.jsx';
 import { ToolDetails } from './ToolDetailPanels.jsx';
 import { buildToolPresentation } from './tool-utils.js';
 import { formatJson } from './details/detail-utils.js';
+import runSubAgentIconSpin from '../../../../../../../assets/robot_head_spin.svg';
+import runSubAgentIconStatic from '../../../../../../../assets/robot_head_static.svg';
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -49,6 +51,7 @@ export function ToolInvocationTag({
   resultText,
   results,
   liveSteps,
+  fileChanges,
   structuredContent,
   toolIsError,
   maxWidth = 720,
@@ -101,6 +104,14 @@ export function ToolInvocationTag({
       }
     : undefined;
   const drawerTitle = isRunSubAgent ? null : title;
+  const runSubAgentIcon = isRunSubAgent ? (
+    <img
+      className="ds-tool-icon-img"
+      src={status === 'pending' ? runSubAgentIconSpin : runSubAgentIconStatic}
+      alt=""
+      aria-hidden="true"
+    />
+  ) : null;
 
   const onCopyArgs = async () => {
     if (!copyableArgs) return;
@@ -175,6 +186,7 @@ export function ToolInvocationTag({
         badgeSubtitle={badgeSubtitle}
         status={status}
         kind={toolKind}
+        icon={runSubAgentIcon}
         actions={actions}
         maxWidth={popoverMaxWidth}
         maxHeight={popoverMaxHeight}
@@ -187,13 +199,14 @@ export function ToolInvocationTag({
           argsRaw={argsInfo.raw}
           argsParsed={argsInfo.parsed}
           resultText={resultText}
-          shellResult={shellResult}
-          structuredContent={resolvedStructuredContent}
-          liveSteps={liveSteps}
-          display="popover"
-          callId={callId}
-          status={status}
-          canCopyArgs={canCopyArgs}
+        shellResult={shellResult}
+        structuredContent={resolvedStructuredContent}
+        liveSteps={liveSteps}
+        fileChanges={fileChanges}
+        display="popover"
+        callId={callId}
+        status={status}
+        canCopyArgs={canCopyArgs}
           canCopyResult={canCopyResult}
           canExpand={canExpand}
           onCopyArgs={onCopyArgs}
@@ -221,6 +234,7 @@ export function ToolInvocationTag({
           shellResult={shellResult}
           structuredContent={resolvedStructuredContent}
           liveSteps={liveSteps}
+          fileChanges={fileChanges}
           display="drawer"
           callId={callId}
           status={status}

@@ -54,7 +54,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
   const [tasks, setTasks] = useState([]);
   const [fileChanges, setFileChanges] = useState({ entries: [] });
-  const [workbarExpanded, setWorkbarExpanded] = useState(true);
+  const [workbarExpanded, setWorkbarExpanded] = useState(false);
   const [workbarTab, setWorkbarTab] = useState(WORKBAR_TABS.tools);
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
 
@@ -349,6 +349,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                     subagentStreams={subagentStreamState}
                     tasks={sessionTasks}
                     fileChanges={fileChanges}
+                    sessionId={selectedSessionId}
                     expanded={workbarExpanded}
                     onToggleExpanded={() => setWorkbarExpanded((prev) => !prev)}
                     activeTab={workbarTab}

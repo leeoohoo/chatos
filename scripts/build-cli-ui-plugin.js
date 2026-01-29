@@ -143,7 +143,7 @@ async function main() {
     minify: release,
     platform: 'browser',
     target: ['chrome120'],
-    loader: { '.js': 'jsx', '.jsx': 'jsx' },
+    loader: { '.js': 'jsx', '.jsx': 'jsx', '.svg': 'dataurl' },
     nodePaths: [
       path.resolve(root, '..', 'node_modules'),
       path.resolve(root, 'node_modules'),

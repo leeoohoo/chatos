@@ -48,17 +48,39 @@ export const GLOBAL_TOOLING_STYLES = `
         font-size: 12px;
         color: var(--tool-accent);
       }
+      .ds-tool-icon-img {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .ds-tool-popover-icon .ds-tool-icon-img {
+        width: 18px;
+        height: 18px;
+      }
+      .ds-tool-badge[data-tool-name*='run_sub_agent'] {
+        padding: 12px 4px;
+        gap: 4px;
+      }
+      .ds-tool-badge[data-tool-name*='run_sub_agent'] .ds-tool-icon-img {
+        width: 32px;
+        height: 32px;
+      }
       .ds-tool-badge-text {
         display: flex;
         flex-direction: column;
         align-items: flex-start;
         gap: 1px;
+        flex: 1 1 auto;
         min-width: 0;
       }
       .ds-tool-badge-label {
         font-weight: 600;
         letter-spacing: 0.2px;
         line-height: 16px;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .ds-tool-badge-subtitle {
         font-size: 10px;
@@ -1351,6 +1373,21 @@ export const GLOBAL_TOOLING_STYLES = `
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: 8px;
       }
+      .ds-workbar-tool-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ds-workbar-tool-section-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(71, 85, 105, 0.8);
+      }
+      .ds-workbar-tool-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
       .ds-workbar .ds-tool-badge {
         width: 100%;
         border-radius: 10px;
@@ -1359,6 +1396,17 @@ export const GLOBAL_TOOLING_STYLES = `
         border: 1px solid var(--ds-panel-border);
         background: var(--ds-panel-bg);
         box-shadow: none;
+      }
+      .ds-workbar .ds-tool-badge[data-tool-name*='run_sub_agent'] {
+        width: auto;
+        max-width: 100%;
+        align-self: flex-start;
+        padding: 14px 8px;
+        gap: 6px;
+      }
+      .ds-workbar .ds-tool-badge[data-tool-name*='run_sub_agent'] .ds-tool-icon-img {
+        width: 40px;
+        height: 40px;
       }
       .ds-workbar .ds-tool-badge:hover {
         transform: none;

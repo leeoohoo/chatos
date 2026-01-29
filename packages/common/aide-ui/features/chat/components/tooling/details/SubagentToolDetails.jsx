@@ -3,6 +3,8 @@ import { Collapse, Space, Tag, Typography } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
 
 import { MarkdownBlock } from '../../../../../components/MarkdownBlock.jsx';
+import { formatDateTime } from '../../../../../lib/format.js';
+import { dedupeFileChanges, getFileChangeKey } from '../../../../../lib/file-changes.js';
 import { parseJsonSafe } from '../../../../../lib/parse.js';
 import { ToolBlock, ToolJsonPreview, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue, normalizeText } from './detail-utils.js';
@@ -84,6 +86,31 @@ function buildStepSummary(step) {
   const notice = typeof step?.text === 'string' ? step.text : '';
   const summaryText = (text || reasoning || resultText || argsText || toolCallsText || notice || '').replace(/\s+/g, ' ');
   return summaryText;
+}
+
+function extractRunSubAgentResponse(payload, resultText) {
+  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'response')) {
+    const response = payload.response;
+    if (typeof response === 'string') return response.trim();
+    if (Array.isArray(response)) {
+      const joined = response
+        .map((entry) => {
+          if (typeof entry === 'string') return entry;
+          if (entry && typeof entry === 'object' && typeof entry.text === 'string') return entry.text;
+          return '';
+        })
+        .join('');
+      return joined.trim();
+    }
+    if (response && typeof response === 'object') return formatJson(response);
+  }
+  return typeof resultText === 'string' ? resultText.trim() : '';
+}
+
+function FileChangeTag({ changeType }) {
+  if (changeType === 'created') return <Tag color="green">新增</Tag>;
+  if (changeType === 'deleted') return <Tag color="red">删除</Tag>;
+  return <Tag color="gold">修改</Tag>;
 }
 
 function parseTaskLines(resultText) {
@@ -191,9 +218,19 @@ function collectSubagentTasks(payload, steps = []) {
     }
     const parsedTasks = parseTaskLines(resultText);
     if (parsedTasks.length > 0) {
+      const bucketKey =
+        toolName.includes('add_task') || toolName.includes('create_task')
+          ? 'created'
+          : toolName.includes('update_task') || toolName.includes('set_task') || toolName.includes('complete_task')
+            ? 'updated'
+            : toolName.includes('remove_task') || toolName.includes('delete_task')
+              ? 'removed'
+              : toolName.includes('list_task') || toolName.includes('list_tasks')
+                ? 'listed'
+                : 'listed';
       parsedTasks.forEach((task) => {
         const normalized = normalizeTaskEntry(task);
-        if (normalized) buckets.listed.push(normalized);
+        if (normalized) buckets[bucketKey].push(normalized);
       });
     }
   });
@@ -324,6 +361,7 @@ export function SubagentToolDetails({
   resultText,
   structuredContent,
   liveSteps,
+  fileChanges,
   display,
   callId,
   status,
@@ -357,19 +395,23 @@ export function SubagentToolDetails({
   const plugin = normalizeText(payload?.plugin);
   const model = normalizeText(payload?.model);
   const commandName = normalizeText(payload?.command?.name || payload?.command?.id);
-  const responseText =
-    isRunSubAgent && payload && Object.prototype.hasOwnProperty.call(payload, 'response')
-      ? formatJson(payload.response)
-      : '';
+  const responseText = isRunSubAgent ? extractRunSubAgentResponse(payload, resultText) : '';
   const finalSteps = Array.isArray(payload?.steps) ? payload.steps : [];
   const liveStepList = Array.isArray(liveSteps) ? liveSteps : [];
   const effectiveSteps = finalSteps.length > 0 ? finalSteps : liveStepList;
   const isLiveSteps = finalSteps.length === 0 && liveStepList.length > 0;
   const stats = payload?.stats && typeof payload.stats === 'object' ? payload.stats : null;
   const errorText = normalizeText(payload?.error);
-  const fallbackText = isRunSubAgent ? (!payload ? resultText : '') : payload ? formatJson(payload) : resultText;
+  const fallbackText = isRunSubAgent
+    ? responseText
+      ? ''
+      : normalizeText(resultText)
+    : payload
+      ? formatJson(payload)
+      : resultText;
   const rawArgsText = typeof argsRaw === 'string' ? argsRaw.trim() : '';
   const rawPayloadText = payload ? formatJson(payload) : '';
+  const fileChangeItems = dedupeFileChanges(Array.isArray(fileChanges) ? fileChanges : []);
   const toolNames = Array.from(
     new Set(
       effectiveSteps
@@ -384,7 +426,10 @@ export function SubagentToolDetails({
   const updatedItems = buildTaskItems(taskBuckets.updated, 'updated');
   const removedItems = buildTaskItems(taskBuckets.removed, 'removed');
   const listedItems = buildTaskItems(taskBuckets.listed, 'listed');
-  const primaryTaskItems = [...createdItems, ...dedupedItems, ...updatedItems, ...removedItems];
+  const overriddenKeys = new Set([...updatedItems, ...removedItems].map((item) => item.key).filter(Boolean));
+  const filteredCreated = createdItems.filter((item) => !overriddenKeys.has(item.key));
+  const filteredDeduped = dedupedItems.filter((item) => !overriddenKeys.has(item.key));
+  const primaryTaskItems = [...filteredCreated, ...filteredDeduped, ...updatedItems, ...removedItems];
   const taskItems = primaryTaskItems.length > 0 ? primaryTaskItems : listedItems;
   const uniqueTaskCount = dedupeTasks([
     ...taskBuckets.created,
@@ -658,6 +703,42 @@ export function SubagentToolDetails({
     ].filter(Boolean);
     const outputText = responseText || fallbackText;
     const outputPreview = outputText ? formatSummaryValue(outputText.replace(/\s+/g, ' '), 360) : '';
+    const summaryMarkdown = outputText;
+    const fileChangePanels = fileChangeItems.map((item, idx) => {
+      const key = getFileChangeKey(item) || item?.ts || `change_${idx}`;
+      const pathLabel = item?.path || item?.absolutePath || '未知文件';
+      const timeText = item?.ts ? formatDateTime(item.ts) : '';
+      const toolTag = item?.tool ? <Tag color="purple">tool: {item.tool}</Tag> : null;
+      const modeTag = item?.mode ? <Tag color="geekblue">{item.mode}</Tag> : null;
+      const serverTag = item?.server ? <Tag color="cyan">{item.server}</Tag> : null;
+      return {
+        key,
+        label: (
+          <Space size={6} wrap>
+            <FileChangeTag changeType={item?.changeType} />
+            <span>{pathLabel}</span>
+            {toolTag}
+            {modeTag}
+            {serverTag}
+          </Space>
+        ),
+        children: (
+          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            {timeText ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {timeText}
+              </Text>
+            ) : null}
+            {item?.workspaceRoot ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                workspace: {item.workspaceRoot}
+              </Text>
+            ) : null}
+            <ToolBlock text={item?.diff || '无 diff 内容'} />
+          </Space>
+        ),
+      };
+    });
     const timelineSubtitle = isLiveSteps ? 'Timeline view for live steps.' : 'Timeline view for completed steps.';
     const rawTabLabel = activeRaw?.label || '';
     const timelineScrollClass = 'ds-subagent-timeline-scroll is-fullscreen';
@@ -795,17 +876,10 @@ export function SubagentToolDetails({
               <div className="ds-subagent-fullscreen-panel-title">Result</div>
               <div className="ds-subagent-fullscreen-panel-subtitle">Final output and key metadata.</div>
             </div>
-            {metaCards.length > 0 ? (
+            {summaryMarkdown ? (
               <div className="ds-subagent-fullscreen-section">
                 <div className="ds-subagent-fullscreen-section-title">Summary</div>
-                <div className="ds-subagent-meta-stack">
-                  {metaCards.map((item) => (
-                    <div key={item.label} className="ds-subagent-meta-card">
-                      <div className="ds-subagent-meta-label">{item.label}</div>
-                      <div className="ds-subagent-meta-value">{formatSummaryValue(item.value, 120)}</div>
-                    </div>
-                  ))}
-                </div>
+                <MarkdownBlock text={summaryMarkdown} alwaysExpanded container={false} copyable />
               </div>
             ) : null}
             {task ? (
@@ -820,6 +894,12 @@ export function SubagentToolDetails({
               <div className="ds-subagent-fullscreen-section">
                 <div className="ds-subagent-fullscreen-section-title">Tasks</div>
                 <ToolList items={taskItems} />
+              </div>
+            ) : null}
+            {fileChangePanels.length > 0 ? (
+              <div className="ds-subagent-fullscreen-section">
+                <div className="ds-subagent-fullscreen-section-title">文件变更</div>
+                <Collapse ghost size="small" items={fileChangePanels} />
               </div>
             ) : null}
             {statsItems.length > 0 ? (
@@ -849,6 +929,19 @@ export function SubagentToolDetails({
                     ) : null}
                   </div>
                 )}
+              </div>
+            ) : null}
+            {metaCards.length > 0 ? (
+              <div className="ds-subagent-fullscreen-section">
+                <div className="ds-subagent-fullscreen-section-title">Metadata</div>
+                <div className="ds-subagent-meta-stack">
+                  {metaCards.map((item) => (
+                    <div key={item.label} className="ds-subagent-meta-card">
+                      <div className="ds-subagent-meta-label">{item.label}</div>
+                      <div className="ds-subagent-meta-value">{formatSummaryValue(item.value, 120)}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
             {errorText ? (

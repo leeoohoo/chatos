@@ -64,6 +64,7 @@ export function PopoverTag({
   badgeSubtitle,
   status,
   kind,
+  icon,
   actions,
   children,
   maxWidth = 720,
@@ -74,6 +75,7 @@ export function PopoverTag({
 }) {
   const [innerOpen, setInnerOpen] = useState(false);
   const safeText = normalizeToken(text) || 'tool';
+  const safeTextLower = safeText.toLowerCase();
   const requestedKind = normalizeLower(kind);
   const derivedKind = TOOL_KIND_META[requestedKind] ? requestedKind : inferToolKind(safeText);
   const normalizedStatus = normalizeToolStatus(status, { color, fallback: 'unknown' });
@@ -82,6 +84,7 @@ export function PopoverTag({
   const headerSubtitle = normalizeToken(subtitle) || titleSubtitle;
   const kindMeta = TOOL_KIND_META[derivedKind] || TOOL_KIND_META.default;
   const Icon = kindMeta.icon || ToolOutlined;
+  const resolvedIcon = icon ?? <Icon />;
   const statusMeta = STATUS_META[normalizedStatus] || null;
   const popoverClassName = [
     'ds-tool-popover',
@@ -110,7 +113,7 @@ export function PopoverTag({
     <div className="ds-tool-popover-header">
       <div className="ds-tool-popover-title">
         <span className="ds-tool-popover-icon">
-          <Icon />
+          {resolvedIcon}
         </span>
         <div className="ds-tool-popover-text">
           <div className="ds-tool-popover-name">{headerTitle}</div>
@@ -162,11 +165,12 @@ export function PopoverTag({
         className="ds-tool-badge"
         data-kind={derivedKind}
         data-status={normalizedStatus}
+        data-tool-name={safeTextLower}
         aria-label={headerTitle}
       >
         <span className="ds-tool-dot" />
         <span className="ds-tool-icon">
-          <Icon />
+          {resolvedIcon}
         </span>
         <span className="ds-tool-badge-text">
           <span className="ds-tool-badge-label">{safeText}</span>

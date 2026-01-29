@@ -106,7 +106,7 @@ async function main() {
     sourcemap: !release,
     minify: release,
     target: ['chrome120', 'node18'],
-    loader: { '.js': 'jsx', '.jsx': 'jsx', '.css': 'css' },
+    loader: { '.js': 'jsx', '.jsx': 'jsx', '.css': 'css', '.svg': 'dataurl' },
     external: [],
     nodePaths: [
       path.resolve(root, '..', 'node_modules'),
