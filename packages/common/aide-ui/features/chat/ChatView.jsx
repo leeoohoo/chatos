@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Input, Layout, Modal, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { CloseCircleOutlined, FolderOpenOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 
@@ -9,7 +9,6 @@ import { ChatSessionHeader } from './components/ChatSessionHeader.jsx';
 import { ChatMessages } from './components/ChatMessages.jsx';
 import { ChatComposer } from './components/ChatComposer.jsx';
 import { Workbar, WORKBAR_TABS } from './components/Workbar.jsx';
-import { TasksWorkbenchDrawer } from './components/TasksWorkbenchDrawer.jsx';
 import { McpStreamPanel } from './components/McpStreamPanel.jsx';
 import { useChatController } from './hooks/useChatController.js';
 import { normalizeId } from '../../../text-utils.js';
@@ -53,14 +52,9 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
   } = controller;
 
   const [tasks, setTasks] = useState([]);
-  const [tasksWorkbenchOpen, setTasksWorkbenchOpen] = useState(false);
   const [fileChanges, setFileChanges] = useState({ entries: [] });
   const [workbarExpanded, setWorkbarExpanded] = useState(true);
   const [workbarTab, setWorkbarTab] = useState(WORKBAR_TABS.tools);
-  const tasksSourceReadyRef = useRef(false);
-  const tasksBaselineSessionIdRef = useRef('');
-  const tasksBaselineIdsRef = useRef(new Set());
-  const tasksBaselineReadyRef = useRef(false);
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
 
   const sidebarCollapsed = typeof sidebarCollapsedProp === 'boolean' ? sidebarCollapsedProp : localSidebarCollapsed;
@@ -136,7 +130,6 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
       try {
         const payload = await api.invoke('config:read');
         if (canceled) return;
-        tasksSourceReadyRef.current = true;
         applyTaskSnapshot(payload);
       } catch {
         // ignore (older hosts may not support config:read)
@@ -144,7 +137,6 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     })();
 
     const unsub = api.on('config:update', (payload) => {
-      tasksSourceReadyRef.current = true;
       applyTaskSnapshot(payload);
     });
 
@@ -186,36 +178,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     return list.filter((task) => normalizeId(task?.sessionId) === sid);
   }, [selectedSessionId, tasks]);
 
-  useEffect(() => {
-    if (!tasksSourceReadyRef.current) return;
-
-    const sid = normalizeId(selectedSessionId);
-    const currentIds = new Set(
-      sessionTasks
-        .map((task) => normalizeId(task?.id))
-        .filter(Boolean)
-    );
-
-    if (!tasksBaselineReadyRef.current) {
-      tasksBaselineReadyRef.current = true;
-      tasksBaselineSessionIdRef.current = sid;
-      tasksBaselineIdsRef.current = currentIds;
-      return;
-    }
-
-    if (tasksBaselineSessionIdRef.current !== sid) {
-      tasksBaselineSessionIdRef.current = sid;
-      tasksBaselineIdsRef.current = currentIds;
-      return;
-    }
-
-    const prev = tasksBaselineIdsRef.current;
-    const hasNew = Array.from(currentIds).some((id) => id && !prev.has(id));
-    tasksBaselineIdsRef.current = currentIds;
-    if (!tasksWorkbenchOpen && hasNew) {
-      setTasksWorkbenchOpen(true);
-    }
-  }, [selectedSessionId, sessionTasks, tasksWorkbenchOpen]);
+  // task drawer removed: no auto-open side effects
 
   if (!hasApi) {
     return <Alert type="error" message="IPC bridge not available. Is preload loaded?" />;
@@ -376,9 +339,6 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                     >
                       清除
                     </Button>
-                    <Button size="small" onClick={() => setTasksWorkbenchOpen(true)}>
-                      任务 ({sessionTasks.length})
-                    </Button>
                   </Space>
                 </div>
 
@@ -457,11 +417,6 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
         </Typography.Text>
       </Modal>
 
-      <TasksWorkbenchDrawer
-        open={tasksWorkbenchOpen}
-        onClose={() => setTasksWorkbenchOpen(false)}
-        tasks={sessionTasks}
-      />
     </>
   );
 }
