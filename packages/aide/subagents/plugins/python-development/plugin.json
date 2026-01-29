@@ -10,7 +10,7 @@
       "description": "Master Django 5.x with async views, DRF, Celery, and Django Channels. Build scalable web applications with proper architecture, testing, and deployment. Use PROACTIVELY for Django development, ORM optimization, or complex Django patterns.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/django-pro.md",
+      "systemPromptPath": "../../shared/agents/django-pro.md",
       "defaultSkills": [
         "async-python-patterns",
         "python-packaging",
@@ -26,7 +26,7 @@
       "description": "Build high-performance async APIs with FastAPI, SQLAlchemy 2.0, and Pydantic V2. Master microservices, WebSockets, and modern Python async patterns. Use PROACTIVELY for FastAPI development, async optimization, or API architecture.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/fastapi-pro.md",
+      "systemPromptPath": "../../shared/agents/fastapi-pro.md",
       "defaultSkills": [
         "async-python-patterns",
         "python-packaging",
@@ -95,3 +95,5 @@
     }
   ]
 }
+
+

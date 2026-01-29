@@ -10,7 +10,7 @@
       "description": "Expert backend architect specializing in scalable API design, microservices architecture, and distributed systems. Masters REST/GraphQL/gRPC APIs, event-driven architectures, service mesh patterns, and modern backend frameworks. Handles service boundary definition, inter-service communication, resilience patterns, and observability. Use PROACTIVELY when creating new backend services or APIs.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/backend-architect.md",
+      "systemPromptPath": "../../shared/agents/backend-architect.md",
       "defaultSkills": [
         "api-design-principles",
         "architecture-patterns",
@@ -26,7 +26,7 @@
       "description": "Master modern GraphQL with federation, performance optimization, and enterprise security. Build scalable schemas, implement advanced caching, and design real-time systems. Use PROACTIVELY for GraphQL architecture or performance optimization.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/graphql-architect.md",
+      "systemPromptPath": "../../shared/agents/graphql-architect.md",
       "defaultSkills": [
         "api-design-principles",
         "architecture-patterns",
@@ -42,7 +42,7 @@
       "description": "Master TDD orchestrator specializing in red-green-refactor discipline, multi-agent workflow coordination, and comprehensive test-driven development practices. Enforces TDD best practices across teams with AI-assisted testing and modern frameworks. Use PROACTIVELY for TDD implementation and governance.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/tdd-orchestrator.md",
+      "systemPromptPath": "../../shared/agents/tdd-orchestrator.md",
       "defaultSkills": [
         "api-design-principles",
         "architecture-patterns",
@@ -111,3 +111,5 @@
     }
   ]
 }
+
+

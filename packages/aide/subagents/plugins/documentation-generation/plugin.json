@@ -10,7 +10,7 @@
       "description": "Master API documentation with OpenAPI 3.1, AI-powered tools, and modern developer experience practices. Create interactive docs, generate SDKs, and build comprehensive developer portals. Use PROACTIVELY for API documentation or developer portal creation.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/api-documenter.md",
+      "systemPromptPath": "../../shared/agents/api-documenter.md",
       "defaultSkills": [],
       "defaultCommand": "doc-generate"
     },
@@ -20,7 +20,7 @@
       "description": "Creates comprehensive technical documentation from existing codebases. Analyzes architecture, design patterns, and implementation details to produce long-form technical manuals and ebooks. Use PROACTIVELY for system documentation, architecture guides, or technical deep-dives.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/docs-architect.md",
+      "systemPromptPath": "../../shared/agents/docs-architect.md",
       "defaultSkills": [],
       "defaultCommand": "doc-generate"
     },
@@ -50,7 +50,7 @@
       "description": "Creates step-by-step tutorials and educational content from code. Transforms complex concepts into progressive learning experiences with hands-on examples. Use PROACTIVELY for onboarding guides, feature tutorials, or concept explanations.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/tutorial-engineer.md",
+      "systemPromptPath": "../../shared/agents/tutorial-engineer.md",
       "defaultSkills": [],
       "defaultCommand": "doc-generate"
     }
@@ -66,3 +66,5 @@
     }
   ]
 }
+
+

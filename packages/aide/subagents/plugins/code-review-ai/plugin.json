@@ -10,7 +10,7 @@
       "description": "Master software architect specializing in modern architecture patterns, clean architecture, microservices, event-driven systems, and DDD. Reviews system designs and code changes for architectural integrity, scalability, and maintainability. Use PROACTIVELY for architectural decisions.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/architect-review.md",
+      "systemPromptPath": "../../shared/agents/architect-review.md",
       "defaultSkills": [],
       "defaultCommand": "ai-review"
     }
@@ -26,3 +26,5 @@
     }
   ]
 }
+
+

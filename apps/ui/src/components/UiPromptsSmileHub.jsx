@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Drawer, Empty, List, Space, Tag, Tooltip, Typography } from 'antd';
 import { SmileOutlined } from '@ant-design/icons';
 
-import { api, hasApi } from '../lib/api.js';
-import { normalizeRunId } from '../lib/runs.js';
-import { listPendingUiPrompts, pickActiveUiPrompt } from '../lib/ui-prompts.js';
-import { FloatingIslandPrompt } from '../features/session/floating-island/FloatingIslandPrompt.jsx';
+import { api, hasApi } from 'aide-ui/lib/api.js';
+import { normalizeRunId } from 'aide-ui/lib/runs.js';
+import { listPendingUiPrompts, pickActiveUiPrompt } from 'aide-ui/lib/ui-prompts.js';
+import { FloatingIslandPrompt } from 'aide-ui/features/session/floating-island/FloatingIslandPrompt.jsx';
 
 const { Text } = Typography;
 

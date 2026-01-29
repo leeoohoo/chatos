@@ -10,7 +10,7 @@
       "description": "Master software architect specializing in modern architecture patterns, clean architecture, microservices, event-driven systems, and DDD. Reviews system designs and code changes for architectural integrity, scalability, and maintainability. Use PROACTIVELY for architectural decisions.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/architect-review.md",
+      "systemPromptPath": "../../shared/agents/architect-review.md",
       "defaultSkills": [],
       "defaultCommand": "full-review"
     },
@@ -20,7 +20,7 @@
       "description": "Elite code review expert specializing in modern AI-powered code analysis, security vulnerabilities, performance optimization, and production reliability. Masters static analysis tools, security scanning, and configuration review with 2024/2025 best practices. Use PROACTIVELY for code quality assurance.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/code-reviewer.md",
+      "systemPromptPath": "../../shared/agents/code-reviewer.md",
       "defaultSkills": [],
       "defaultCommand": "full-review"
     },
@@ -30,7 +30,7 @@
       "description": "Expert security auditor specializing in DevSecOps, comprehensive cybersecurity, and compliance frameworks. Masters vulnerability assessment, threat modeling, secure authentication (OAuth2/OIDC), OWASP standards, cloud security, and security automation. Handles DevSecOps integration, compliance (GDPR/HIPAA/SOC2), and incident response. Use PROACTIVELY for security audits, DevSecOps, or compliance implementation.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/security-auditor.md",
+      "systemPromptPath": "../../shared/agents/security-auditor.md",
       "defaultSkills": [],
       "defaultCommand": "full-review"
     }
@@ -53,3 +53,5 @@
     }
   ]
 }
+
+

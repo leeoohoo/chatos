@@ -1,12 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, List, Pagination, Segmented, Select, Space, Tag, Typography, Input } from 'antd';
 
-import { CodeBlock } from '../../components/CodeBlock.jsx';
-import { MarkdownBlock } from '../../components/MarkdownBlock.jsx';
-import { buildEventMarkdown, formatToolLabel } from '../../lib/event-markdown.js';
-import { formatJson } from '../../lib/format.js';
-import { RUN_FILTER_ALL } from '../../lib/storage.js';
-import { normalizeRunId } from '../../lib/runs.js';
+import { CodeBlock } from 'aide-ui/components/CodeBlock.jsx';
+import { MarkdownBlock } from 'aide-ui/components/MarkdownBlock.jsx';
+import { buildEventMarkdown, formatToolLabel } from 'aide-ui/lib/event-markdown.js';
+import { formatJson } from 'aide-ui/lib/format.js';
+import { RUN_FILTER_ALL } from 'aide-ui/lib/storage.js';
+import { normalizeRunId } from 'aide-ui/lib/runs.js';
 
 const { Text } = Typography;
 const { Search } = Input;

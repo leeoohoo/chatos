@@ -4,10 +4,10 @@ import { Alert, Layout, Spin } from 'antd';
 import { GlobalStyles } from './components/GlobalStyles.jsx';
 import { ConfigSwitchFeedback } from './components/ConfigSwitchFeedback.jsx';
 import { UiPromptsSmileHub } from './components/UiPromptsSmileHub.jsx';
-import { api, hasApi } from './lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 import { AppContent } from './app/AppContent.jsx';
 import { AppHeader } from './app/AppHeader.jsx';
-import { createAdminActions } from './app/admin-actions.js';
+import { createAdminActions } from 'aide-ui/app/admin-actions.js';
 import { useConfigSwitch } from './hooks/useConfigSwitch.js';
 
 const { Content } = Layout;

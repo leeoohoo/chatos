@@ -2,15 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Layout, Modal, Segmented, Space, Typography, message } from 'antd';
 import { ConfigProvider, theme as antdTheme } from 'antd';
 
-import { createAdminActions } from './app/admin-actions.js';
+import { createAdminActions } from 'aide-ui/app/admin-actions.js';
 import { EventStreamMarkdownView } from './features/session/EventStreamMarkdownView.jsx';
-import { FloatingIsland } from './features/session/FloatingIsland.jsx';
-import { SessionView, TasksDrawer } from './features/session/SessionView.jsx';
-import { WorkspaceExplorerView } from './features/workspace/WorkspaceExplorerView.jsx';
-import { useElementHeight } from './hooks/useElementSize.js';
-import { api, hasApi } from './lib/api.js';
-import { buildEventList, readRawEventList } from './lib/events.js';
-import { parseTasks } from './lib/parse.js';
+import { FloatingIsland } from 'aide-ui/features/session/FloatingIsland.jsx';
+import { SessionView, TasksDrawer } from 'aide-ui/features/session/SessionView.jsx';
+import { WorkspaceExplorerView } from 'aide-ui/features/workspace/WorkspaceExplorerView.jsx';
+import { useElementHeight } from 'aide-ui/hooks/useElementSize.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
+import { buildEventList, readRawEventList } from 'aide-ui/lib/events.js';
+import { parseTasks } from 'aide-ui/lib/parse.js';
 import {
   buildRunFilterOptions,
   filterEntriesByRunId,
@@ -18,7 +18,7 @@ import {
   parseTimestampMs,
   resolveDispatchRunId,
   resolveEffectiveRunFilter,
-} from './lib/runs.js';
+} from 'aide-ui/lib/runs.js';
 import {
   DISPATCH_CWD_STORAGE_KEY,
   HIDDEN_RUNS_STORAGE_KEY,
@@ -28,8 +28,8 @@ import {
   RUN_FILTER_UNKNOWN,
   safeLocalStorageGet,
   safeLocalStorageSet,
-} from './lib/storage.js';
-import { listPendingUiPrompts, pickActiveUiPrompt } from './lib/ui-prompts.js';
+} from 'aide-ui/lib/storage.js';
+import { listPendingUiPrompts, pickActiveUiPrompt } from 'aide-ui/lib/ui-prompts.js';
 
 const { Content } = Layout;
 const { Text, Paragraph } = Typography;

@@ -10,7 +10,7 @@
       "description": "Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/debugger.md",
+      "systemPromptPath": "../../shared/agents/debugger.md",
       "defaultSkills": [],
       "defaultCommand": "error-analysis"
     },
@@ -20,7 +20,7 @@
       "description": "Search logs and codebases for error patterns, stack traces, and anomalies. Correlates errors across systems and identifies root causes. Use PROACTIVELY when debugging issues, analyzing logs, or investigating production errors.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/error-detective.md",
+      "systemPromptPath": "../../shared/agents/error-detective.md",
       "defaultSkills": [],
       "defaultCommand": "error-analysis"
     }
@@ -50,3 +50,5 @@
     }
   ]
 }
+
+

@@ -18,6 +18,9 @@ build_resources/*.p12
 *.log
 tmp/
 ui_apps/plugins/aide-builtin/
+apps/ui/dist/
+apps/ui/dist/*.map
+ui_apps/plugins/aide-builtin/cli/dist/
 
 # Allow committing Node metadata even if globally ignored.
 !package.json

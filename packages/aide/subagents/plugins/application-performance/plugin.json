@@ -10,7 +10,7 @@
       "description": "Build React components, implement responsive layouts, and handle client-side state management. Masters React 19, Next.js 15, and modern frontend architecture. Optimizes performance and ensures accessibility. Use PROACTIVELY when creating UI components or fixing frontend issues.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/frontend-developer.md",
+      "systemPromptPath": "../../shared/agents/frontend-developer.md",
       "defaultSkills": [],
       "defaultCommand": "performance-optimization"
     },
@@ -20,7 +20,7 @@
       "description": "Build production-ready monitoring, logging, and tracing systems. Implements comprehensive observability strategies, SLI/SLO management, and incident response workflows. Use PROACTIVELY for monitoring infrastructure, performance optimization, or production reliability.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/observability-engineer.md",
+      "systemPromptPath": "../../shared/agents/observability-engineer.md",
       "defaultSkills": [],
       "defaultCommand": "performance-optimization"
     },
@@ -30,7 +30,7 @@
       "description": "Expert performance engineer specializing in modern observability, application optimization, and scalable system performance. Masters OpenTelemetry, distributed tracing, load testing, multi-tier caching, Core Web Vitals, and performance monitoring. Handles end-to-end optimization, real user monitoring, and scalability patterns. Use PROACTIVELY for performance optimization, observability, or scalability challenges.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/performance-engineer.md",
+      "systemPromptPath": "../../shared/agents/performance-engineer.md",
       "defaultSkills": [],
       "defaultCommand": "performance-optimization"
     }
@@ -46,3 +46,5 @@
     }
   ]
 }
+
+

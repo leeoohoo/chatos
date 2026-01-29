@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Checkbox, Space, Tag, Typography, message } from 'antd';
 
-import { api, hasApi } from '../../../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 import { RuntimeLogModal } from '../../../components/RuntimeLogModal.jsx';
 
 const { Text, Paragraph, Title } = Typography;

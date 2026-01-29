@@ -10,7 +10,7 @@
       "description": "Expert database optimizer specializing in modern performance tuning, query optimization, and scalable architectures. Masters advanced indexing, N+1 resolution, multi-tier caching, partitioning strategies, and cloud database optimization. Handles complex query analysis, migration strategies, and performance monitoring. Use PROACTIVELY for database optimization, performance issues, or scalability challenges.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/database-optimizer.md",
+      "systemPromptPath": "../../shared/agents/database-optimizer.md",
       "defaultSkills": [
         "distributed-tracing",
         "grafana-dashboards",
@@ -25,7 +25,7 @@
       "description": "Expert network engineer specializing in modern cloud networking, security architectures, and performance optimization. Masters multi-cloud connectivity, service mesh, zero-trust networking, SSL/TLS, global load balancing, and advanced troubleshooting. Handles CDN optimization, network automation, and compliance. Use PROACTIVELY for network design, connectivity issues, or performance optimization.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/network-engineer.md",
+      "systemPromptPath": "../../shared/agents/network-engineer.md",
       "defaultSkills": [
         "distributed-tracing",
         "grafana-dashboards",
@@ -40,7 +40,7 @@
       "description": "Build production-ready monitoring, logging, and tracing systems. Implements comprehensive observability strategies, SLI/SLO management, and incident response workflows. Use PROACTIVELY for monitoring infrastructure, performance optimization, or production reliability.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/observability-engineer.md",
+      "systemPromptPath": "../../shared/agents/observability-engineer.md",
       "defaultSkills": [
         "distributed-tracing",
         "grafana-dashboards",
@@ -55,7 +55,7 @@
       "description": "Expert performance engineer specializing in modern observability, application optimization, and scalable system performance. Masters OpenTelemetry, distributed tracing, load testing, multi-tier caching, Core Web Vitals, and performance monitoring. Handles end-to-end optimization, real user monitoring, and scalability patterns. Use PROACTIVELY for performance optimization, observability, or scalability challenges.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/performance-engineer.md",
+      "systemPromptPath": "../../shared/agents/performance-engineer.md",
       "defaultSkills": [
         "distributed-tracing",
         "grafana-dashboards",
@@ -108,3 +108,5 @@
     }
   ]
 }
+
+

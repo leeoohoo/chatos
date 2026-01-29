@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { ErrorBoundary } from './components/ErrorBoundary.jsx';
+import { ErrorBoundary } from 'aide-ui/components/ErrorBoundary.jsx';
 import { CliApp } from './CliApp.jsx';
 
 export function mount({ container, host }) {

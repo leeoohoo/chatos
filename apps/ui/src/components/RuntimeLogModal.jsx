@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Input, Modal, Space, Typography } from 'antd';
 
-import { api, hasApi } from '../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;

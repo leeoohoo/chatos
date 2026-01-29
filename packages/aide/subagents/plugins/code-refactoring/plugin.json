@@ -10,7 +10,7 @@
       "description": "Elite code review expert specializing in modern AI-powered code analysis, security vulnerabilities, performance optimization, and production reliability. Masters static analysis tools, security scanning, and configuration review with 2024/2025 best practices. Use PROACTIVELY for code quality assurance.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/code-reviewer.md",
+      "systemPromptPath": "../../shared/agents/code-reviewer.md",
       "defaultSkills": [],
       "defaultCommand": "context-restore"
     },
@@ -20,7 +20,7 @@
       "description": "Refactor legacy codebases, migrate outdated frameworks, and implement gradual modernization. Handles technical debt, dependency updates, and backward compatibility. Use PROACTIVELY for legacy system updates, framework migrations, or technical debt reduction.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/legacy-modernizer.md",
+      "systemPromptPath": "../../shared/agents/legacy-modernizer.md",
       "defaultSkills": [],
       "defaultCommand": "context-restore"
     }
@@ -50,3 +50,5 @@
     }
   ]
 }
+
+

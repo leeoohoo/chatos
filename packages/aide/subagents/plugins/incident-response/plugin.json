@@ -10,7 +10,7 @@
       "description": "Expert DevOps troubleshooter specializing in rapid incident response, advanced debugging, and modern observability. Masters log analysis, distributed tracing, Kubernetes debugging, performance optimization, and root cause analysis. Handles production outages, system reliability, and preventive monitoring. Use PROACTIVELY for debugging, incident response, or system troubleshooting.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/devops-troubleshooter.md",
+      "systemPromptPath": "../../shared/agents/devops-troubleshooter.md",
       "defaultSkills": [],
       "defaultCommand": "incident-response"
     },
@@ -43,3 +43,5 @@
     }
   ]
 }
+
+

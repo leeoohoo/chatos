@@ -10,7 +10,7 @@
       "description": "Master software architect specializing in modern architecture patterns, clean architecture, microservices, event-driven systems, and DDD. Reviews system designs and code changes for architectural integrity, scalability, and maintainability. Use PROACTIVELY for architectural decisions.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/architect-review.md",
+      "systemPromptPath": "../../shared/agents/architect-review.md",
       "defaultSkills": [
         "angular-migration",
         "database-migration",
@@ -25,7 +25,7 @@
       "description": "Refactor legacy codebases, migrate outdated frameworks, and implement gradual modernization. Handles technical debt, dependency updates, and backward compatibility. Use PROACTIVELY for legacy system updates, framework migrations, or technical debt reduction.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/legacy-modernizer.md",
+      "systemPromptPath": "../../shared/agents/legacy-modernizer.md",
       "defaultSkills": [
         "angular-migration",
         "database-migration",
@@ -85,3 +85,5 @@
     }
   ]
 }
+
+

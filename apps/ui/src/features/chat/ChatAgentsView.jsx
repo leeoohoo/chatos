@@ -26,8 +26,8 @@ import {
 import { normalizePromptLanguage } from 'mcp-utils.js';
 import { normalizeId, normalizeKey } from 'text-utils.js';
 import { AgentEditorModal } from './components/AgentEditorModal.jsx';
-import { useChatAgents } from './hooks/useChatAgents.js';
-import { useUiAppsRegistry } from '../apps/hooks/useUiAppsRegistry.js';
+import { useChatAgents } from 'aide-ui/features/chat/hooks/useChatAgents.js';
+import { useUiAppsRegistry } from 'aide-ui/features/apps/hooks/useUiAppsRegistry.js';
 
 const { Text } = Typography;
 

@@ -1,4 +1,5 @@
 import { truncateText } from '../../../../../lib/format.js';
+import { normalizeText } from '../../../../../../text-utils.js';
 
 export function formatSummaryValue(value, maxLen = 160) {
   if (value === undefined || value === null) return '';
@@ -37,6 +38,4 @@ export function formatListLines(items, { limit = 8, formatter } = {}) {
   return lines.join('\n');
 }
 
-export function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+export { normalizeText };

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Empty, Input, List, Modal, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 
-import { api, hasApi } from '../../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 import { ConfigForm } from './ConfigForm.jsx';
 import { ConfigDetail } from './ConfigDetail.jsx';
 

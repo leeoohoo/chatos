@@ -10,7 +10,7 @@
       "description": "Elite code review expert specializing in modern AI-powered code analysis, security vulnerabilities, performance optimization, and production reliability. Masters static analysis tools, security scanning, and configuration review with 2024/2025 best practices. Use PROACTIVELY for code quality assurance.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/code-reviewer.md",
+      "systemPromptPath": "../../shared/agents/code-reviewer.md",
       "defaultSkills": [],
       "defaultCommand": "tdd-cycle"
     },
@@ -20,7 +20,7 @@
       "description": "Master TDD orchestrator specializing in red-green-refactor discipline, multi-agent workflow coordination, and comprehensive test-driven development practices. Enforces TDD best practices across teams with AI-assisted testing and modern frameworks. Use PROACTIVELY for TDD implementation and governance.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/tdd-orchestrator.md",
+      "systemPromptPath": "../../shared/agents/tdd-orchestrator.md",
       "defaultSkills": [],
       "defaultCommand": "tdd-cycle"
     }
@@ -57,3 +57,5 @@
     }
   ]
 }
+
+

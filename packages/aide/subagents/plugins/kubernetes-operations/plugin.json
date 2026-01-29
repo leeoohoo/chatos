@@ -10,7 +10,7 @@
       "description": "Expert Kubernetes architect specializing in cloud-native infrastructure, advanced GitOps workflows (ArgoCD/Flux), and enterprise container orchestration. Masters EKS/AKS/GKE, service mesh (Istio/Linkerd), progressive delivery, multi-tenancy, and platform engineering. Handles security, observability, cost optimization, and developer experience. Use PROACTIVELY for K8s architecture, GitOps implementation, or cloud-native platform design.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/kubernetes-architect.md",
+      "systemPromptPath": "../../shared/agents/kubernetes-architect.md",
       "defaultSkills": [
         "gitops-workflow",
         "helm-chart-scaffolding",
@@ -47,3 +47,5 @@
   ],
   "commands": []
 }
+
+

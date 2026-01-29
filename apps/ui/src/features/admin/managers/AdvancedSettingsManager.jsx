@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 
 import { LspServersManager } from './LspServersManager.jsx';
-import { McpServersManager } from './McpServersManager.jsx';
-import { PromptsManager } from './PromptsManager.jsx';
+import { McpServersManager } from 'aide-ui/features/admin/managers/McpServersManager.jsx';
+import { PromptsManager } from 'aide-ui/features/admin/managers/PromptsManager.jsx';
 import { SubagentsManager } from './SubagentsManager.jsx';
 import { LandConfigsManager } from '../../land-configs/LandConfigsManager.jsx';
 

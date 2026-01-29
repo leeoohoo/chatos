@@ -10,7 +10,7 @@
       "description": "Elite code review expert specializing in modern AI-powered code analysis, security vulnerabilities, performance optimization, and production reliability. Masters static analysis tools, security scanning, and configuration review with 2024/2025 best practices. Use PROACTIVELY for code quality assurance.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/code-reviewer.md",
+      "systemPromptPath": "../../shared/agents/code-reviewer.md",
       "defaultSkills": [],
       "defaultCommand": "code-explain"
     },
@@ -20,7 +20,7 @@
       "description": "Creates comprehensive technical documentation from existing codebases. Analyzes architecture, design patterns, and implementation details to produce long-form technical manuals and ebooks. Use PROACTIVELY for system documentation, architecture guides, or technical deep-dives.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/docs-architect.md",
+      "systemPromptPath": "../../shared/agents/docs-architect.md",
       "defaultSkills": [],
       "defaultCommand": "code-explain"
     },
@@ -30,7 +30,7 @@
       "description": "Creates step-by-step tutorials and educational content from code. Transforms complex concepts into progressive learning experiences with hands-on examples. Use PROACTIVELY for onboarding guides, feature tutorials, or concept explanations.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/tutorial-engineer.md",
+      "systemPromptPath": "../../shared/agents/tutorial-engineer.md",
       "defaultSkills": [],
       "defaultCommand": "code-explain"
     }
@@ -53,3 +53,5 @@
     }
   ]
 }
+
+

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Empty, Tabs, Typography, message } from 'antd';
 
-import { api, hasApi } from '../../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 import { ModelConfig } from './components/ModelConfig.jsx';
 import { McpConfig } from './components/McpConfig.jsx';
 import { PromptConfig } from './components/PromptConfig.jsx';

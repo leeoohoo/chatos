@@ -10,7 +10,7 @@
       "description": "Developer Experience specialist. Improves tooling, setup, and workflows. Use PROACTIVELY when setting up new projects, after team feedback, or when development friction is noticed.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/dx-optimizer.md",
+      "systemPromptPath": "../../shared/agents/dx-optimizer.md",
       "defaultSkills": [],
       "defaultCommand": "issue"
     }
@@ -33,3 +33,5 @@
     }
   ]
 }
+
+

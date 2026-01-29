@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Card, Space, Typography, message } from 'antd';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 
-import { api, hasApi } from '../../lib/api.js';
-import { useUiAppsRegistry } from './hooks/useUiAppsRegistry.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
+import { useUiAppsRegistry } from 'aide-ui/features/apps/hooks/useUiAppsRegistry.js';
 
 const { Title, Text } = Typography;
 

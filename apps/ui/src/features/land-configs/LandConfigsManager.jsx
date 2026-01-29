@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Divider, Empty, Form, Input, List, Modal, Select, Space, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 
-import { api, hasApi } from '../../lib/api.js';
-import { useUiAppsRegistry } from '../apps/hooks/useUiAppsRegistry.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
+import { useUiAppsRegistry } from 'aide-ui/features/apps/hooks/useUiAppsRegistry.js';
 import { getMcpPromptNameForServer, normalizeMcpServerName } from 'mcp-utils.js';
 import { RESERVED_PROMPT_NAMES } from 'prompt-utils.js';
 import { normalizeKey } from 'text-utils.js';

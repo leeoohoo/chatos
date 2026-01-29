@@ -5,6 +5,8 @@ import { CopyOutlined, ExpandOutlined } from '@ant-design/icons';
 import { copyPlainText } from '../../../../lib/clipboard.js';
 import { truncateText } from '../../../../lib/format.js';
 import { normalizeRunId } from '../../../../lib/runs.js';
+import { isActionablePromptKind } from '../../../../lib/ui-prompts.js';
+import { normalizeText } from '../../../../../text-utils.js';
 import { PopoverTag } from '../PopoverTag.jsx';
 import { ToolDetails } from './ToolDetailPanels.jsx';
 import { buildToolPresentation } from './tool-utils.js';
@@ -12,10 +14,6 @@ import { formatJson } from './details/detail-utils.js';
 import runSubAgentIconSpin from '../../../../../../../assets/robot_head_spin.svg';
 import runSubAgentIconStatic from '../../../../../../../assets/robot_head_static.svg';
 import { FloatingIslandPrompt } from '../../../session/floating-island/FloatingIslandPrompt.jsx';
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function pickToolStructuredContent(results = []) {
   const list = Array.isArray(results) ? results : [];
@@ -182,14 +180,7 @@ export function ToolInvocationTag({
   const uiPromptRequestId = typeof activeUiPrompt?.requestId === 'string' ? activeUiPrompt.requestId.trim() : '';
   const uiPromptPrompt = activeUiPrompt?.prompt && typeof activeUiPrompt.prompt === 'object' ? activeUiPrompt.prompt : null;
   const uiPromptKind = typeof uiPromptPrompt?.kind === 'string' ? uiPromptPrompt.kind.trim() : '';
-  const uiPromptActive = Boolean(
-    uiPromptRequestId &&
-      (uiPromptKind === 'kv' ||
-        uiPromptKind === 'choice' ||
-        uiPromptKind === 'task_confirm' ||
-        uiPromptKind === 'file_change_confirm' ||
-        uiPromptKind === 'result')
-  );
+  const uiPromptActive = Boolean(uiPromptRequestId && isActionablePromptKind(uiPromptKind));
   const uiPromptRunId = normalizeRunId(activeUiPrompt?.runId);
   const uiPromptAllowCancel = uiPromptPrompt?.allowCancel !== false;
   const showUiPrompt =

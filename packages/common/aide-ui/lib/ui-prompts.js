@@ -39,3 +39,18 @@ export function pickActiveUiPrompt(pending = [], preferredRunId) {
   }
   return list[list.length - 1];
 }
+
+const ACTIONABLE_PROMPT_KINDS = new Set([
+  'kv',
+  'choice',
+  'task_confirm',
+  'file_change_confirm',
+  'result',
+]);
+
+export function isActionablePromptKind(kind, options = {}) {
+  const normalized = typeof kind === 'string' ? kind.trim() : '';
+  if (!normalized) return false;
+  if (normalized === 'result' && options?.includeResult === false) return false;
+  return ACTIONABLE_PROMPT_KINDS.has(normalized);
+}

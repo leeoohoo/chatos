@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Form, Input, Space, message } from 'antd';
-import { api, hasApi } from '../../../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 
 export function ConfigSettings({ config, onUpdated }) {
   const [saving, setSaving] = useState(false);

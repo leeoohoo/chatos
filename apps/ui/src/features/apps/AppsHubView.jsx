@@ -2,8 +2,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Button, Card, Empty, Space, Typography, message } from 'antd';
 import { AppstoreOutlined, ReloadOutlined } from '@ant-design/icons';
 
-import { useUiAppsRegistry } from './hooks/useUiAppsRegistry.js';
-import { api, hasApi } from '../../lib/api.js';
+import { useUiAppsRegistry } from 'aide-ui/features/apps/hooks/useUiAppsRegistry.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 import { RuntimeLogModal } from '../../components/RuntimeLogModal.jsx';
 
 const { Title, Text, Paragraph } = Typography;

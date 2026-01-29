@@ -10,6 +10,7 @@ import {
   safeLocalStorageSet,
 } from '../../lib/storage.js';
 import { normalizeRunId } from '../../lib/runs.js';
+import { isActionablePromptKind } from '../../lib/ui-prompts.js';
 import { formatAideDropText, getAideDragPayload, getAideDragText } from '../../lib/dnd.js';
 import { FloatingIslandPrompt } from './floating-island/FloatingIslandPrompt.jsx';
 import {
@@ -72,9 +73,7 @@ function FloatingIsland({
   const requestId = typeof uiPrompt?.requestId === 'string' ? uiPrompt.requestId.trim() : '';
   const prompt = uiPrompt?.prompt && typeof uiPrompt.prompt === 'object' ? uiPrompt.prompt : null;
   const promptKind = typeof prompt?.kind === 'string' ? prompt.kind.trim() : '';
-  const promptActive = Boolean(
-    requestId && (promptKind === 'kv' || promptKind === 'choice' || promptKind === 'task_confirm' || promptKind === 'file_change_confirm')
-  );
+  const promptActive = Boolean(requestId && isActionablePromptKind(promptKind, { includeResult: false }));
   const promptRunId = normalizeRunId(uiPrompt?.runId);
   const allowCancel = prompt?.allowCancel !== false;
   const pendingCount = Number.isFinite(Number(uiPromptCount)) ? Number(uiPromptCount) : 0;

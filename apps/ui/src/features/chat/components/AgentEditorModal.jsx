@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Checkbox, Form, Input, Modal, Select, Segmented, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined } from '@ant-design/icons';
 
-import { api, hasApi } from '../../../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 import { getMcpPromptNameForServer, normalizePromptLanguage } from 'mcp-utils.js';
 import { normalizeId, normalizeKey, uniqueIds } from 'text-utils.js';
 

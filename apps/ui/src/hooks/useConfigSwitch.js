@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { message } from 'antd';
 
-import { api, hasApi } from '../lib/api.js';
+import { api, hasApi } from 'aide-ui/lib/api.js';
 
 export function useConfigSwitch() {
   const [isSwitching, setIsSwitching] = useState(false);

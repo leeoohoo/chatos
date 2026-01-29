@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Empty, Tag } from 'antd';
 
 import { formatDateTime, truncateText } from '../../../lib/format.js';
+import { parseTimestampMs } from '../../../lib/runs.js';
 import { dedupeFileChanges, getFileChangeKey } from '../../../lib/file-changes.js';
-import { normalizeId } from '../../../../text-utils.js';
+import { normalizeId, normalizeText } from '../../../../text-utils.js';
 import { isRunSubAgentToolName } from '../hooks/useChatSessions-streams.js';
 import { ToolInvocationTag } from './tooling/ToolInvocationTag.jsx';
 import { buildToolPresentation } from './tooling/tool-utils.js';
@@ -15,31 +16,6 @@ const TAB_KEYS = {
 };
 
 const DEFAULT_GROUP_PAGE_SIZE = 1;
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function parseTimestampMs(ts) {
-  if (!ts) return 0;
-  if (typeof ts === 'number') {
-    if (!Number.isFinite(ts)) return 0;
-    return ts < 1e12 ? ts * 1000 : ts;
-  }
-  if (typeof ts === 'string') {
-    const trimmed = ts.trim();
-    if (!trimmed) return 0;
-    const asNum = Number(trimmed);
-    if (Number.isFinite(asNum)) {
-      return asNum < 1e12 ? asNum * 1000 : asNum;
-    }
-    const parsed = Date.parse(trimmed);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  const date = new Date(ts);
-  const ms = date.getTime();
-  return Number.isFinite(ms) ? ms : 0;
-}
 
 function buildUserMessageGroups(messages = []) {
   const list = Array.isArray(messages) ? messages.filter(Boolean) : [];

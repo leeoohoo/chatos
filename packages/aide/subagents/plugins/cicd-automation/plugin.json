@@ -10,7 +10,7 @@
       "description": "Expert cloud architect specializing in AWS/Azure/GCP multi-cloud infrastructure design, advanced IaC (Terraform/OpenTofu/CDK), FinOps cost optimization, and modern architectural patterns. Masters serverless, microservices, security, compliance, and disaster recovery. Use PROACTIVELY for cloud architecture, cost optimization, migration planning, or multi-cloud strategies.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/cloud-architect.md",
+      "systemPromptPath": "../../shared/agents/cloud-architect.md",
       "defaultSkills": [
         "deployment-pipeline-design",
         "github-actions-templates",
@@ -25,7 +25,7 @@
       "description": "Expert deployment engineer specializing in modern CI/CD pipelines, GitOps workflows, and advanced deployment automation. Masters GitHub Actions, ArgoCD/Flux, progressive delivery, container security, and platform engineering. Handles zero-downtime deployments, security scanning, and developer experience optimization. Use PROACTIVELY for CI/CD design, GitOps implementation, or deployment automation.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/deployment-engineer.md",
+      "systemPromptPath": "../../shared/agents/deployment-engineer.md",
       "defaultSkills": [
         "deployment-pipeline-design",
         "github-actions-templates",
@@ -40,7 +40,7 @@
       "description": "Expert DevOps troubleshooter specializing in rapid incident response, advanced debugging, and modern observability. Masters log analysis, distributed tracing, Kubernetes debugging, performance optimization, and root cause analysis. Handles production outages, system reliability, and preventive monitoring. Use PROACTIVELY for debugging, incident response, or system troubleshooting.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/devops-troubleshooter.md",
+      "systemPromptPath": "../../shared/agents/devops-troubleshooter.md",
       "defaultSkills": [
         "deployment-pipeline-design",
         "github-actions-templates",
@@ -55,7 +55,7 @@
       "description": "Expert Kubernetes architect specializing in cloud-native infrastructure, advanced GitOps workflows (ArgoCD/Flux), and enterprise container orchestration. Masters EKS/AKS/GKE, service mesh (Istio/Linkerd), progressive delivery, multi-tenancy, and platform engineering. Handles security, observability, cost optimization, and developer experience. Use PROACTIVELY for K8s architecture, GitOps implementation, or cloud-native platform design.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/kubernetes-architect.md",
+      "systemPromptPath": "../../shared/agents/kubernetes-architect.md",
       "defaultSkills": [
         "deployment-pipeline-design",
         "github-actions-templates",
@@ -70,7 +70,7 @@
       "description": "Expert Terraform/OpenTofu specialist mastering advanced IaC automation, state management, and enterprise infrastructure patterns. Handles complex module design, multi-cloud deployments, GitOps workflows, policy as code, and CI/CD integration. Covers migration strategies, security best practices, and modern IaC ecosystems. Use PROACTIVELY for advanced IaC, state management, or infrastructure automation.",
       "model": "deepseek_chat",
       "reasoning": false,
-      "systemPromptPath": "agents/terraform-specialist.md",
+      "systemPromptPath": "../../shared/agents/terraform-specialist.md",
       "defaultSkills": [
         "deployment-pipeline-design",
         "github-actions-templates",
@@ -116,3 +116,5 @@
     }
   ]
 }
+
+

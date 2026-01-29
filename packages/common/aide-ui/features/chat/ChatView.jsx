@@ -4,7 +4,7 @@ import { CloseCircleOutlined, FolderOpenOutlined, MenuUnfoldOutlined } from '@an
 
 import { api, hasApi } from '../../lib/api.js';
 import { parseTasks } from '../../lib/parse.js';
-import { listPendingUiPrompts, pickActiveUiPrompt } from '../../lib/ui-prompts.js';
+import { isActionablePromptKind, listPendingUiPrompts, pickActiveUiPrompt } from '../../lib/ui-prompts.js';
 import { normalizeRunId } from '../../lib/runs.js';
 import { ChatSidebar } from './components/ChatSidebar.jsx';
 import { ChatSessionHeader } from './components/ChatSessionHeader.jsx';
@@ -412,14 +412,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                   const requestId = typeof activeUiPrompt?.requestId === 'string' ? activeUiPrompt.requestId.trim() : '';
                   const prompt = activeUiPrompt?.prompt && typeof activeUiPrompt.prompt === 'object' ? activeUiPrompt.prompt : null;
                   const promptKind = typeof prompt?.kind === 'string' ? prompt.kind.trim() : '';
-                  const promptActive = Boolean(
-                    requestId &&
-                      (promptKind === 'kv' ||
-                        promptKind === 'choice' ||
-                        promptKind === 'task_confirm' ||
-                        promptKind === 'file_change_confirm' ||
-                        promptKind === 'result')
-                  );
+                  const promptActive = Boolean(requestId && isActionablePromptKind(promptKind));
                   if (!promptActive) return null;
                   const promptRunId = normalizeRunId(activeUiPrompt?.runId);
                   const allowCancel = prompt?.allowCancel !== false;
