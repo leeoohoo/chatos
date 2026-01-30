@@ -609,7 +609,7 @@ export function AgentEditorModal({
           <Segmented
             options={[
               { label: '自定义', value: 'custom' },
-              { label: 'Flow（Land Config）', value: 'flow' },
+              { label: 'From Land Config', value: 'flow' },
             ]}
           />
         </Form.Item>
@@ -623,7 +623,7 @@ export function AgentEditorModal({
               options={landConfigOptions}
               showSearch
               optionFilterProp="label"
-              placeholder="选择 Flow 使用的 Land Config"
+              placeholder="选择要使用的 Land Config"
             />
           </Form.Item>
         ) : null}
@@ -862,7 +862,7 @@ export function AgentEditorModal({
           </Space>
         ) : (
           <Space direction="vertical" size={6}>
-            <Text type="secondary">Flow 模式下，工具与 Prompt 由 Land Config 统一控制。</Text>
+            <Text type="secondary">该模式下，工具与 Prompt 由 Land Config 统一控制。</Text>
           </Space>
         )}
       </Form>

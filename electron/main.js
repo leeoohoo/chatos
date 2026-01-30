@@ -498,6 +498,12 @@ function createWindow() {
     // ignore
   }
   try {
+    // With the app menu removed, wire up basic clipboard/edit shortcuts manually.
+    registerBasicEditShortcuts(mainWindow);
+  } catch {
+    // ignore
+  }
+  try {
     mainWindow.setTitle(APP_DISPLAY_NAME);
   } catch {
     // ignore
@@ -509,5 +515,51 @@ function createWindow() {
     sessionApi?.dispose?.();
     terminalManager?.dispose?.();
     chatApi?.dispose?.();
+  });
+}
+
+function registerBasicEditShortcuts(window) {
+  if (!window?.webContents) return;
+  const { webContents } = window;
+  webContents.on('before-input-event', (event, input) => {
+    if (!input || input.type !== 'keyDown') return;
+    const isMac = process.platform === 'darwin';
+    const modifierPressed = isMac ? input.meta : input.control;
+    if (!modifierPressed) return;
+    const key = String(input.key || '').toLowerCase();
+    switch (key) {
+      case 'c':
+        webContents.copy();
+        event.preventDefault();
+        break;
+      case 'v':
+        webContents.paste();
+        event.preventDefault();
+        break;
+      case 'x':
+        webContents.cut();
+        event.preventDefault();
+        break;
+      case 'a':
+        webContents.selectAll();
+        event.preventDefault();
+        break;
+      case 'z':
+        if (input.shift) {
+          webContents.redo();
+        } else {
+          webContents.undo();
+        }
+        event.preventDefault();
+        break;
+      case 'y':
+        if (!isMac) {
+          webContents.redo();
+          event.preventDefault();
+        }
+        break;
+      default:
+        break;
+    }
   });
 }

@@ -8,7 +8,7 @@ import { RuntimeLogModal } from '../../components/RuntimeLogModal.jsx';
 
 const { Title, Text, Paragraph } = Typography;
 
-export function AppsHubView({ onNavigate }) {
+export function AppsHubView({ onNavigate, showUninstall = true }) {
   const { loading, error, data, refresh } = useUiAppsRegistry();
   const apps = useMemo(() => (Array.isArray(data?.apps) ? data.apps : []), [data]);
   const pluginDirs = data?.pluginDirs || {};
@@ -163,7 +163,7 @@ export function AppsHubView({ onNavigate }) {
           >
             {apps.map((app) => {
               const pluginId = typeof app?.plugin?.id === 'string' ? app.plugin.id : '';
-              const canUninstall = pluginId && app?.plugin?.source === 'user';
+              const canUninstall = showUninstall && pluginId && app?.plugin?.source === 'user';
               return (
                 <Card
                   key={`${app?.plugin?.id || 'plugin'}:${app?.id || 'app'}`}

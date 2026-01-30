@@ -178,7 +178,7 @@ export function ChatView({ admin, onNavigate }) {
                 onRequestFullscreen={() => setDrawerFullscreen(true)}
               />
             ) : (
-              <AppsHubView onNavigate={handleDrawerNavigate} />
+              <AppsHubView onNavigate={handleDrawerNavigate} showUninstall={false} />
             )}
           </div>
 
