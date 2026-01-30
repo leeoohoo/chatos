@@ -4,7 +4,7 @@ import { RobotOutlined } from '@ant-design/icons';
 
 import { MarkdownBlock } from '../../../../../components/MarkdownBlock.jsx';
 import { formatDateTime } from '../../../../../lib/format.js';
-import { dedupeFileChanges, getFileChangeKey } from '../../../../../lib/file-changes.js';
+import { getFileChangeKey } from '../../../../../lib/file-changes.js';
 import { parseJsonSafe } from '../../../../../lib/parse.js';
 import { ToolBlock, ToolJsonPreview, ToolList, ToolSection, ToolSummary } from '../ToolPanels.jsx';
 import { formatJson, formatSummaryValue, normalizeText } from './detail-utils.js';
@@ -419,7 +419,7 @@ export function SubagentToolDetails({
       : resultText;
   const rawArgsText = typeof argsRaw === 'string' ? argsRaw.trim() : '';
   const rawPayloadText = payload ? formatJson(payload) : '';
-  const fileChangeItems = dedupeFileChanges(Array.isArray(fileChanges) ? fileChanges : []);
+  const fileChangeItems = Array.isArray(fileChanges) ? fileChanges : [];
   const toolNames = Array.from(
     new Set(
       effectiveSteps
@@ -713,7 +713,9 @@ export function SubagentToolDetails({
     const outputPreview = outputText ? formatSummaryValue(outputText.replace(/\s+/g, ' '), 360) : '';
     const summaryMarkdown = outputText;
     const fileChangePanels = fileChangeItems.map((item, idx) => {
-      const key = getFileChangeKey(item) || item?.ts || `change_${idx}`;
+      const baseKey = getFileChangeKey(item) || 'change';
+      const tsKey = item?.ts || '';
+      const key = `${baseKey}::${tsKey || idx}`;
       const pathLabel = item?.path || item?.absolutePath || '未知文件';
       const timeText = item?.ts ? formatDateTime(item.ts) : '';
       const toolTag = item?.tool ? <Tag color="purple">tool: {item.tool}</Tag> : null;

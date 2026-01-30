@@ -3,11 +3,12 @@ import { Empty, Tag } from 'antd';
 
 import { formatDateTime, truncateText } from '../../../lib/format.js';
 import { parseTimestampMs } from '../../../lib/runs.js';
-import { dedupeFileChanges, getFileChangeKey } from '../../../lib/file-changes.js';
+import { getFileChangeKey } from '../../../lib/file-changes.js';
 import { normalizeId, normalizeText } from '../../../../text-utils.js';
 import { isRunSubAgentToolName } from '../hooks/useChatSessions-streams.js';
 import { ToolInvocationTag } from './tooling/ToolInvocationTag.jsx';
 import { buildToolPresentation } from './tooling/tool-utils.js';
+import { extractFileTags } from '../file-tags.js';
 
 const TAB_KEYS = {
   tools: 'tools',
@@ -23,12 +24,15 @@ function buildUserMessageGroups(messages = []) {
   list.forEach((msg, idx) => {
     if (msg.role !== 'user') return;
     const contentRaw = typeof msg?.content === 'string' ? msg.content : String(msg?.content || '');
-    const previewRaw = contentRaw.trim();
+    const { text: contentClean, files: fileTags } = extractFileTags(contentRaw);
+    const previewRaw = contentClean.trim();
     const attachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
     const preview = previewRaw
       ? truncateText(previewRaw, 64)
       : attachments.length > 0
         ? '（附件）'
+        : fileTags.length > 0
+          ? '（已选文件）'
         : '';
     const timeText = formatTimeShort(msg?.createdAt || msg?.ts || msg?.created_at);
     const startMs = parseTimestampMs(msg?.createdAt || msg?.ts || msg?.created_at);
@@ -169,12 +173,15 @@ function buildToolGroupsByUser(messages = [], subagentStreams = {}) {
 
     if (msg.role === 'user') {
       const contentRaw = typeof msg?.content === 'string' ? msg.content : String(msg?.content || '');
-      const previewRaw = contentRaw.trim();
+      const { text: contentClean, files: fileTags } = extractFileTags(contentRaw);
+      const previewRaw = contentClean.trim();
       const attachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
       const preview = previewRaw
         ? truncateText(previewRaw, 64)
         : attachments.length > 0
           ? '（附件）'
+          : fileTags.length > 0
+            ? '（已选文件）'
           : '';
       const timeText = formatTimeShort(msg?.createdAt || msg?.ts || msg?.created_at);
       const userMessageId = normalizeId(msg?.id);
@@ -336,9 +343,9 @@ export function Workbar({
     });
   }, [tasksList]);
 
-  const dedupedFileChanges = useMemo(() => {
+  const fileChangeEntries = useMemo(() => {
     const list = Array.isArray(fileChanges?.entries) ? fileChanges.entries : [];
-    return dedupeFileChanges(list);
+    return list;
   }, [fileChanges]);
 
   const boundTaskRows = useMemo(() => {
@@ -349,11 +356,11 @@ export function Workbar({
   }, [taskRows, userMessageIdSet]);
 
   const boundFileChanges = useMemo(() => {
-    return dedupedFileChanges.filter((item) => {
+    return fileChangeEntries.filter((item) => {
       const id = normalizeId(item?.userMessageId);
       return id && userMessageIdSet.has(id);
     });
-  }, [dedupedFileChanges, userMessageIdSet]);
+  }, [fileChangeEntries, userMessageIdSet]);
 
   const fileChangesCount = boundFileChanges.length;
 
@@ -437,7 +444,7 @@ export function Workbar({
           const groupFileChanges = boundFileChanges.filter(
             (item) => normalizeId(item?.userMessageId) === group.key
           );
-          const fallbackFileChanges = groupFileChanges.length > 0 ? groupFileChanges : dedupedFileChanges;
+          const fallbackFileChanges = groupFileChanges.length > 0 ? groupFileChanges : fileChangeEntries;
           const previewCount = Number.isFinite(previewLimit) && previewLimit > 0 ? previewLimit : 0;
           let displayRunSubAgent = runSubAgentInvocations;
           let displayOthers = otherInvocations;

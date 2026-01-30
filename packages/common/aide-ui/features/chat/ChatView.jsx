@@ -33,6 +33,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     selectedSessionId,
     composerText,
     composerAttachments,
+    composerFiles,
     streamState,
     mcpStreamState,
     subagentStreamState,
@@ -40,6 +41,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
     sessionStatusById,
     setComposerText,
     setComposerAttachments,
+    setComposerFiles,
     refreshAll,
     selectSession,
     loadMoreMessages,
@@ -446,6 +448,9 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                   onChange={setComposerText}
                   attachments={composerAttachments}
                   onAttachmentsChange={setComposerAttachments}
+                  files={composerFiles}
+                  onFilesChange={setComposerFiles}
+                  workspaceRoot={effectiveWorkspaceRoot}
                   visionEnabled={visionEnabled}
                   onSend={async () => {
                     try {

@@ -3,6 +3,7 @@ import { Space, Tag, Typography } from 'antd';
 
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
 import { normalizeId } from '../../../../text-utils.js';
+import { extractFileTags } from '../file-tags.js';
 
 const { Text } = Typography;
 
@@ -15,7 +16,10 @@ function formatTime(ts) {
 export function UserMessageCard({ message }) {
   const createdAt = message?.createdAt;
   const timeText = useMemo(() => (createdAt ? formatTime(createdAt) : ''), [createdAt]);
-  const content = typeof message?.content === 'string' ? message.content : String(message?.content || '');
+  const contentRaw = typeof message?.content === 'string' ? message.content : String(message?.content || '');
+  const { text: content, files: fileTags } = useMemo(() => extractFileTags(contentRaw), [contentRaw]);
+  const hasContent = Boolean(content && content.trim());
+  const hasFileTags = fileTags.length > 0;
   const images = useMemo(() => {
     const list = Array.isArray(message?.attachments) ? message.attachments : [];
     return list.filter(
@@ -40,13 +44,19 @@ export function UserMessageCard({ message }) {
       </Space>
 
       <div style={{ marginTop: 4 }}>
-        {content ? (
-          <MarkdownBlock text={content} alwaysExpanded container={false} />
-        ) : images.length > 0 ? null : (
-          <Text type="secondary">（空）</Text>
-        )}
+        {hasFileTags ? (
+          <div style={{ marginBottom: hasContent ? 6 : 0, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {fileTags.map((file) => (
+              <Tag key={file} color="geekblue" style={{ marginRight: 0 }} title={file}>
+                {file}
+              </Tag>
+            ))}
+          </div>
+        ) : null}
+        {hasContent ? <MarkdownBlock text={content} alwaysExpanded container={false} /> : null}
+        {!hasContent && images.length > 0 ? null : !hasContent && !hasFileTags ? <Text type="secondary">（空）</Text> : null}
         {images.length > 0 ? (
-          <div style={{ marginTop: content ? 8 : 0, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ marginTop: hasContent || hasFileTags ? 8 : 0, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {images.map((img) => (
               <a
                 key={normalizeId(img.id) || img.dataUrl}

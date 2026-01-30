@@ -4,6 +4,7 @@ import { message as toast } from 'antd';
 import { api, hasApi } from '../../../lib/api.js';
 import { isContextLengthError } from '../../../../error-utils.js';
 import { normalizeId } from '../../../../text-utils.js';
+import { buildFileTagBlock, normalizeFileTags } from '../file-tags.js';
 import { extractErrorMessage } from './useChatSessions-errors.js';
 import { createStreamHandlers, isRunSubAgentToolName } from './useChatSessions-streams.js';
 
@@ -18,6 +19,7 @@ export function useChatSessions() {
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [composerText, setComposerText] = useState('');
   const [composerAttachments, setComposerAttachments] = useState([]);
+  const [composerFiles, setComposerFiles] = useState([]);
   const [streamStates, setStreamStates] = useState({});
   const [streamBuffers, setStreamBuffers] = useState({});
   const [mcpStreams, setMcpStreams] = useState({});
@@ -587,8 +589,11 @@ export function useChatSessions() {
   const sendMessage = async () => {
     const text = typeof composerText === 'string' ? composerText.trim() : '';
     const attachments = Array.isArray(composerAttachments) ? composerAttachments.filter(Boolean) : [];
+    const files = normalizeFileTags(composerFiles);
+    const fileBlock = buildFileTagBlock(files);
+    const composedText = fileBlock ? (text ? `${text}\n\n${fileBlock}` : fileBlock) : text;
     const currentSid = normalizeId(selectedSessionIdRef.current);
-    if ((!text && attachments.length === 0) || (currentSid && streamStatesRef.current[currentSid])) return;
+    if ((!composedText && attachments.length === 0) || (currentSid && streamStatesRef.current[currentSid])) return;
     const sid = normalizeId(selectedSessionIdRef.current);
     if (!sid) {
       toast.error('请先创建会话');
@@ -596,7 +601,7 @@ export function useChatSessions() {
     }
     try {
       clearSessionError(sid);
-      const res = await api.invoke('chat:send', { sessionId: sid, text, attachments });
+      const res = await api.invoke('chat:send', { sessionId: sid, text: composedText, attachments });
       if (res?.ok === false) throw new Error(res?.message || '发送失败');
 
       const userMessageId = normalizeId(res?.userMessageId);
@@ -609,7 +614,7 @@ export function useChatSessions() {
             id: userId,
             sessionId: sid,
             role: 'user',
-            content: text,
+            content: composedText,
             attachments,
             createdAt: now,
             updatedAt: now,
@@ -618,6 +623,7 @@ export function useChatSessions() {
         : null;
       setComposerText('');
       setComposerAttachments([]);
+      setComposerFiles([]);
       setMessages((prev) => {
         const list = Array.isArray(prev) ? prev : [];
         const seen = new Set(list.map((m) => normalizeId(m?.id)).filter(Boolean));
@@ -672,6 +678,7 @@ export function useChatSessions() {
     selectedAgentId,
     composerText,
     composerAttachments,
+    composerFiles,
     streamState: currentStreamState,
     mcpStreamState: currentMcpStream,
     subagentStreamState: currentSubagentStream,
@@ -679,6 +686,7 @@ export function useChatSessions() {
     sessionStatusById,
     setComposerText,
     setComposerAttachments,
+    setComposerFiles,
     refreshSessions,
     refreshMessages,
     refreshAll,
