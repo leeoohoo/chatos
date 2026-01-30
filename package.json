@@ -128,7 +128,7 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.6.2",
     "chrome-devtools-mcp": "^0.13.0",
-    "electron": "40.0.0"
+    "electron": "40.1.0"
   },
   "devDependencies": {
     "electron-rebuild": "^3.2.9"
