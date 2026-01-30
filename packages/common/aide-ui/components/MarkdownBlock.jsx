@@ -86,7 +86,7 @@ const MERMAID_KEYWORDS = [
   'requirementDiagram',
 ];
 
-const MERMAID_START_RE = new RegExp(`\\b(${MERMAID_KEYWORDS.join('|')})\\b`, 'i');
+const MERMAID_START_RE = new RegExp(`^\\s*(${MERMAID_KEYWORDS.join('|')})\\b`, 'i');
 const MERMAID_FIRST_LINE_RE = new RegExp(`^\\s*(${MERMAID_KEYWORDS.join('|')})\\b`, 'i');
 
 function looksLikeMermaid(text) {
@@ -128,6 +128,14 @@ function MermaidDiagram({ text }) {
     (async () => {
       try {
         ensureMermaid(theme);
+        const parseResult = await mermaid.parse(source, { suppressErrors: true });
+        if (parseResult === false) {
+          if (!cancelled) {
+            setSvg('');
+            setError('Mermaid 语法错误');
+          }
+          return;
+        }
         const result = await mermaid.render(idRef.current, source);
         const svgText = typeof result === 'string' ? result : result?.svg;
         if (!cancelled) setSvg(svgText || '');

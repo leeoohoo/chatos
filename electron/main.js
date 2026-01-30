@@ -47,7 +47,7 @@ import { ConfigApplier } from '../packages/core/session/ConfigApplier.js';
 import { resolveEngineModule } from '../src/engine-loader.js';
 import { resolveBoolEnv } from './shared/env-utils.js';
 
-const { app, BrowserWindow, ipcMain, dialog, nativeImage } = electron;
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Menu } = electron;
 const APP_DISPLAY_NAME = 'chatos';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -449,6 +449,12 @@ app.whenReady().then(() => {
       // ignore
     }
   }
+  // Remove the default Electron application menu (all platforms).
+  try {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([]));
+  } catch {
+    // ignore
+  }
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -484,6 +490,13 @@ function createWindow() {
     options.icon = appIconPath;
   }
   mainWindow = new BrowserWindow(options);
+  try {
+    // Hide menu bar on Windows/Linux even if a menu is set elsewhere.
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.setMenu(null);
+  } catch {
+    // ignore
+  }
   try {
     mainWindow.setTitle(APP_DISPLAY_NAME);
   } catch {
