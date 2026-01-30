@@ -93,6 +93,7 @@ const INVOKE_CHANNELS = new Set([
   'uiApps:list',
   'uiApps:plugins:install',
   'uiApps:plugins:trust',
+  'uiApps:plugins:uninstall',
   'uiPrompts:read',
   'uiPrompts:request',
   'uiPrompts:respond',

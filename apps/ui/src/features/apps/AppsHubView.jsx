@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Space, Typography, message } from 'antd';
+import { Alert, Button, Card, Empty, Popconfirm, Space, Typography, message } from 'antd';
 import { AppstoreOutlined, ReloadOutlined } from '@ant-design/icons';
 
 import { useUiAppsRegistry } from 'aide-ui/features/apps/hooks/useUiAppsRegistry.js';
@@ -17,6 +17,7 @@ export function AppsHubView({ onNavigate }) {
   const [packageInstalling, setPackageInstalling] = useState(false);
   const [installLogId, setInstallLogId] = useState('');
   const [logOpen, setLogOpen] = useState(false);
+  const [uninstallingId, setUninstallingId] = useState('');
 
   const installPackage = useCallback(async () => {
     if (!hasApi) {
@@ -56,6 +57,32 @@ export function AppsHubView({ onNavigate }) {
       setPackageInstalling(false);
     }
   }, [refresh]);
+
+  const uninstallPlugin = useCallback(
+    async (pluginId) => {
+      if (!hasApi) {
+        message.error('IPC bridge not available. Is preload loaded?');
+        return;
+      }
+      const id = typeof pluginId === 'string' ? pluginId.trim() : '';
+      if (!id) return;
+      setUninstallingId(id);
+      try {
+        const result = await api.invoke('uiApps:plugins:uninstall', { pluginId: id });
+        if (result?.ok === false) {
+          message.error(result?.message || '卸载失败');
+          return;
+        }
+        message.success('已卸载应用包');
+        await refresh();
+      } catch (err) {
+        message.error(err?.message || '卸载失败');
+      } finally {
+        setUninstallingId('');
+      }
+    },
+    [refresh]
+  );
 
   return (
     <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -134,29 +161,56 @@ export function AppsHubView({ onNavigate }) {
               alignItems: 'stretch',
             }}
           >
-            {apps.map((app) => (
-              <Card
-                key={`${app?.plugin?.id || 'plugin'}:${app?.id || 'app'}`}
-                size="small"
-                hoverable
-                style={{ borderRadius: 14 }}
-                onClick={() => (typeof onNavigate === 'function' && app?.route ? onNavigate(app.route) : null)}
-                title={<span style={{ fontWeight: 650 }}>{app?.name || app?.id || '未命名应用'}</span>}
-                extra={
-                  app?.plugin?.name ? (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {app.plugin.name}
-                    </Text>
-                  ) : null
-                }
-              >
-                {app?.description ? (
-                  <Paragraph style={{ margin: 0 }}>{app.description}</Paragraph>
-                ) : (
-                  <Text type="secondary">暂无描述</Text>
-                )}
-              </Card>
-            ))}
+            {apps.map((app) => {
+              const pluginId = typeof app?.plugin?.id === 'string' ? app.plugin.id : '';
+              const canUninstall = pluginId && app?.plugin?.source === 'user';
+              return (
+                <Card
+                  key={`${app?.plugin?.id || 'plugin'}:${app?.id || 'app'}`}
+                  size="small"
+                  hoverable
+                  style={{ borderRadius: 14 }}
+                  onClick={() => (typeof onNavigate === 'function' && app?.route ? onNavigate(app.route) : null)}
+                  title={<span style={{ fontWeight: 650 }}>{app?.name || app?.id || '未命名应用'}</span>}
+                  extra={
+                    <Space size={6}>
+                      {app?.plugin?.name ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {app.plugin.name}
+                        </Text>
+                      ) : null}
+                      {canUninstall ? (
+                        <Popconfirm
+                          title="确认卸载?"
+                          description="卸载后将删除该应用包（仅用户插件）。"
+                          okText="卸载"
+                          cancelText="取消"
+                          onConfirm={() => {
+                            void uninstallPlugin(pluginId);
+                          }}
+                        >
+                          <Button
+                            size="small"
+                            type="link"
+                            danger
+                            loading={uninstallingId === pluginId}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            卸载
+                          </Button>
+                        </Popconfirm>
+                      ) : null}
+                    </Space>
+                  }
+                >
+                  {app?.description ? (
+                    <Paragraph style={{ margin: 0 }}>{app.description}</Paragraph>
+                  ) : (
+                    <Text type="secondary">暂无描述</Text>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

@@ -320,12 +320,12 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                 flexDirection: 'column',
               }}
             >
-              <div style={{ padding: 12, borderBottom: '1px solid var(--ds-panel-border)', background: 'var(--ds-subtle-bg)' }}>
+              <div style={{ padding: 8, borderBottom: '1px solid var(--ds-panel-border)', background: 'var(--ds-subtle-bg)' }}>
                 <ChatSessionHeader session={currentSession} streaming={isSessionBusy} />
               </div>
 
               {mcpStreamState ? (
-                <div style={{ padding: 12, borderBottom: '1px solid var(--ds-panel-border)', background: 'var(--ds-subtle-bg)' }}>
+                <div style={{ padding: 8, borderBottom: '1px solid var(--ds-panel-border)', background: 'var(--ds-subtle-bg)' }}>
                   <McpStreamPanel
                     stream={mcpStreamState}
                     onClear={() => clearMcpStream?.(currentSession?.id)}
@@ -333,7 +333,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                 </div>
               ) : null}
 
-              <div style={{ flex: 1, minHeight: 0, padding: 12 }}>
+              <div className="ds-chat-stream-wrap" style={{ flex: 1, minHeight: 0, padding: 8 }}>
                 <ChatMessages
                   messages={messages}
                   streaming={streamState}
@@ -343,8 +343,11 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                 />
               </div>
 
-              <div style={{ padding: 12, borderTop: '1px solid var(--ds-panel-border)', background: 'var(--ds-subtle-bg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+              <div
+                className="ds-chat-footer"
+                style={{ padding: 8, borderTop: '1px solid var(--ds-panel-border)', background: 'var(--ds-subtle-bg)' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
                   <Space size={8} align="center" wrap>
                     <Text type="secondary">当前 Agent</Text>
                     <Select
@@ -393,7 +396,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
                   </Space>
                 </div>
 
-                <div style={{ marginBottom: 10 }}>
+                <div style={{ marginBottom: 6 }}>
                   <Workbar
                     messages={Array.isArray(workbarMessages) && workbarMessages.length > 0 ? workbarMessages : messages}
                     subagentStreams={subagentStreamState}

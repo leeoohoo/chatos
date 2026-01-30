@@ -139,4 +139,73 @@ export const GLOBAL_MISC_STYLES = `
       .ds-floating-island textarea.ant-input {
         resize: none;
       }
+
+      .ds-chat-footer {
+        position: relative;
+        box-shadow: 0 -6px 12px rgba(15, 23, 42, 0.04);
+      }
+      .ds-chat-footer::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -1px;
+        height: 6px;
+        background: linear-gradient(180deg, rgba(79, 140, 255, 0.12), rgba(79, 140, 255, 0));
+        pointer-events: none;
+      }
+      :root[data-theme='dark'] .ds-chat-footer {
+        box-shadow: 0 -6px 12px rgba(0, 0, 0, 0.28);
+      }
+      :root[data-theme='dark'] .ds-chat-footer::before {
+        background: linear-gradient(180deg, rgba(80, 140, 255, 0.18), rgba(0, 0, 0, 0));
+      }
+
+      .ds-chat-assistant {
+        width: 100%;
+      }
+      .ds-chat-assistant-inner {
+        position: relative;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: rgba(79, 140, 255, 0.04);
+        border: 1px solid rgba(79, 140, 255, 0.12);
+      }
+      :root[data-theme='dark'] .ds-chat-assistant-inner {
+        background: rgba(79, 140, 255, 0.12);
+        border-color: rgba(79, 140, 255, 0.22);
+      }
+      .ds-chat-assistant.is-streaming .ds-chat-assistant-inner {
+        border-color: rgba(79, 140, 255, 0.28);
+        box-shadow: 0 0 0 1px rgba(79, 140, 255, 0.08), 0 6px 16px rgba(79, 140, 255, 0.12);
+      }
+      .ds-chat-assistant.is-streaming .ds-chat-assistant-inner::after {
+        content: '';
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(79, 140, 255, 0.9);
+        animation: ds-chat-pulse 1.4s ease-in-out infinite;
+      }
+      .ds-chat-assistant.is-streaming .ds-chat-streaming-indicator {
+        color: rgba(79, 140, 255, 0.9);
+        font-weight: 500;
+      }
+      @keyframes ds-chat-pulse {
+        0% {
+          transform: scale(0.9);
+          opacity: 0.4;
+        }
+        50% {
+          transform: scale(1.25);
+          opacity: 0.9;
+        }
+        100% {
+          transform: scale(0.9);
+          opacity: 0.4;
+        }
+      }
 `;

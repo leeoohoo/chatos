@@ -1,0 +1,10 @@
+{
+  "id": "f7411cc9-9f00-4660-9216-305985091954",
+  "at": "2026-01-30T05:48:18.734Z",
+  "tool": "app.selection.get",
+  "connectionId": "",
+  "database": "",
+  "error": {
+    "message": "no active connection selected in the app"
+  }
+}

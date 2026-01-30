@@ -124,80 +124,82 @@ export function AssistantTurnCard({ messages, streaming }) {
   };
 
   return (
-    <div style={{ width: '100%', padding: '2px 0' }}>
-      <Space size={8} wrap>
-        <Tag color="green" style={{ marginRight: 0 }}>
-          AI
-        </Tag>
-        {timeText ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {timeText}
-          </Text>
-        ) : null}
-        {isStreaming ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            （输出中…）
-          </Text>
-        ) : null}
-      </Space>
+    <div className={`ds-chat-assistant${isStreaming ? ' is-streaming' : ''}`} style={{ width: '100%' }}>
+      <div className="ds-chat-assistant-inner">
+        <Space size={8} wrap>
+          <Tag color="green" style={{ marginRight: 0 }}>
+            AI
+          </Tag>
+          {timeText ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {timeText}
+            </Text>
+          ) : null}
+          {isStreaming ? (
+            <Text type="secondary" className="ds-chat-streaming-indicator" style={{ fontSize: 12 }}>
+              （输出中…）
+            </Text>
+          ) : null}
+        </Space>
 
-      <div style={{ marginTop: 4 }}>
-        {hasBlocks ? (
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            {blocks.map((block) => {
-              if (block.type === 'assistant') {
-                return (
-                  <MarkdownBlock key={block.key} text={block.content} alwaysExpanded container={false} showCodeActions={false} />
-                );
-              }
+        <div style={{ marginTop: 4 }}>
+          {hasBlocks ? (
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              {blocks.map((block) => {
+                if (block.type === 'assistant') {
+                  return (
+                    <MarkdownBlock key={block.key} text={block.content} alwaysExpanded container={false} showCodeActions={false} />
+                  );
+                }
 
-              if (block.type === 'assistant_reasoning') {
-                const reasoningText =
-                  typeof block?.content === 'string' ? block.content : String(block?.content || '');
-                const previewRaw = reasoningText.trim().replace(/\s+/g, ' ').slice(0, 86);
-                const preview =
-                  previewRaw && reasoningText.trim().length > previewRaw.length ? `${previewRaw}…` : previewRaw;
+                if (block.type === 'assistant_reasoning') {
+                  const reasoningText =
+                    typeof block?.content === 'string' ? block.content : String(block?.content || '');
+                  const previewRaw = reasoningText.trim().replace(/\s+/g, ' ').slice(0, 86);
+                  const preview =
+                    previewRaw && reasoningText.trim().length > previewRaw.length ? `${previewRaw}…` : previewRaw;
 
-                return (
-                  <Collapse
-                    key={block.key}
-                    ghost
-                    size="small"
-                    items={[
-                      {
-                        key: 'reasoning',
-                        label: (
-                          <Space size={6} wrap>
-                            <Tag color="gold" style={{ marginRight: 0 }}>
-                              思考过程
-                            </Tag>
-                            {preview ? <Text type="secondary">{preview}</Text> : null}
-                          </Space>
-                        ),
-                        children: (
-                          <MarkdownBlock text={reasoningText} maxHeight={240} alwaysExpanded container={false} showCodeActions={false} />
-                        ),
-                      },
-                    ]}
-                  />
-                );
-              }
+                  return (
+                    <Collapse
+                      key={block.key}
+                      ghost
+                      size="small"
+                      items={[
+                        {
+                          key: 'reasoning',
+                          label: (
+                            <Space size={6} wrap>
+                              <Tag color="gold" style={{ marginRight: 0 }}>
+                                思考过程
+                              </Tag>
+                              {preview ? <Text type="secondary">{preview}</Text> : null}
+                            </Space>
+                          ),
+                          children: (
+                            <MarkdownBlock text={reasoningText} maxHeight={240} alwaysExpanded container={false} showCodeActions={false} />
+                          ),
+                        },
+                      ]}
+                    />
+                  );
+                }
 
-              return null;
-            })}
-          </Space>
-        ) : (
-          <Text type="secondary">（无内容）</Text>
-        )}
-      </div>
-
-      {copyText ? (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-          <Button size="small" type="text" icon={<CopyOutlined />} onClick={onCopy} loading={copying}>
-            复制本轮
-          </Button>
+                return null;
+              })}
+            </Space>
+          ) : (
+            <Text type="secondary">（无内容）</Text>
+          )}
         </div>
-      ) : null}
+
+        {copyText ? (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+            <Button size="small" type="text" icon={<CopyOutlined />} onClick={onCopy} loading={copying}>
+              复制本轮
+            </Button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

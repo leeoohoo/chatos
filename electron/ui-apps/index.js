@@ -13,6 +13,24 @@ const DEFAULT_MANIFEST_FILE = 'plugin.json';
 const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 const DEFAULT_MAX_PROMPT_BYTES = 128 * 1024;
 
+function isPathInsideRoot(rootDir, targetPath) {
+  const relative = path.relative(rootDir, targetPath);
+  if (relative === '') return true;
+  if (relative === '..') return false;
+  if (relative.startsWith(`..${path.sep}`)) return false;
+  return !path.isAbsolute(relative);
+}
+
+function rmForce(targetPath) {
+  const normalized = typeof targetPath === 'string' ? targetPath.trim() : '';
+  if (!normalized) return;
+  try {
+    fs.rmSync(normalized, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
+
 export function createUiAppsManager(options = {}) {
   return new UiAppsManager(options);
 }
@@ -30,6 +48,7 @@ export function registerUiAppsApi(ipcMain, options = {}) {
   });
   ipcMain.handle('uiApps:invoke', async (_event, payload = {}) => manager.invoke(payload));
   ipcMain.handle('uiApps:plugins:trust', async (_event, payload = {}) => manager.setPluginTrust(payload));
+  ipcMain.handle('uiApps:plugins:uninstall', async (_event, payload = {}) => manager.uninstallPlugin(payload));
   return manager;
 }
 
@@ -296,6 +315,46 @@ class UiAppsManager {
     setUiAppsPluginTrust({ pluginId, stateDir: this.stateDir, trusted, pluginDir: plugin?.pluginDir });
     await this.listRegistry();
     return { ok: true, trusted };
+  }
+
+  async uninstallPlugin(payload = {}) {
+    const pluginId = typeof payload?.pluginId === 'string' ? payload.pluginId.trim() : '';
+    if (!pluginId) return { ok: false, message: 'pluginId is required' };
+    if (!this.userPluginsDir) return { ok: false, message: 'user plugins dir not available' };
+
+    if (!this.registryMap.size) {
+      await this.listRegistry();
+    }
+    let plugin = this.registryMap.get(pluginId);
+    if (!plugin) {
+      await this.listRegistry();
+      plugin = this.registryMap.get(pluginId);
+    }
+    if (!plugin) return { ok: false, message: `Plugin not found: ${pluginId}` };
+    if (plugin.source !== 'user') {
+      return { ok: false, message: 'builtin plugin cannot be uninstalled' };
+    }
+
+    const rootDir = path.resolve(this.userPluginsDir);
+    const pluginDir = typeof plugin?.pluginDir === 'string' ? path.resolve(plugin.pluginDir) : '';
+    if (!pluginDir || !isPathInsideRoot(rootDir, pluginDir)) {
+      return { ok: false, message: 'pluginDir is outside user plugins root' };
+    }
+
+    rmForce(pluginDir);
+    if (this.dataRootDir) {
+      const dataDir = path.join(this.dataRootDir, pluginId);
+      const resolvedDataDir = path.resolve(dataDir);
+      if (isPathInsideRoot(path.resolve(this.dataRootDir), resolvedDataDir)) {
+        rmForce(resolvedDataDir);
+      }
+    }
+    if (this.stateDir) {
+      setUiAppsPluginTrust({ pluginId, stateDir: this.stateDir, trusted: false, pluginDir: '' });
+    }
+
+    await this.listRegistry();
+    return { ok: true, removed: true, pluginId };
   }
 
   async invoke(payload = {}) {

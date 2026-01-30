@@ -343,7 +343,7 @@ export function ChatComposer({
   }, []);
 
   return (
-    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+    <Space direction="vertical" size={8} className="ds-chat-composer" style={{ width: '100%' }}>
       {visionEnabled && effectiveImages.length > 0 ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           {effectiveImages.map((img) => (

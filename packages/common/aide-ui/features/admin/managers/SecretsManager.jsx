@@ -1,13 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { Button, Popconfirm, Space, Tag, Typography, message } from 'antd';
+import React, { useMemo } from 'react';
+import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 
 import { EntityManager } from '../../../components/EntityManager.jsx';
 
 const { Text, Paragraph } = Typography;
 
 function SecretsManager({ data, onCreate, onUpdate, onDelete, loading }) {
-  const [togglingId, setTogglingId] = useState(null);
-
   const columns = useMemo(
     () => [
       { title: '环境变量名', dataIndex: 'name', width: 180 },
@@ -16,12 +14,6 @@ function SecretsManager({ data, onCreate, onUpdate, onDelete, loading }) {
         dataIndex: 'hasValue',
         width: 90,
         render: (v) => (v ? <Tag color="green">已设置</Tag> : <Tag>未设置</Tag>),
-      },
-      {
-        title: '策略',
-        dataIndex: 'override',
-        width: 110,
-        render: (v) => (v ? <Tag color="volcano">覆盖系统</Tag> : <Tag>仅补充</Tag>),
       },
       {
         title: 'Key (masked)',
@@ -75,20 +67,6 @@ function SecretsManager({ data, onCreate, onUpdate, onDelete, loading }) {
     await onUpdate(id, patch);
   };
 
-  const toggleOverride = async (record, next) => {
-    const id = record?.id;
-    if (!id) return;
-    setTogglingId(id);
-    try {
-      await onUpdate(id, { override: next });
-      message.success(next ? '已启用覆盖系统 env' : '已关闭覆盖系统 env');
-    } catch (err) {
-      message.error(err?.message || '操作失败');
-    } finally {
-      setTogglingId(null);
-    }
-  };
-
   return (
     <EntityManager
       title="API Keys"
@@ -100,9 +78,8 @@ function SecretsManager({ data, onCreate, onUpdate, onDelete, loading }) {
       onUpdate={handleUpdate}
       onDelete={onDelete}
       loading={loading}
-      tableProps={{ scroll: { x: 980 } }}
+      tableProps={{ scroll: { x: 820 } }}
       renderActions={(record, { onEdit, onDelete: handleDelete }) => {
-        const overrideEnabled = record?.override === true;
         return (
           <Space>
             <Button size="small" onClick={onEdit}>
@@ -113,31 +90,6 @@ function SecretsManager({ data, onCreate, onUpdate, onDelete, loading }) {
                 删除
               </Button>
             </Popconfirm>
-            {overrideEnabled ? (
-              <Popconfirm
-                title="关闭覆盖系统 env?"
-                description="关闭后：若终端/系统已有同名环境变量，将优先使用系统值。"
-                okText="关闭"
-                cancelText="取消"
-                onConfirm={() => toggleOverride(record, false)}
-              >
-                <Button size="small" loading={togglingId === record?.id}>
-                  取消覆盖
-                </Button>
-              </Popconfirm>
-            ) : (
-              <Popconfirm
-                title="启用覆盖系统 env?"
-                description="启用后：即使终端/系统已设置同名环境变量，也会用这里的值覆盖（仅对 CLI 进程生效）。"
-                okText="启用覆盖"
-                cancelText="取消"
-                onConfirm={() => toggleOverride(record, true)}
-              >
-                <Button size="small" type="link" loading={togglingId === record?.id}>
-                  覆盖系统 env
-                </Button>
-              </Popconfirm>
-            )}
           </Space>
         );
       }}

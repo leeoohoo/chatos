@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Space, Tag, Typography } from 'antd';
+import { Image, Space, Tag, Typography } from 'antd';
 
 import { MarkdownBlock } from '../../../components/MarkdownBlock.jsx';
 import { normalizeId } from '../../../../text-utils.js';
@@ -58,27 +58,20 @@ export function UserMessageCard({ message }) {
         {images.length > 0 ? (
           <div style={{ marginTop: hasContent || hasFileTags ? 8 : 0, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {images.map((img) => (
-              <a
+              <Image
                 key={normalizeId(img.id) || img.dataUrl}
-                href={img.dataUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={{ display: 'inline-block' }}
-              >
-                <img
-                  src={img.dataUrl}
-                  alt={img.name || 'image'}
-                  style={{
-                    maxWidth: 240,
-                    maxHeight: 180,
-                    borderRadius: 10,
-                    border: '1px solid var(--ds-panel-border)',
-                    background: 'var(--ds-panel-bg)',
-                    objectFit: 'cover',
-                    display: 'block',
-                  }}
-                />
-              </a>
+                src={img.dataUrl}
+                alt={img.name || 'image'}
+                width={240}
+                height={180}
+                style={{
+                  borderRadius: 10,
+                  border: '1px solid var(--ds-panel-border)',
+                  background: 'var(--ds-panel-bg)',
+                  objectFit: 'cover',
+                }}
+                preview={{ src: img.dataUrl }}
+              />
             ))}
           </div>
         ) : null}

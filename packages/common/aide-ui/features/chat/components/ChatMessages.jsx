@@ -75,7 +75,7 @@ export function ChatMessages({ messages, streaming, hasMore, loadingMore, onLoad
   }, [list, streaming?.messageId]);
 
   return (
-    <div ref={containerRef} style={{ height: '100%', overflow: 'auto', paddingRight: 6 }}>
+    <div ref={containerRef} className="ds-chat-stream" style={{ height: '100%', overflow: 'auto', paddingRight: 6 }}>
       <Space direction="vertical" size={6} style={{ width: '100%' }}>
         {hasMore ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0' }}>
