@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">
+  <defs>
+    <style>
+      .title { font: 600 16px Arial, sans-serif; fill: #1f1f1f; }
+      .label { font: 600 12px Arial, sans-serif; fill: #1f1f1f; }
+      .text { font: 12px Arial, sans-serif; fill: #3b3b3b; }
+      .muted { font: 11px Arial, sans-serif; fill: #6b6b6b; }
+      .tiny { font: 10px Arial, sans-serif; fill: #6b6b6b; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1600" height="1100" fill="#f6f7f9" />
+
+  <!-- Frame 1: Chat + Shell Session Drawer -->
+  <rect x="20" y="20" width="760" height="520" rx="12" fill="#ffffff" stroke="#d9d9d9" />
+  <text x="36" y="46" class="title">A. Chat + Shell Session Drawer (默认)</text>
+
+  <!-- Header -->
+  <rect x="20" y="60" width="760" height="48" fill="#f2f4f7" stroke="#e0e0e0" />
+  <text x="36" y="90" class="label">App Header</text>
+  <text x="650" y="90" class="muted">Theme · Admin · Settings</text>
+
+  <!-- Sidebar -->
+  <rect x="20" y="108" width="160" height="412" fill="#fafafa" stroke="#e6e6e6" />
+  <text x="36" y="134" class="label">Chats</text>
+  <rect x="32" y="150" width="136" height="32" rx="6" fill="#eaf1ff" />
+  <text x="40" y="170" class="text">Session 001</text>
+  <rect x="32" y="190" width="136" height="32" rx="6" fill="#ffffff" stroke="#eeeeee" />
+  <text x="40" y="210" class="text">Session 002</text>
+
+  <!-- Chat Area -->
+  <rect x="180" y="108" width="380" height="412" fill="#ffffff" stroke="#e6e6e6" />
+  <text x="196" y="132" class="label">Chat Timeline</text>
+  <rect x="196" y="150" width="320" height="48" rx="8" fill="#f5f7ff" />
+  <text x="206" y="176" class="text">User: run_sub_agent 调用 MCP</text>
+  <rect x="196" y="208" width="320" height="60" rx="8" fill="#f0fff4" />
+  <text x="206" y="236" class="text">Assistant: 启动 shell session</text>
+  <rect x="196" y="278" width="320" height="72" rx="10" fill="#fff7e6" stroke="#ffe2b7" />
+  <text x="206" y="302" class="text">Shell Session Card</text>
+  <text x="206" y="320" class="tiny">session: dev · npm run dev · running</text>
+  <rect x="206" y="330" width="96" height="20" rx="10" fill="#1677ff" />
+  <text x="214" y="344" class="tiny" fill="#ffffff">打开终端</text>
+
+  <!-- Chat Input -->
+  <rect x="180" y="468" width="380" height="52" rx="8" fill="#ffffff" stroke="#e6e6e6" />
+  <text x="196" y="498" class="muted">输入消息…</text>
+
+  <!-- Apps button (drawer collapsed) -->
+  <rect x="520" y="120" width="32" height="32" rx="8" fill="#1677ff" />
+  <text x="528" y="140" class="tiny" fill="#ffffff">Apps</text>
+
+  <!-- Shell Terminal Drawer (right) -->
+  <rect x="560" y="108" width="220" height="412" fill="#0f172a" stroke="#111827" />
+  <text x="572" y="130" class="label" fill="#e5e7eb">Shell Terminal</text>
+  <text x="572" y="148" class="tiny" fill="#cbd5f5">session: dev · running</text>
+  <rect x="572" y="160" width="196" height="260" rx="6" fill="#111827" stroke="#1f2937" />
+  <text x="580" y="182" class="tiny" fill="#e2e8f0">> npm run dev</text>
+  <text x="580" y="198" class="tiny" fill="#e2e8f0">Vite v5.0 · Local: http://localhost:5173</text>
+  <text x="580" y="214" class="tiny" fill="#e2e8f0">ready in 250ms</text>
+  <rect x="572" y="430" width="196" height="32" rx="6" fill="#0b1020" stroke="#1f2937" />
+  <text x="580" y="450" class="tiny" fill="#94a3b8">输入命令或交互…</text>
+  <rect x="572" y="468" width="54" height="20" rx="10" fill="#ef4444" />
+  <text x="580" y="482" class="tiny" fill="#ffffff">Stop</text>
+  <rect x="632" y="468" width="54" height="20" rx="10" fill="#f59e0b" />
+  <text x="640" y="482" class="tiny" fill="#ffffff">Kill</text>
+  <rect x="692" y="468" width="76" height="20" rx="10" fill="#22c55e" />
+  <text x="700" y="482" class="tiny" fill="#ffffff">Send</text>
+
+  <!-- UI Prompt FAB -->
+  <circle cx="748" cy="500" r="16" fill="#a855f7" />
+  <text x="741" y="505" class="tiny" fill="#ffffff">:)</text>
+
+  <!-- Toast -->
+  <rect x="480" y="64" width="280" height="28" rx="8" fill="#ffffff" stroke="#e6e6e6" />
+  <text x="490" y="82" class="tiny">UI Prompt 待处理 · 点击右下 :)</text>
+
+  <!-- Frame 2: UI Prompt Fullscreen -->
+  <rect x="820" y="20" width="760" height="520" rx="12" fill="#ffffff" stroke="#d9d9d9" />
+  <text x="836" y="46" class="title">B. UI Prompt 全屏模式</text>
+
+  <!-- Background blurred -->
+  <rect x="820" y="60" width="760" height="460" fill="#f3f4f6" />
+
+  <!-- Fullscreen modal -->
+  <rect x="840" y="80" width="720" height="420" rx="12" fill="#ffffff" stroke="#e5e7eb" />
+  <rect x="840" y="80" width="720" height="44" rx="12" fill="#f8fafc" stroke="#e5e7eb" />
+  <text x="860" y="108" class="label">交互待办（全屏）</text>
+  <text x="1480" y="108" class="muted">ESC 退出</text>
+
+  <!-- Prompt list -->
+  <rect x="850" y="132" width="220" height="356" fill="#fafafa" stroke="#e5e7eb" />
+  <text x="864" y="156" class="label">待处理</text>
+  <rect x="860" y="170" width="200" height="36" rx="8" fill="#eaf1ff" />
+  <text x="870" y="192" class="text">需要你补充信息</text>
+  <rect x="860" y="214" width="200" height="36" rx="8" fill="#ffffff" stroke="#eeeeee" />
+  <text x="870" y="236" class="text">文件变更确认</text>
+
+  <!-- Prompt detail -->
+  <rect x="1080" y="132" width="460" height="356" fill="#ffffff" stroke="#e5e7eb" />
+  <text x="1096" y="156" class="label">KV 表单</text>
+  <text x="1096" y="178" class="muted">请补充缺失配置</text>
+  <rect x="1096" y="198" width="420" height="36" rx="6" fill="#f8fafc" stroke="#e5e7eb" />
+  <text x="1106" y="220" class="tiny">API Key</text>
+  <rect x="1096" y="244" width="420" height="36" rx="6" fill="#f8fafc" stroke="#e5e7eb" />
+  <text x="1106" y="266" class="tiny">Endpoint</text>
+  <rect x="1096" y="298" width="90" height="28" rx="14" fill="#1677ff" />
+  <text x="1110" y="317" class="tiny" fill="#ffffff">提交</text>
+  <rect x="1194" y="298" width="90" height="28" rx="14" fill="#e5e7eb" />
+  <text x="1210" y="317" class="tiny">取消</text>
+
+  <!-- Frame 3: Shell Terminal Fullscreen -->
+  <rect x="20" y="560" width="1540" height="520" rx="12" fill="#ffffff" stroke="#d9d9d9" />
+  <text x="36" y="586" class="title">C. Shell Terminal 全屏（长会话）</text>
+
+  <!-- Fullscreen terminal -->
+  <rect x="20" y="600" width="1540" height="460" rx="12" fill="#0b1020" stroke="#111827" />
+  <rect x="20" y="600" width="1540" height="52" rx="12" fill="#111827" />
+  <text x="36" y="632" class="label" fill="#e5e7eb">session: dev · cwd: /apps/web · npm run dev · running</text>
+  <text x="1420" y="632" class="muted" fill="#cbd5f5">Esc 退出全屏</text>
+
+  <rect x="40" y="668" width="1500" height="320" rx="8" fill="#0f172a" stroke="#1f2937" />
+  <text x="56" y="690" class="tiny" fill="#e2e8f0">> npm run dev</text>
+  <text x="56" y="706" class="tiny" fill="#e2e8f0">Vite v5.0 · Local: http://localhost:5173</text>
+  <text x="56" y="722" class="tiny" fill="#e2e8f0">Network: http://192.168.1.10:5173</text>
+  <text x="56" y="738" class="tiny" fill="#e2e8f0">press h to show help</text>
+
+  <rect x="40" y="1002" width="1200" height="36" rx="8" fill="#0b1020" stroke="#1f2937" />
+  <text x="56" y="1024" class="tiny" fill="#94a3b8">输入交互内容…</text>
+  <rect x="1260" y="1002" width="84" height="32" rx="16" fill="#22c55e" />
+  <text x="1276" y="1022" class="tiny" fill="#ffffff">Send</text>
+  <rect x="1352" y="1002" width="84" height="32" rx="16" fill="#f59e0b" />
+  <text x="1368" y="1022" class="tiny" fill="#ffffff">Stop</text>
+  <rect x="1444" y="1002" width="84" height="32" rx="16" fill="#ef4444" />
+  <text x="1460" y="1022" class="tiny" fill="#ffffff">Kill</text>
+</svg>
