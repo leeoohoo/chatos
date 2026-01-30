@@ -179,14 +179,22 @@ function collectTasksFromObject(source, buckets) {
 }
 
 function dedupeTasks(list = []) {
-  const seen = new Set();
-  return list.filter((task) => {
+  const order = [];
+  const byKey = new Map();
+  const unnamed = [];
+  list.forEach((task) => {
     const key = task?.id || task?.title;
-    if (!key) return true;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    if (!key) {
+      unnamed.push(task);
+      return;
+    }
+    if (!byKey.has(key)) {
+      order.push(key);
+    }
+    // Always keep the latest entry for the same task so status reflects the final update.
+    byKey.set(key, task);
   });
+  return [...order.map((key) => byKey.get(key)), ...unnamed].filter(Boolean);
 }
 
 function collectSubagentTasks(payload, steps = []) {

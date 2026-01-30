@@ -287,6 +287,47 @@ export function createAsyncJobManager(options = {}) {
       return;
     }
     let heartbeat;
+    const IPC_SEND_TIMEOUT_MS = Number.isFinite(Number(process.env.MODEL_CLI_IPC_SEND_TIMEOUT_MS))
+      ? Number(process.env.MODEL_CLI_IPC_SEND_TIMEOUT_MS)
+      : 2000;
+    const sendIpc = (message, options = {}) => {
+      if (!process.send) return Promise.reject(new Error('IPC channel missing'));
+      const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : IPC_SEND_TIMEOUT_MS;
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        let timer = null;
+        if (timeoutMs > 0) {
+          timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            const err = new Error(`IPC send timeout after ${timeoutMs}ms`);
+            err.code = 'IPC_SEND_TIMEOUT';
+            reject(err);
+          }, timeoutMs);
+        }
+        try {
+          process.send(message, (err) => {
+            if (settled) return;
+            settled = true;
+            if (timer) {
+              clearTimeout(timer);
+            }
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        } catch (err) {
+          if (settled) return;
+          settled = true;
+          if (timer) {
+            clearTimeout(timer);
+          }
+          reject(err);
+        }
+      });
+    };
     try {
       const intervalMs = Number.isFinite(heartbeatIntervalMs) ? heartbeatIntervalMs : 10000;
       heartbeat = setInterval(() => {
@@ -309,14 +350,16 @@ export function createAsyncJobManager(options = {}) {
       };
       const result = await executeSubAgent({ ...params, progress });
       const payload = buildJobResultPayload(result);
-      if (payload && process.send) {
-        process.send({ type: 'result', result: payload });
-      } else if (!payload) {
+      if (payload) {
+        await sendIpc({ type: 'result', result: payload });
+      } else {
         throw new Error('Sub-agent worker missing result payload');
       }
     } catch (err) {
-      if (process.send) {
-        process.send({ type: 'error', error: err?.message || String(err) });
+      try {
+        await sendIpc({ type: 'error', error: err?.message || String(err) });
+      } catch {
+        // ignore IPC send failures in worker error path
       }
       console.error('[subagent_router worker] failed to execute job:', err?.message || err);
       if (heartbeat) {
