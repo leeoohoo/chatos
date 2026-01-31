@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Collapse, Space, Tag, Typography } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Collapse, Pagination, Space, Tag, Typography } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
 
 import { MarkdownBlock } from '../../../../../components/MarkdownBlock.jsx';
@@ -111,6 +111,59 @@ function FileChangeTag({ changeType }) {
   if (changeType === 'created') return <Tag color="green">新增</Tag>;
   if (changeType === 'deleted') return <Tag color="red">删除</Tag>;
   return <Tag color="gold">修改</Tag>;
+}
+
+const FILE_CHANGE_PAGE_SIZE = 8;
+const FILE_CHANGE_TYPE_ORDER = ['created', 'modified', 'deleted'];
+
+function getFileChangeTimestamp(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  return normalizeText(entry.ts) || normalizeText(entry.createdAt) || normalizeText(entry.updatedAt);
+}
+
+function getFileChangeTimestampMs(entry) {
+  const value = getFileChangeTimestamp(entry);
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : -1;
+}
+
+function groupFileChangesByPath(entries = []) {
+  const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const groups = new Map();
+  const order = [];
+  list.forEach((item, idx) => {
+    const key = getFileChangeKey(item) || `unknown_${idx}`;
+    let group = groups.get(key);
+    if (!group) {
+      const pathLabel = item?.path || item?.absolutePath || '未知文件';
+      group = { key, pathLabel, items: [] };
+      groups.set(key, group);
+      order.push(key);
+    }
+    group.items.push(item);
+  });
+  return order
+    .map((key) => {
+      const group = groups.get(key);
+      const items = group.items
+        .slice()
+        .sort((a, b) => getFileChangeTimestampMs(b) - getFileChangeTimestampMs(a));
+      const latestItem = items[0] || null;
+      return { ...group, items, latestItem };
+    })
+    .sort((a, b) => getFileChangeTimestampMs(b.latestItem) - getFileChangeTimestampMs(a.latestItem));
+}
+
+function buildFileChangeTypeTags(items = []) {
+  const typeSet = new Set();
+  items.forEach((item) => {
+    const raw = normalizeText(item?.changeType) || 'modified';
+    typeSet.add(raw);
+  });
+  const ordered = FILE_CHANGE_TYPE_ORDER.filter((type) => typeSet.has(type));
+  const fallback = ordered.length > 0 ? ordered : Array.from(typeSet);
+  const finalTypes = fallback.length > 0 ? fallback : ['modified'];
+  return finalTypes.map((type) => <FileChangeTag key={`file-change-type-${type}`} changeType={type} />);
 }
 
 function parseTaskLines(resultText) {
@@ -420,6 +473,16 @@ export function SubagentToolDetails({
   const rawArgsText = typeof argsRaw === 'string' ? argsRaw.trim() : '';
   const rawPayloadText = payload ? formatJson(payload) : '';
   const fileChangeItems = Array.isArray(fileChanges) ? fileChanges : [];
+  const fileChangeGroups = useMemo(() => groupFileChangesByPath(fileChangeItems), [fileChangeItems]);
+  const fileChangeEntryTotal = fileChangeItems.length;
+  const fileChangeGroupTotal = fileChangeGroups.length;
+  const fileChangeMaxPage = Math.max(1, Math.ceil(fileChangeGroupTotal / FILE_CHANGE_PAGE_SIZE));
+  const [fileChangePage, setFileChangePage] = useState(1);
+  const safeFileChangePage = Math.min(Math.max(fileChangePage, 1), fileChangeMaxPage);
+  const visibleFileChangeGroups = fileChangeGroups.slice(
+    (safeFileChangePage - 1) * FILE_CHANGE_PAGE_SIZE,
+    safeFileChangePage * FILE_CHANGE_PAGE_SIZE
+  );
   const toolNames = Array.from(
     new Set(
       effectiveSteps
@@ -447,6 +510,14 @@ export function SubagentToolDetails({
     ...taskBuckets.listed,
   ]).length;
   const [expandedStepKey, setExpandedStepKey] = useState(null);
+  useEffect(() => {
+    setFileChangePage(1);
+  }, [callId]);
+  useEffect(() => {
+    if (fileChangePage > fileChangeMaxPage) {
+      setFileChangePage(fileChangeMaxPage);
+    }
+  }, [fileChangeMaxPage, fileChangePage]);
   const [rawTab, setRawTab] = useState(() => (rawArgsText ? 'args' : rawPayloadText ? 'result' : 'args'));
   const rawSectionRef = useRef(null);
   const rawTabs = [
@@ -712,43 +783,97 @@ export function SubagentToolDetails({
     const outputText = responseText || fallbackText;
     const outputPreview = outputText ? formatSummaryValue(outputText.replace(/\s+/g, ' '), 360) : '';
     const summaryMarkdown = outputText;
-    const fileChangePanels = fileChangeItems.map((item, idx) => {
-      const baseKey = getFileChangeKey(item) || 'change';
-      const tsKey = item?.ts || '';
-      const key = `${baseKey}::${tsKey || idx}`;
-      const pathLabel = item?.path || item?.absolutePath || '未知文件';
-      const timeText = item?.ts ? formatDateTime(item.ts) : '';
-      const toolTag = item?.tool ? <Tag color="purple">tool: {item.tool}</Tag> : null;
-      const modeTag = item?.mode ? <Tag color="geekblue">{item.mode}</Tag> : null;
-      const serverTag = item?.server ? <Tag color="cyan">{item.server}</Tag> : null;
+    const buildFileChangeMetaLine = (item) => {
+      const timeValue = getFileChangeTimestamp(item);
+      const timeText = timeValue ? formatDateTime(timeValue) : '';
+      const toolLabel = normalizeText(item?.tool);
+      const modeLabel = normalizeText(item?.mode);
+      const serverLabel = normalizeText(item?.server);
+      return (
+        <Space size={6} wrap>
+          <FileChangeTag changeType={item?.changeType} />
+          {timeText ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {timeText}
+            </Text>
+          ) : null}
+          {toolLabel ? <Tag color="purple">tool: {toolLabel}</Tag> : null}
+          {modeLabel ? <Tag color="geekblue">{modeLabel}</Tag> : null}
+          {serverLabel ? <Tag color="cyan">{serverLabel}</Tag> : null}
+        </Space>
+      );
+    };
+    const buildFileChangeBody = (item) => (
+      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+        {item?.workspaceRoot ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            workspace: {item.workspaceRoot}
+          </Text>
+        ) : null}
+        <ToolBlock text={item?.diff || '无 diff 内容'} />
+      </Space>
+    );
+    const fileChangePanels = visibleFileChangeGroups.map((group) => {
+      const changeCount = group.items.length;
+      const latestTimeValue = getFileChangeTimestamp(group.latestItem);
+      const latestTimeText = latestTimeValue ? formatDateTime(latestTimeValue) : '';
+      const changeTypeTags = buildFileChangeTypeTags(group.items);
+      const countTag = changeCount > 1 ? <Tag color="blue">{changeCount} 次</Tag> : null;
+      const changePanels = group.items.map((item, idx) => {
+        const tsKey = getFileChangeTimestamp(item) || String(idx);
+        return {
+          key: `${group.key}::${tsKey}`,
+          label: buildFileChangeMetaLine(item),
+          children: buildFileChangeBody(item),
+        };
+      });
+      const singleItem = group.items[0];
+      const children =
+        changeCount > 1 ? (
+          <Collapse ghost size="small" items={changePanels} />
+        ) : (
+          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            {singleItem ? buildFileChangeMetaLine(singleItem) : null}
+            {singleItem ? buildFileChangeBody(singleItem) : null}
+          </Space>
+        );
       return {
-        key,
+        key: group.key,
         label: (
           <Space size={6} wrap>
-            <FileChangeTag changeType={item?.changeType} />
-            <span>{pathLabel}</span>
-            {toolTag}
-            {modeTag}
-            {serverTag}
-          </Space>
-        ),
-        children: (
-          <Space direction="vertical" size={6} style={{ width: '100%' }}>
-            {timeText ? (
+            {changeTypeTags}
+            <span>{group.pathLabel || '未知文件'}</span>
+            {countTag}
+            {latestTimeText ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {timeText}
+                {latestTimeText}
               </Text>
             ) : null}
-            {item?.workspaceRoot ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                workspace: {item.workspaceRoot}
-              </Text>
-            ) : null}
-            <ToolBlock text={item?.diff || '无 diff 内容'} />
           </Space>
         ),
+        children,
       };
     });
+    const fileChangePagination =
+      fileChangeGroupTotal > FILE_CHANGE_PAGE_SIZE ? (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Pagination
+            size="small"
+            current={safeFileChangePage}
+            pageSize={FILE_CHANGE_PAGE_SIZE}
+            total={fileChangeGroupTotal}
+            showSizeChanger={false}
+            showTotal={(total, range) =>
+              `显示 ${range[0]}-${range[1]} / ${total} 个文件 · ${fileChangeEntryTotal} 次变更`
+            }
+            onChange={(page) => setFileChangePage(page)}
+          />
+        </div>
+      ) : fileChangeGroupTotal > 0 ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          共 {fileChangeGroupTotal} 个文件 · {fileChangeEntryTotal} 次变更
+        </Text>
+      ) : null;
     const timelineSubtitle = isLiveSteps ? 'Timeline view for live steps.' : 'Timeline view for completed steps.';
     const rawTabLabel = activeRaw?.label || '';
     const timelineScrollClass = 'ds-subagent-timeline-scroll is-fullscreen';
@@ -910,6 +1035,7 @@ export function SubagentToolDetails({
               <div className="ds-subagent-fullscreen-section">
                 <div className="ds-subagent-fullscreen-section-title">文件变更</div>
                 <Collapse ghost size="small" items={fileChangePanels} />
+                {fileChangePagination ? <div style={{ marginTop: 8 }}>{fileChangePagination}</div> : null}
               </div>
             ) : null}
             {statsItems.length > 0 ? (

@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Empty, Tag } from 'antd';
+import { Alert, Button, Drawer, Empty, Select, Space, Tag, message } from 'antd';
 
+import { api, hasApi } from '../../../lib/api.js';
 import { formatDateTime, truncateText } from '../../../lib/format.js';
+import { CodeBlock } from '../../../components/CodeBlock.jsx';
+import { parseJsonSafe } from '../../../lib/parse.js';
 import { parseTimestampMs } from '../../../lib/runs.js';
 import { getFileChangeKey } from '../../../lib/file-changes.js';
 import { normalizeId, normalizeText } from '../../../../text-utils.js';
@@ -14,6 +17,7 @@ const TAB_KEYS = {
   tools: 'tools',
   tasks: 'tasks',
   files: 'files',
+  sessions: 'sessions',
 };
 
 const DEFAULT_GROUP_PAGE_SIZE = 1;
@@ -90,6 +94,112 @@ function getToolArgs(call) {
   if (typeof args === 'string') return args;
   if (args === undefined || args === null) return '';
   return String(args);
+}
+
+function normalizeToolName(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function isShellSessionRunToolName(value) {
+  const raw = normalizeToolName(value);
+  if (!raw) return false;
+  return raw.includes('session_run') && raw.includes('shell');
+}
+
+function parseToolArgs(argsText) {
+  if (!argsText || typeof argsText !== 'string') return null;
+  const parsed = parseJsonSafe(argsText, null);
+  return parsed && typeof parsed === 'object' ? parsed : null;
+}
+
+function extractSessionNameFromText(text) {
+  const raw = typeof text === 'string' ? text : String(text || '');
+  const startedMatch = raw.match(/Started session\s+["']([^"']+)["']/i);
+  if (startedMatch) return startedMatch[1];
+  const sessionMatch = raw.match(/Session:\s*([^\n]+)/i);
+  if (sessionMatch) return sessionMatch[1].trim();
+  return '';
+}
+
+function buildSessionEntry({
+  sessionName,
+  command,
+  cwd,
+  toolName,
+  source,
+  reused,
+  userMessageId,
+  ts,
+  key,
+}) {
+  const title = normalizeText(sessionName) || '未命名会话';
+  const subtitleParts = [];
+  const commandText = normalizeText(command);
+  if (commandText) subtitleParts.push(commandText);
+  const cwdText = normalizeText(cwd);
+  if (cwdText) subtitleParts.push(`cwd: ${cwdText}`);
+  return {
+    key: key || `${title}_${commandText || ''}_${userMessageId || ''}`,
+    title,
+    name: title,
+    subtitle: subtitleParts.join(' · '),
+    toolName: normalizeText(toolName),
+    source,
+    reused: reused === true,
+    userMessageId,
+    ts: typeof ts === 'string' ? ts : '',
+  };
+}
+
+function dedupeSessionEntries(entries = []) {
+  const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const byKey = new Map();
+  const order = [];
+  list.forEach((item, idx) => {
+    const key = normalizeId(item?.key) || `${item?.title || 'session'}_${item?.userMessageId || ''}_${idx}`;
+    if (!byKey.has(key)) order.push(key);
+    byKey.set(key, item);
+  });
+  return order.map((key) => byKey.get(key)).filter(Boolean);
+}
+
+function extractSessionEntriesFromSteps(steps = [], userMessageId) {
+  const list = Array.isArray(steps) ? steps : [];
+  const resultByCallId = new Map();
+  list.forEach((step) => {
+    if (step?.type !== 'tool_result') return;
+    if (!isShellSessionRunToolName(step?.tool)) return;
+    const callId = normalizeId(step?.call_id);
+    if (callId) resultByCallId.set(callId, step);
+  });
+  const entries = [];
+  list.forEach((step, idx) => {
+    if (step?.type !== 'tool_call') return;
+    if (!isShellSessionRunToolName(step?.tool)) return;
+    const args = parseToolArgs(step?.args);
+    const callId = normalizeId(step?.call_id);
+    const result = callId ? resultByCallId.get(callId) : null;
+    const resultText = typeof result?.result === 'string' ? result.result : '';
+    const sessionName =
+      normalizeText(args?.session) || extractSessionNameFromText(resultText) || normalizeText(args?.name);
+    const command = normalizeText(args?.command);
+    const cwd = normalizeText(args?.cwd);
+    const reused = resultText.toLowerCase().includes('reused');
+    entries.push(
+      buildSessionEntry({
+        sessionName,
+        command,
+        cwd,
+        toolName: step?.tool,
+        source: 'subagent',
+        reused,
+        userMessageId,
+        ts: step?.ts,
+        key: callId || `${sessionName || 'session'}_${idx}`,
+      })
+    );
+  });
+  return entries;
 }
 
 function getToolResultText(results = []) {
@@ -305,10 +415,20 @@ export function Workbar({
 }) {
   const [expandedGroups, setExpandedGroups] = useState({});
   const [onlyErrors, setOnlyErrors] = useState(false);
+  const [shellSessions, setShellSessions] = useState([]);
+  const [shellSessionsLoading, setShellSessionsLoading] = useState(false);
+  const [shellSessionsError, setShellSessionsError] = useState('');
+  const [sessionLogOpen, setSessionLogOpen] = useState(false);
+  const [sessionLogLoading, setSessionLogLoading] = useState(false);
+  const [sessionLogError, setSessionLogError] = useState('');
+  const [sessionLogPayload, setSessionLogPayload] = useState(null);
+  const [sessionLogLines, setSessionLogLines] = useState(500);
+  const [sessionLogTarget, setSessionLogTarget] = useState(null);
   const [groupPageByTab, setGroupPageByTab] = useState(() => ({
     [TAB_KEYS.tools]: DEFAULT_GROUP_PAGE_SIZE,
     [TAB_KEYS.tasks]: DEFAULT_GROUP_PAGE_SIZE,
     [TAB_KEYS.files]: DEFAULT_GROUP_PAGE_SIZE,
+    [TAB_KEYS.sessions]: DEFAULT_GROUP_PAGE_SIZE,
   }));
 
   useEffect(() => {
@@ -316,6 +436,7 @@ export function Workbar({
       [TAB_KEYS.tools]: DEFAULT_GROUP_PAGE_SIZE,
       [TAB_KEYS.tasks]: DEFAULT_GROUP_PAGE_SIZE,
       [TAB_KEYS.files]: DEFAULT_GROUP_PAGE_SIZE,
+      [TAB_KEYS.sessions]: DEFAULT_GROUP_PAGE_SIZE,
     });
   }, [sessionId]);
 
@@ -363,11 +484,69 @@ export function Workbar({
   }, [fileChangeEntries, userMessageIdSet]);
 
   const fileChangesCount = boundFileChanges.length;
+  const sessionRows = useMemo(() => {
+    const entries = [];
+    toolGroups.forEach((group) => {
+      const userMessageId = normalizeId(group.userMessageId || group.key);
+      group.invocations.forEach((invocation) => {
+        if (!invocation) return;
+        if (isShellSessionRunToolName(invocation.name)) {
+          const args = parseToolArgs(invocation.argsText);
+          const sessionName =
+            normalizeText(args?.session) || extractSessionNameFromText(invocation.resultText);
+          const command = normalizeText(args?.command);
+          const cwd = normalizeText(args?.cwd);
+          const reused =
+            typeof invocation.resultText === 'string' && invocation.resultText.toLowerCase().includes('reused');
+          entries.push(
+            buildSessionEntry({
+              sessionName,
+              command,
+              cwd,
+              toolName: invocation.name,
+              source: 'direct',
+              reused,
+              userMessageId,
+              key: invocation.callId || invocation.key,
+            })
+          );
+          return;
+        }
+        if (isRunSubAgentToolName(invocation.name)) {
+          const structured = invocation.structuredContent ?? pickToolStructuredContent(invocation.results);
+          const steps = Array.isArray(invocation.liveSteps) && invocation.liveSteps.length > 0
+            ? invocation.liveSteps
+            : Array.isArray(structured?.steps)
+              ? structured.steps
+              : [];
+          entries.push(...extractSessionEntriesFromSteps(steps, userMessageId));
+        }
+      });
+    });
+    return dedupeSessionEntries(entries);
+  }, [toolGroups]);
+  const boundSessionRows = useMemo(() => {
+    return sessionRows.filter((item) => {
+      const id = normalizeId(item?.userMessageId);
+      return id && userMessageIdSet.has(id);
+    });
+  }, [sessionRows, userMessageIdSet]);
+  const shellSessionMap = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(shellSessions) ? shellSessions : []).forEach((sess) => {
+      const name = normalizeText(sess?.name);
+      if (name) {
+        map.set(name, sess);
+      }
+    });
+    return map;
+  }, [shellSessions]);
 
   const tabs = [
     { key: TAB_KEYS.tools, label: '工具', count: toolCount },
     { key: TAB_KEYS.tasks, label: '任务', count: boundTaskRows.length },
     { key: TAB_KEYS.files, label: '文件变更', count: fileChangesCount },
+    { key: TAB_KEYS.sessions, label: '会话', count: boundSessionRows.length },
   ];
 
   const getGroupPageSize = (tabKey) => {
@@ -389,6 +568,102 @@ export function Workbar({
       [key]: !prev?.[key],
     }));
   };
+
+  const refreshShellSessions = async ({ silent = false } = {}) => {
+    if (!hasApi) {
+      if (!silent) setShellSessionsError('IPC bridge not available');
+      return;
+    }
+    try {
+      setShellSessionsLoading(true);
+      setShellSessionsError('');
+      const result = await api.invoke('chat:shellSessions:list');
+      if (result?.ok === false) {
+        throw new Error(result?.message || '加载会话失败');
+      }
+      setShellSessions(Array.isArray(result?.sessions) ? result.sessions : []);
+    } catch (err) {
+      const msg = err?.message || '加载会话失败';
+      setShellSessionsError(msg);
+      if (!silent) message.error(msg);
+    } finally {
+      setShellSessionsLoading(false);
+    }
+  };
+
+  const openSessionLog = async (sessionName) => {
+    const name = normalizeText(sessionName);
+    if (!name) return;
+    setSessionLogTarget({ name });
+    setSessionLogOpen(true);
+    try {
+      setSessionLogLoading(true);
+      setSessionLogError('');
+      const result = await api.invoke('chat:shellSessions:readLog', { name, lineCount: sessionLogLines });
+      if (result?.ok === false) {
+        throw new Error(result?.message || '加载会话日志失败');
+      }
+      setSessionLogPayload(result || null);
+    } catch (err) {
+      setSessionLogError(err?.message || '加载会话日志失败');
+    } finally {
+      setSessionLogLoading(false);
+    }
+  };
+
+  const refreshSessionLog = async () => {
+    const name = normalizeText(sessionLogTarget?.name);
+    if (!name) return;
+    try {
+      setSessionLogLoading(true);
+      setSessionLogError('');
+      const result = await api.invoke('chat:shellSessions:readLog', { name, lineCount: sessionLogLines });
+      if (result?.ok === false) {
+        throw new Error(result?.message || '加载会话日志失败');
+      }
+      setSessionLogPayload(result || null);
+    } catch (err) {
+      setSessionLogError(err?.message || '加载会话日志失败');
+    } finally {
+      setSessionLogLoading(false);
+    }
+  };
+
+  const stopShellSession = async (name) => {
+    const sessionName = normalizeText(name);
+    if (!sessionName) return;
+    try {
+      const result = await api.invoke('chat:shellSessions:stop', { name: sessionName });
+      if (result?.ok === false) {
+        throw new Error(result?.message || '停止失败');
+      }
+      message.success('已停止会话');
+      void refreshShellSessions({ silent: true });
+    } catch (err) {
+      message.error(err?.message || '停止失败');
+    }
+  };
+
+  const restartShellSession = async (name) => {
+    const sessionName = normalizeText(name);
+    if (!sessionName) return;
+    try {
+      const result = await api.invoke('chat:shellSessions:restart', { name: sessionName });
+      if (result?.ok === false) {
+        throw new Error(result?.message || '重启失败');
+      }
+      message.success('已重启会话');
+      void refreshShellSessions({ silent: true });
+    } catch (err) {
+      message.error(err?.message || '重启失败');
+    }
+  };
+
+  useEffect(() => {
+    if (!hasApi) return;
+    if (activeTab !== TAB_KEYS.sessions || !expanded) return;
+    void refreshShellSessions({ silent: true });
+  }, [activeTab, expanded, sessionId]);
 
   const renderGroupHeader = (group, label, count) => {
     const previewText = normalizeText(group.preview);
@@ -436,7 +711,7 @@ export function Workbar({
     const hiddenGroupCount = Math.max(filteredGroups.length - visibleGroups.length, 0);
 
     return (
-      <div className="ds-workbar-groups">
+        <div className="ds-workbar-groups">
         {visibleGroups.map((group) => {
           const expandedGroup = Boolean(expandedGroups?.[group.key]);
           const runSubAgentInvocations = group.invocations.filter((inv) => isRunSubAgentToolName(inv?.name));
@@ -669,15 +944,101 @@ export function Workbar({
     );
   };
 
+  const renderSessions = () => {
+    if (boundSessionRows.length === 0) return <Empty description="暂无会话" />;
+    const sessionGroups = assignItemsToUserGroups(
+      userGroups,
+      boundSessionRows,
+      (item) => parseTimestampMs(item?.ts),
+      (item) => item?.userMessageId
+    );
+    if (sessionGroups.length === 0) return <Empty description="暂无会话" />;
+
+    const visibleCount = getGroupPageSize(TAB_KEYS.sessions);
+    const visibleGroups = sessionGroups.slice(-visibleCount);
+    const hiddenGroupCount = Math.max(sessionGroups.length - visibleGroups.length, 0);
+
+    return (
+      <div className="ds-workbar-groups">
+        {shellSessionsError ? (
+          <Alert type="warning" showIcon={false} message={shellSessionsError} style={{ marginBottom: 8 }} />
+        ) : null}
+        {visibleGroups.map((group) => {
+          const expandedGroup = Boolean(expandedGroups?.[group.key]);
+          const list = expandedGroup ? group.items : group.items.slice(0, previewLimit);
+          const hiddenCount = Math.max(group.items.length - list.length, 0);
+          return (
+            <div key={group.key} className="ds-workbar-group">
+              {renderGroupHeader(group, '会话', group.items.length)}
+              <div className="ds-workbar-list">
+                {list.map((item, idx) => {
+                  const title = typeof item?.title === 'string' ? item.title.trim() : '';
+                  const subtitle = typeof item?.subtitle === 'string' ? truncateText(item.subtitle.trim(), 80) : '';
+                  const key = normalizeId(item?.key) || `session_${idx}`;
+                  const runtimeSession = shellSessionMap.get(normalizeText(item?.name));
+                  const running = runtimeSession?.running === true;
+                  const port = runtimeSession?.port;
+                  return (
+                    <div key={key} className="ds-workbar-list-item">
+                      <div className="ds-workbar-item-content">
+                        <div className="ds-workbar-item-title">{title || '未命名会话'}</div>
+                        {subtitle ? <div className="ds-workbar-item-subtitle">{subtitle}</div> : null}
+                      </div>
+                      <div className="ds-workbar-item-meta">
+                        {item?.source === 'subagent' ? <Tag color="purple">subagent</Tag> : <Tag>shell</Tag>}
+                        {Number.isFinite(port) ? <Tag color="geekblue">:{port}</Tag> : null}
+                        <Tag color={running ? 'green' : 'default'}>{running ? '运行中' : '已停止'}</Tag>
+                        {item?.reused ? <Tag color="geekblue">复用</Tag> : null}
+                        <Button size="small" type="text" onClick={() => openSessionLog(item?.name)}>
+                          日志
+                        </Button>
+                        <Button size="small" type="text" onClick={() => stopShellSession(item?.name)} disabled={!running}>
+                          停止
+                        </Button>
+                        <Button size="small" type="text" onClick={() => restartShellSession(item?.name)}>
+                          重启
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {hiddenCount > 0 ? (
+                <button
+                  type="button"
+                  className="ds-workbar-more"
+                  onClick={() => toggleGroup(group.key)}
+                >
+                  +{hiddenCount} 更多
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+        {hiddenGroupCount > 0 ? (
+          <button
+            type="button"
+            className="ds-workbar-more"
+            onClick={() => loadMoreGroups(TAB_KEYS.sessions)}
+          >
+            加载更多
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
   const renderBody = () => {
     if (activeTab === TAB_KEYS.tasks) return renderTasks();
     if (activeTab === TAB_KEYS.files) return renderFileChanges();
+    if (activeTab === TAB_KEYS.sessions) return renderSessions();
     return renderTools();
   };
 
   return (
-    <div className="ds-workbar" data-expanded={expanded ? 'true' : 'false'}>
-      <div className="ds-workbar-tabs">
+    <>
+      <div className="ds-workbar" data-expanded={expanded ? 'true' : 'false'}>
+        <div className="ds-workbar-tabs">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -701,12 +1062,66 @@ export function Workbar({
             {onlyErrors ? '查看全部' : '仅看失败'}
           </button>
         ) : null}
+        {expanded && activeTab === TAB_KEYS.sessions ? (
+          <button
+            type="button"
+            className="ds-workbar-action"
+            onClick={() => refreshShellSessions({ silent: false })}
+            disabled={shellSessionsLoading}
+          >
+            {shellSessionsLoading ? '刷新中…' : '刷新会话'}
+          </button>
+        ) : null}
         <button type="button" className="ds-workbar-action" onClick={() => onToggleExpanded?.()}>
           {expanded ? '收起' : '展开'}
         </button>
+        </div>
+        {expanded ? <div className="ds-workbar-body">{renderBody()}</div> : null}
       </div>
-      {expanded ? <div className="ds-workbar-body">{renderBody()}</div> : null}
-    </div>
+      <Drawer
+        title={sessionLogTarget?.name ? `会话日志 · ${sessionLogTarget.name}` : '会话日志'}
+        open={sessionLogOpen}
+        onClose={() => {
+          setSessionLogOpen(false);
+          setSessionLogError('');
+          setSessionLogPayload(null);
+        }}
+        width={860}
+        destroyOnClose
+        styles={{ body: { display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+        extra={
+          <Space size={8} wrap>
+            <Select
+              size="small"
+              value={sessionLogLines}
+              onChange={(val) => setSessionLogLines(Number(val) || 500)}
+              options={[200, 500, 2000, 10_000].map((v) => ({ label: `${v} 行`, value: v }))}
+              style={{ width: 120 }}
+            />
+            <Button size="small" onClick={refreshSessionLog} loading={sessionLogLoading}>
+              刷新
+            </Button>
+          </Space>
+        }
+      >
+        {shellSessionsError ? (
+          <Alert type="warning" showIcon={false} message={shellSessionsError} style={{ marginBottom: 12 }} />
+        ) : null}
+        {sessionLogError ? (
+          <Alert type="error" showIcon={false} message={sessionLogError} style={{ marginBottom: 12 }} />
+        ) : null}
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <CodeBlock
+            text={sessionLogPayload?.content || ''}
+            maxHeight={600}
+            highlight={false}
+            language="text"
+            wrap={false}
+            alwaysExpanded={false}
+          />
+        </div>
+      </Drawer>
+    </>
   );
 }
 

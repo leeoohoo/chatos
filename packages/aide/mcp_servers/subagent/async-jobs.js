@@ -109,6 +109,7 @@ export function createAsyncJobManager(options = {}) {
         MODEL_CLI_SESSION_ROOT: resolvedSessionRoot,
         MODEL_CLI_WORKSPACE_ROOT: resolvedWorkspaceRoot,
         MODEL_CLI_EVENT_LOG: eventLogPath,
+        MODEL_CLI_SHELL_KEEP_SESSIONS: '1',
       };
       child = fork(currentFile, ['--worker'], {
         env,

@@ -127,7 +127,7 @@ function readLastLinesFromFile(filePath, lineCount, maxBytes = 4 * 1024 * 1024) 
   }
 }
 
-export function createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot } = {}) {
+export function createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot, keepSessionsOnExit } = {}) {
   if (typeof execAsync !== 'function') {
     throw new Error('createSessionManager requires execAsync');
   }
@@ -139,6 +139,7 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
   const sessionsDir = resolveSessionsDir(baseSessionRoot);
 
   const sessions = new Map();
+  const detachSessions = keepSessionsOnExit === true || process.platform !== 'win32';
   let cleanupPromise = null;
   let shuttingDown = false;
 
@@ -321,7 +322,7 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
         env: mergedEnv,
         windowsHide: true,
         stdio: ['pipe', outFd, outFd],
-        detached: process.platform !== 'win32',
+        detached: detachSessions,
       });
     } catch (err) {
       try {

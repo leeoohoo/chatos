@@ -5,6 +5,7 @@ import { createChatRunner } from './runner.js';
 import { createChatStore } from './store.js';
 import { normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './normalize.js';
 import { normalizeImageAttachments } from '../../packages/common/chat-utils.js';
+import { listSessions, readSessionLog, restartSession, stopSession } from '../sessions.js';
 
 function validateWorkspaceRoot(value) {
   const resolved = normalizeWorkspaceRoot(value);
@@ -318,6 +319,25 @@ export function registerChatApi(ipcMain, options = {}) {
   });
 
   ipcMain.handle('chat:abort', async (_event, payload = {}) => runner.abort(payload?.sessionId));
+
+  ipcMain.handle('chat:shellSessions:list', async () =>
+    listSessions({ sessionRoot, env: runtimeEnv })
+  );
+  ipcMain.handle('chat:shellSessions:readLog', async (_event, payload = {}) =>
+    readSessionLog({
+      sessionRoot,
+      name: payload?.name,
+      lineCount: payload?.lineCount,
+      maxBytes: payload?.maxBytes,
+      env: runtimeEnv,
+    })
+  );
+  ipcMain.handle('chat:shellSessions:stop', async (_event, payload = {}) =>
+    stopSession({ sessionRoot, name: payload?.name, env: runtimeEnv })
+  );
+  ipcMain.handle('chat:shellSessions:restart', async (_event, payload = {}) =>
+    restartSession({ sessionRoot, name: payload?.name, env: runtimeEnv })
+  );
 
   return { dispose: runner.dispose };
 }

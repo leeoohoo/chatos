@@ -50,8 +50,19 @@ const allowUnsafeShellFlag = resolveBoolFlag(
   args['allow-unsafe-shell'] ?? process.env.MODEL_CLI_ALLOW_UNSAFE_SHELL,
   false
 );
+const keepSessionsOnExit = resolveBoolFlag(
+  args['keep-sessions'] ?? process.env.MODEL_CLI_SHELL_KEEP_SESSIONS,
+  false
+);
 const sessionRoot = resolveSessionRoot();
-const sessions = createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot });
+const sessions = createSessionManager({
+  execAsync,
+  root,
+  defaultShell,
+  serverName,
+  sessionRoot,
+  keepSessionsOnExit,
+});
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
@@ -104,7 +115,9 @@ const workspaceNote = [
 
 ensureFileExists(promptLogPath);
 ensureDir(root, { requireDirectory: true });
-sessions.registerCleanupHandlers();
+if (!keepSessionsOnExit) {
+  sessions.registerCleanupHandlers();
+}
 
 const { server, runId } = createMcpServer({ serverName, version: '0.1.0' });
 
@@ -158,9 +171,10 @@ async function main() {
 
 main().catch((err) => {
   console.error('Shell server crashed:', err);
-  sessions.triggerCleanup('startup_failure')
-    .catch(() => {})
-    .finally(() => process.exit(1));
+  const cleanup = keepSessionsOnExit
+    ? Promise.resolve()
+    : sessions.triggerCleanup('startup_failure').catch(() => {});
+  cleanup.finally(() => process.exit(1));
 });
 
 async function ensurePath(relPath = '.') {
@@ -747,6 +761,7 @@ function printHelp() {
       '  --shell <path>      Optional shell override',
       '  --allow-unsafe-shell  Allow shell expansions/variable substitution (weakens path checks)',
       '  --shell-mode <strict|relaxed>  Safety mode override (default strict)',
+      '  --keep-sessions     Keep background sessions alive when the shell server exits',
       '  --name <id>         MCP server name',
       '  --help              Show help',
     ].join('\n')
