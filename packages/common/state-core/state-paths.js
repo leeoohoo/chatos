@@ -154,6 +154,12 @@ export function resolveTerminalsDir(sessionRoot, options = {}) {
 }
 
 export function resolveSessionsDir(sessionRoot, options = {}) {
+  const env = options?.env && typeof options.env === 'object' ? options.env : process.env;
+  const explicitHost = typeof options?.hostApp === 'string' ? options.hostApp.trim() : '';
+  const overrideHost = normalizeHostApp(env?.MODEL_CLI_SESSIONS_HOST_APP);
+  if (!explicitHost && overrideHost) {
+    return resolveAppStatePath(sessionRoot, SESSIONS_DIR, { ...options, hostApp: overrideHost });
+  }
   return resolveAppStatePath(sessionRoot, SESSIONS_DIR, options);
 }
 

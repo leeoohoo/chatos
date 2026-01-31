@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getHostApp } from '../../packages/common/host-app.js';
+import { getHostApp, normalizeHostApp } from '../../packages/common/host-app.js';
 import { resolveAppStateDir } from '../../packages/common/state-core/state-paths.js';
 import { ensureDir } from '../../packages/common/state-core/utils.js';
 
@@ -47,9 +47,15 @@ export function resolveBaseSessionRoot(sessionRoot, env = process.env) {
   return process.cwd();
 }
 
+function resolveSessionsHostApp(env = process.env) {
+  const override = normalizeHostApp(env?.MODEL_CLI_SESSIONS_HOST_APP);
+  if (override) return override;
+  return getHostApp(env) || 'chatos';
+}
+
 export function resolveSessionsDir(sessionRoot, env = process.env) {
   const root = resolveBaseSessionRoot(sessionRoot, env);
-  const resolvedHostApp = getHostApp(env) || 'chatos';
+  const resolvedHostApp = resolveSessionsHostApp(env);
   return path.join(
     resolveAppStateDir(root, { hostApp: resolvedHostApp, fallbackHostApp: 'chatos' }),
     'sessions'

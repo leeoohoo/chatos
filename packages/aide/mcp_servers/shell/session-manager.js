@@ -127,7 +127,15 @@ function readLastLinesFromFile(filePath, lineCount, maxBytes = 4 * 1024 * 1024) 
   }
 }
 
-export function createSessionManager({ execAsync, root, defaultShell, serverName, sessionRoot, keepSessionsOnExit } = {}) {
+export function createSessionManager({
+  execAsync,
+  root,
+  defaultShell,
+  serverName,
+  sessionRoot,
+  keepSessionsOnExit,
+  sessionService,
+} = {}) {
   if (typeof execAsync !== 'function') {
     throw new Error('createSessionManager requires execAsync');
   }
@@ -137,11 +145,59 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
   const baseSessionRoot =
     typeof sessionRoot === 'string' && sessionRoot.trim() ? path.resolve(sessionRoot.trim()) : process.cwd();
   const sessionsDir = resolveSessionsDir(baseSessionRoot);
+  const sessionStore = sessionService && typeof sessionService.upsert === 'function' ? sessionService : null;
 
   const sessions = new Map();
   const detachSessions = keepSessionsOnExit === true || process.platform !== 'win32';
   let cleanupPromise = null;
   let shuttingDown = false;
+
+  function persistSessionRecord(statusPayload) {
+    if (!sessionStore || !statusPayload || typeof statusPayload !== 'object') return;
+    const name = typeof statusPayload.name === 'string' ? statusPayload.name.trim() : '';
+    if (!name) return;
+    const pid = Number.isFinite(Number(statusPayload.pid)) ? Number(statusPayload.pid) : null;
+    const exitCode = Number.isFinite(Number(statusPayload.exitCode)) ? Number(statusPayload.exitCode) : null;
+    const command = typeof statusPayload.command === 'string' ? statusPayload.command : '';
+    const cwd = typeof statusPayload.cwd === 'string' ? statusPayload.cwd : workspaceRoot;
+    const windowName = typeof statusPayload.window === 'string' ? statusPayload.window : null;
+    const token = typeof statusPayload.token === 'string' ? statusPayload.token : null;
+    const signal = typeof statusPayload.signal === 'string' ? statusPayload.signal : null;
+    const platform = typeof statusPayload.platform === 'string' ? statusPayload.platform : process.platform;
+    const outputPath = typeof statusPayload.outputPath === 'string' ? statusPayload.outputPath : null;
+    const controlPath = typeof statusPayload.controlPath === 'string' ? statusPayload.controlPath : null;
+    const statusPath = typeof statusPayload.statusPath === 'string' ? statusPayload.statusPath : null;
+    const startedAt = typeof statusPayload.startedAt === 'string' ? statusPayload.startedAt : null;
+    const exitedAt = typeof statusPayload.exitedAt === 'string' ? statusPayload.exitedAt : null;
+    const running =
+      typeof statusPayload.running === 'boolean'
+        ? statusPayload.running
+        : pid
+          ? isPidAlive(pid)
+          : false;
+    try {
+      sessionStore.upsert({
+        id: name,
+        name,
+        command,
+        cwd,
+        window: windowName,
+        pid,
+        token,
+        startedAt,
+        exitedAt,
+        exitCode,
+        signal,
+        platform,
+        outputPath,
+        controlPath,
+        statusPath,
+        running,
+      });
+    } catch {
+      // ignore DB write errors
+    }
+  }
 
   function getSessionPaths(sessionName) {
     const safeName = sanitizeName(sessionName);
@@ -160,8 +216,8 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
     return status;
   }
 
-  function writeStatus(session) {
-    const payload = {
+  function buildStatusPayload(session) {
+    return {
       name: session.name,
       pid: session.pid || null,
       token: session.token || null,
@@ -178,7 +234,12 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
       statusPath: session.statusPath,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  function writeStatus(session) {
+    const payload = buildStatusPayload(session);
     writeJsonAtomic(session.statusPath, payload);
+    persistSessionRecord(payload);
   }
 
   async function getProcessCommandLine(pid) {
@@ -248,6 +309,7 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
 
     const existing = sessions.get(safeName);
     if (existing && existing.pid && isPidAlive(existing.pid)) {
+      persistSessionRecord(buildStatusPayload(existing));
       return {
         backend: 'portable',
         reused: true,
@@ -262,6 +324,9 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
     const existingStatus = readJsonSafe(paths.statusPath);
     const existingPid = existingStatus?.pid;
     if (existingPid && isPidAlive(existingPid)) {
+      if (existingStatus) {
+        persistSessionRecord({ ...existingStatus, running: true });
+      }
       return {
         backend: 'portable',
         reused: true,
@@ -444,6 +509,7 @@ export function createSessionManager({ execAsync, root, defaultShell, serverName
         if (!status?.name) return;
         const pid = status.pid;
         const running = pid ? isPidAlive(pid) : false;
+        persistSessionRecord({ ...status, running });
         entries.push({
           ...status,
           running,

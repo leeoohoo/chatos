@@ -133,6 +133,30 @@ export const TABLE_SCHEMAS = {
       { name: 'updatedAt', type: 'datetime', required: true },
     ],
   },
+  shellSessions: {
+    name: 'shellSessions',
+    description: 'Shell 会话记录（持久化）',
+    columns: [
+      { name: 'id', type: 'string', required: true, note: '会话 ID（默认使用 session 名称）' },
+      { name: 'name', type: 'string', required: true, note: '会话名称' },
+      { name: 'command', type: 'string', required: false },
+      { name: 'cwd', type: 'string', required: false },
+      { name: 'window', type: 'string', required: false },
+      { name: 'pid', type: 'number', required: false },
+      { name: 'token', type: 'string', required: false },
+      { name: 'startedAt', type: 'datetime', required: false },
+      { name: 'exitedAt', type: 'datetime', required: false },
+      { name: 'exitCode', type: 'number', required: false },
+      { name: 'signal', type: 'string', required: false },
+      { name: 'platform', type: 'string', required: false },
+      { name: 'outputPath', type: 'string', required: false },
+      { name: 'controlPath', type: 'string', required: false },
+      { name: 'statusPath', type: 'string', required: false },
+      { name: 'running', type: 'boolean', required: false },
+      { name: 'createdAt', type: 'datetime', required: true },
+      { name: 'updatedAt', type: 'datetime', required: true },
+    ],
+  },
   tasks: {
     name: 'tasks',
     description: '任务列表（legacy，兼容旧数据）',
@@ -311,6 +335,27 @@ export const fileChangeSchema = z.object({
   updatedAt: z.string().datetime().optional(),
 });
 
+export const shellSessionSchema = z.object({
+  id: z.string().trim().optional(),
+  name: z.string().trim().min(1, 'name is required'),
+  command: z.string().trim().optional().nullable(),
+  cwd: z.string().trim().optional().nullable(),
+  window: z.string().trim().optional().nullable(),
+  pid: z.number().int().optional().nullable(),
+  token: z.string().trim().optional().nullable(),
+  startedAt: z.string().datetime().optional().nullable(),
+  exitedAt: z.string().datetime().optional().nullable(),
+  exitCode: z.number().int().optional().nullable(),
+  signal: z.string().trim().optional().nullable(),
+  platform: z.string().trim().optional().nullable(),
+  outputPath: z.string().trim().optional().nullable(),
+  controlPath: z.string().trim().optional().nullable(),
+  statusPath: z.string().trim().optional().nullable(),
+  running: z.boolean().optional(),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+});
+
 export const taskSchema = z.object({
   id: z.string().trim().optional(),
   title: z.string().trim().min(1, 'title is required'),
@@ -439,6 +484,7 @@ export const DEFAULT_EMPTY_STATE = {
   tasks: [],
   tasks_cli: [],
   tasks_chat: [],
+  shellSessions: [],
   settings: [],
   landConfigs: [],
 };

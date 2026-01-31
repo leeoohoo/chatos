@@ -123,6 +123,7 @@ function extractSessionNameFromText(text) {
 
 function buildSessionEntry({
   sessionName,
+  displayName,
   command,
   cwd,
   toolName,
@@ -132,16 +133,19 @@ function buildSessionEntry({
   ts,
   key,
 }) {
-  const title = normalizeText(sessionName) || '未命名会话';
+  const normalizedName = normalizeText(sessionName);
+  const normalizedDisplay = normalizeText(displayName);
+  const title = normalizedDisplay || normalizedName || '未命名会话';
+  const name = normalizedName || normalizedDisplay || title;
   const subtitleParts = [];
   const commandText = normalizeText(command);
   if (commandText) subtitleParts.push(commandText);
   const cwdText = normalizeText(cwd);
   if (cwdText) subtitleParts.push(`cwd: ${cwdText}`);
   return {
-    key: key || `${title}_${commandText || ''}_${userMessageId || ''}`,
+    key: key || `${name}_${commandText || ''}_${userMessageId || ''}`,
     title,
-    name: title,
+    name,
     subtitle: subtitleParts.join(' · '),
     toolName: normalizeText(toolName),
     source,
@@ -180,14 +184,16 @@ function extractSessionEntriesFromSteps(steps = [], userMessageId) {
     const callId = normalizeId(step?.call_id);
     const result = callId ? resultByCallId.get(callId) : null;
     const resultText = typeof result?.result === 'string' ? result.result : '';
-    const sessionName =
-      normalizeText(args?.session) || extractSessionNameFromText(resultText) || normalizeText(args?.name);
+    const extractedName = extractSessionNameFromText(resultText);
+    const displayName = normalizeText(args?.session);
+    const sessionName = normalizeText(extractedName) || displayName || normalizeText(args?.name);
     const command = normalizeText(args?.command);
     const cwd = normalizeText(args?.cwd);
     const reused = resultText.toLowerCase().includes('reused');
     entries.push(
       buildSessionEntry({
         sessionName,
+        displayName,
         command,
         cwd,
         toolName: step?.tool,
@@ -492,8 +498,9 @@ export function Workbar({
         if (!invocation) return;
         if (isShellSessionRunToolName(invocation.name)) {
           const args = parseToolArgs(invocation.argsText);
-          const sessionName =
-            normalizeText(args?.session) || extractSessionNameFromText(invocation.resultText);
+          const extractedName = extractSessionNameFromText(invocation.resultText);
+          const displayName = normalizeText(args?.session);
+          const sessionName = normalizeText(extractedName) || displayName || normalizeText(args?.name);
           const command = normalizeText(args?.command);
           const cwd = normalizeText(args?.cwd);
           const reused =
@@ -501,6 +508,7 @@ export function Workbar({
           entries.push(
             buildSessionEntry({
               sessionName,
+              displayName,
               command,
               cwd,
               toolName: invocation.name,

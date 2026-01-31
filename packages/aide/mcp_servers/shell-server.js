@@ -10,6 +10,7 @@ import { clampNumber, parseArgs } from './cli-utils.js';
 import { createPromptFileChangeConfirm } from './shell/prompt-file-change-confirm.js';
 import { createDb } from '../shared/data/storage.js';
 import { FileChangeService } from '../shared/data/services/file-change-service.js';
+import { ShellSessionService } from '../shared/data/services/shell-session-service.js';
 import { SettingsService } from '../shared/data/services/settings-service.js';
 import { createFilesystemOps } from './filesystem/ops.js';
 import { createSessionManager } from './shell/session-manager.js';
@@ -55,14 +56,6 @@ const keepSessionsOnExit = resolveBoolFlag(
   false
 );
 const sessionRoot = resolveSessionRoot();
-const sessions = createSessionManager({
-  execAsync,
-  root,
-  defaultShell,
-  serverName,
-  sessionRoot,
-  keepSessionsOnExit,
-});
 const promptLogPath =
   process.env.MODEL_CLI_UI_PROMPTS ||
   resolveUiPromptsPath(sessionRoot);
@@ -74,15 +67,27 @@ const adminDbPath =
   ensureAppDbPath(sessionRoot);
 let settingsDb = null;
 let fileChangesDb = null;
+let shellSessionsDb = null;
 try {
   const db = createDb({ dbPath: adminDbPath });
   settingsDb = new SettingsService(db);
   settingsDb.ensureRuntime();
   fileChangesDb = new FileChangeService(db);
+  shellSessionsDb = new ShellSessionService(db);
 } catch {
   settingsDb = null;
   fileChangesDb = null;
+  shellSessionsDb = null;
 }
+const sessions = createSessionManager({
+  execAsync,
+  root,
+  defaultShell,
+  serverName,
+  sessionRoot,
+  keepSessionsOnExit,
+  sessionService: shellSessionsDb,
+});
 const fsOps = createFilesystemOps({ root, serverName, fileChangeLogPath, fileChangesService: fileChangesDb });
 const { textResponse, structuredResponse } = createToolResponder({ serverName });
 const explicitMode = normalizeShellSafetyMode(args['shell-mode'] || process.env.MODEL_CLI_SHELL_SAFETY_MODE, {

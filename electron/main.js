@@ -84,6 +84,7 @@ const stateDir = ensureAppStateDir(sessionRoot, { hostApp, fallbackHostApp: 'cha
 const authDir = path.join(stateDir, 'auth');
 const terminalsDir = path.join(stateDir, 'terminals');
 const chatRuntimeHostApp = 'chatos_chat_runtime';
+const chatRuntimeSessionsHostApp = 'aide';
 const chatRuntimeStateDir = ensureAppStateDir(sessionRoot, {
   hostApp: chatRuntimeHostApp,
   fallbackHostApp: hostApp,
@@ -208,6 +209,7 @@ const chatRuntimeEnv = {
   MODEL_CLI_UI_PROMPTS: chatRuntimePaths.uiPrompts,
   MODEL_CLI_FILE_CHANGES: chatRuntimePaths.fileChanges,
   MODEL_CLI_EVENT_LOG: chatRuntimePaths.events,
+  MODEL_CLI_SESSIONS_HOST_APP: chatRuntimeSessionsHostApp,
 };
 const adminServices = createAdminServices(adminDb);
 const configManager = createConfigManager(adminDb, { adminServices });
