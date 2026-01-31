@@ -26,6 +26,9 @@ import { TASK_TABLES } from '../../packages/common/admin-data/task-tables.js';
 export function createChatRunner({
   adminServices,
   defaultPaths,
+  runtimePaths,
+  runtimeDbPath,
+  runtimeEnv,
   sessionRoot,
   workspaceRoot,
   subAgentManager,
@@ -48,7 +51,39 @@ export function createChatRunner({
   const MCP_INIT_TIMEOUT_MS = 4_000;
   const MCP_INIT_TIMEOUT = Symbol('mcp_init_timeout');
   const eventLogPath =
-    typeof defaultPaths?.events === 'string' && defaultPaths.events.trim() ? defaultPaths.events.trim() : '';
+    typeof runtimePaths?.events === 'string' && runtimePaths.events.trim()
+      ? runtimePaths.events.trim()
+      : typeof defaultPaths?.events === 'string' && defaultPaths.events.trim()
+        ? defaultPaths.events.trim()
+        : '';
+  const buildRuntimeEnv = () => {
+    const base = runtimeEnv && typeof runtimeEnv === 'object' ? { ...runtimeEnv } : { ...process.env };
+    if (runtimeEnv && typeof runtimeEnv === 'object') {
+      const preserveKeys = new Set([
+        'MODEL_CLI_HOST_APP',
+        'MODEL_CLI_CONFIG_HOST_APP',
+        'MODEL_CLI_TASK_DB',
+        'MODEL_CLI_TASK_SCOPE',
+        'MODEL_CLI_UI_PROMPTS',
+        'MODEL_CLI_FILE_CHANGES',
+        'MODEL_CLI_EVENT_LOG',
+        'MODEL_CLI_SESSION_ROOT',
+      ]);
+      Object.entries(process.env || {}).forEach(([key, value]) => {
+        if (preserveKeys.has(key)) return;
+        if (typeof value === 'string') {
+          base[key] = value;
+        }
+      });
+    }
+    if (runtimeDbPath && !base.MODEL_CLI_TASK_DB) {
+      base.MODEL_CLI_TASK_DB = runtimeDbPath;
+    }
+    if (!base.MODEL_CLI_TASK_SCOPE) {
+      base.MODEL_CLI_TASK_SCOPE = 'chat';
+    }
+    return base;
+  };
   const { computeMcpSignature, buildRuntimeMcpServers } = createMcpRuntimeHelpers();
   const { resolveUiAppAi, refreshUiAppsTrust, isUiAppTrusted, resolveUiAppRegistryAccess } =
     createUiAppRegistryHelpers({ uiApps, adminServices });
@@ -168,6 +203,7 @@ export function createChatRunner({
       mcpInitPromise = (async () => {
         try {
           const { initializeMcpRuntime } = await loadEngineDeps();
+          const env = buildRuntimeEnv();
           mcpRuntime = await initializeMcpRuntime(configPath, sessionRoot, effectiveWorkspaceRoot, {
             caller: 'main',
             taskTable: TASK_TABLES.chat,
@@ -177,6 +213,8 @@ export function createChatRunner({
             baseDir,
             onNotification: handleMcpNotification,
             eventLogger: eventLogger || null,
+            env,
+            taskScope: env.MODEL_CLI_TASK_SCOPE || 'chat',
           });
           mcpWorkspaceRoot = effectiveWorkspaceRoot;
           mcpSignature = signature;
@@ -255,7 +293,10 @@ export function createChatRunner({
     const baseSendEvent = sendEvent;
     const sessionRecord = store.sessions.get(sid);
     const scopedSendEvent = baseSendEvent;
-    const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
+    const runId = (() => {
+      const env = buildRuntimeEnv();
+      return typeof env.MODEL_CLI_RUN_ID === 'string' ? env.MODEL_CLI_RUN_ID.trim() : '';
+    })();
     const eventLogger = eventLogPath
       ? {
           log: (type, payload) => appendEventLog(eventLogPath, type, payload, runId),

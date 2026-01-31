@@ -320,13 +320,55 @@ export function upsertBuiltinMcpServers({ adminDb, adminServices, defaultPaths, 
       return;
     }
 
-    adminDb.insert('mcpServers', {
+    const payload = {
       ...base,
       id: entry.id || crypto.randomUUID(),
       createdAt: now,
       updatedAt: now,
-    });
-    inserted += 1;
+    };
+    if (typeof adminDb.upsert === 'function') {
+      adminDb.upsert('mcpServers', payload);
+      inserted += 1;
+      return;
+    }
+    try {
+      adminDb.insert('mcpServers', payload);
+      inserted += 1;
+    } catch (err) {
+      const message = err?.message || String(err || '');
+      const isUnique =
+        err?.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
+        message.includes('UNIQUE constraint failed: records.table_name, records.id');
+      if (!isUnique) {
+        throw err;
+      }
+      const current = adminDb.get('mcpServers', entry.id);
+      if (!current) {
+        skipped += 1;
+        return;
+      }
+      const updatePayload = {
+        ...payload,
+        createdAt: current?.createdAt || now,
+        updatedAt: now,
+      };
+      if (typeof current.enabled === 'boolean') {
+        updatePayload.enabled = current.enabled;
+      }
+      if (!base.locked) {
+        if (current.url) updatePayload.url = current.url;
+        if (typeof current.description === 'string' && current.description.trim()) {
+          updatePayload.description = current.description;
+        }
+        if (Array.isArray(current.tags) && current.tags.length > 0) {
+          updatePayload.tags = current.tags;
+        }
+        if (current.auth) updatePayload.auth = current.auth;
+        if (current.callMeta) updatePayload.callMeta = current.callMeta;
+      }
+      adminDb.update('mcpServers', entry.id, updatePayload);
+      updated += 1;
+    }
   });
 
   return { inserted, updated, skipped };
@@ -524,9 +566,9 @@ export function parseEvents(content = '') {
   return entries;
 }
 
-export function buildAdminSeed(defaultPaths = {}) {
+export function buildAdminSeed(defaultPaths = {}, options = {}) {
   const now = new Date().toISOString();
-  const hostApp = getHostApp() || 'chatos';
+  const hostApp = resolveHostApp(options) || 'chatos';
   const seed = {
     models: [],
     mcpServers: [],

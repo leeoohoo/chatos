@@ -119,8 +119,9 @@ async function connectAndRegisterTools({
     };
   }
   await client.connect(transport);
+  const env = runtimeOptions?.env && typeof runtimeOptions.env === 'object' ? runtimeOptions.env : {};
   deps?.appendRunPid?.({
-    runId: typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '',
+    runId: typeof env?.MODEL_CLI_RUN_ID === 'string' ? env.MODEL_CLI_RUN_ID.trim() : '',
     sessionRoot,
     pid: transport?.pid,
     kind: 'mcp',
@@ -196,6 +197,7 @@ export async function connectMcpServer(entry, baseDir, sessionRoot, workspaceRoo
   if (!endpoint) {
     throw new Error('MCP 端点为空或无法解析。');
   }
+  const baseEnv = runtimeOptions?.env && typeof runtimeOptions.env === 'object' ? runtimeOptions.env : {};
 
   const deps = {
     log: runtimeOptions?.log || console,
@@ -221,7 +223,7 @@ export async function connectMcpServer(entry, baseDir, sessionRoot, workspaceRoo
       streamTracker,
     });
     // Inherit parent env so API keys are available to MCP servers (e.g., subagent_router using ModelClient)
-    const env = { ...process.env };
+    const env = { ...baseEnv };
     if (sessionRoot) {
       env.MODEL_CLI_SESSION_ROOT = sessionRoot;
     }
@@ -244,15 +246,15 @@ export async function connectMcpServer(entry, baseDir, sessionRoot, workspaceRoo
     // regardless of where the CLI is launched.
     if (!env.MODEL_CLI_TASK_DB) {
       const stateRoot = env.MODEL_CLI_SESSION_ROOT || sessionRoot || process.cwd();
-      env.MODEL_CLI_TASK_DB = ensureAppDbPath(stateRoot);
+      env.MODEL_CLI_TASK_DB = ensureAppDbPath(stateRoot, { env });
     }
     if (runtimeOptions?.caller && typeof runtimeOptions.caller === 'string' && runtimeOptions.caller.trim()) {
       env.MODEL_CLI_CALLER = runtimeOptions.caller.trim();
     }
     if (entry.api_key_env) {
       const key = entry.api_key_env.trim();
-      if (key && process.env[key]) {
-        env[key] = process.env[key];
+      if (key && baseEnv[key]) {
+        env[key] = baseEnv[key];
       }
     }
     const adjustedArgs = adjustCommandArgs(endpoint.args, workspaceRoot);

@@ -12,8 +12,10 @@ export function createSessionWatchers({
   readFileChangesPayload,
   readUiPromptsPayload,
   readRunsPayload,
+  channelPrefix = '',
 } = {}) {
   const resolveWindow = typeof getMainWindow === 'function' ? getMainWindow : () => null;
+  const resolveChannel = (name) => (channelPrefix ? `${channelPrefix}${name}` : name);
 
   let sessionWatcher = null;
   let eventsWatcher = null;
@@ -32,7 +34,7 @@ export function createSessionWatchers({
     sessionWatcher = fs.watch(defaultPaths.sessionReport, { persistent: false }, () => {
       const win = resolveWindow();
       if (win) {
-        win.webContents.send('session:update', readSessionPayload());
+        win.webContents.send(resolveChannel('session:update'), readSessionPayload());
       }
     });
   };
@@ -43,7 +45,7 @@ export function createSessionWatchers({
     eventsWatcher = fs.watch(defaultPaths.events, { persistent: false }, () => {
       const win = resolveWindow();
       if (win) {
-        win.webContents.send('events:update', readEventsPayload());
+        win.webContents.send(resolveChannel('events:update'), readEventsPayload());
       }
     });
   };
@@ -58,7 +60,7 @@ export function createSessionWatchers({
     uiPromptsWatcher = fs.watch(defaultPaths.uiPrompts, { persistent: false }, () => {
       const win = resolveWindow();
       if (win) {
-        win.webContents.send('uiPrompts:update', readUiPromptsPayload());
+        win.webContents.send(resolveChannel('uiPrompts:update'), readUiPromptsPayload());
       }
     });
   };
@@ -69,7 +71,7 @@ export function createSessionWatchers({
     runsWatcher = fs.watch(defaultPaths.runs, { persistent: false }, () => {
       const win = resolveWindow();
       if (win) {
-        win.webContents.send('runs:update', readRunsPayload());
+        win.webContents.send(resolveChannel('runs:update'), readRunsPayload());
       }
     });
   };
@@ -85,8 +87,8 @@ export function createSessionWatchers({
       lastAdminDbFingerprint = fingerprint;
       const win = resolveWindow();
       if (win) {
-        win.webContents.send('config:update', readConfigPayload());
-        win.webContents.send('fileChanges:update', readFileChangesPayload());
+        win.webContents.send(resolveChannel('config:update'), readConfigPayload());
+        win.webContents.send(resolveChannel('fileChanges:update'), readFileChangesPayload());
       }
     };
 

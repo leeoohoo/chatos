@@ -274,6 +274,32 @@ function createBetterSqliteDb({
         return runBatch(list);
       });
     },
+    upsert(table, record) {
+      return withDb((db) => {
+        const payload = record && typeof record === 'object' ? { ...record } : {};
+        payload.id = payload.id || genId();
+        const ts = now();
+        let createdAt = payload.createdAt;
+        if (!createdAt) {
+          const existingRow = selectOneSqlite(
+            db,
+            'SELECT payload FROM records WHERE table_name = ? AND id = ?',
+            [table, payload.id]
+          );
+          const existing = existingRow ? parsePayload(existingRow.payload) : null;
+          createdAt = existing?.createdAt || ts;
+        }
+        payload.createdAt = createdAt || ts;
+        payload.updatedAt = ts;
+        execWithChangesSqlite(
+          db,
+          'INSERT INTO records (table_name, id, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?)\n' +
+            'ON CONFLICT(table_name, id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at',
+          [table, payload.id, JSON.stringify(payload), payload.createdAt, payload.updatedAt]
+        );
+        return clone(payload);
+      });
+    },
     update(table, id, patch) {
       return withDb((db) => {
         const existingRow = selectOneSqlite(db, 'SELECT payload FROM records WHERE table_name = ? AND id = ?', [

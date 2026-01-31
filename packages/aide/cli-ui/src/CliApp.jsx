@@ -228,7 +228,7 @@ function CliAppBody({ host, mountContainer }) {
 
   const activeTerminalStatus = dispatchRunId ? terminalStatusMap[dispatchRunId] : null;
   const stopVisible = Boolean(activeTerminalStatus && activeTerminalStatus.state === 'running');
-  const cwdPickerVisible = !dispatchRunId;
+  const cwdPickerVisible = true;
 
   const loadConfig = async () => {
     try {

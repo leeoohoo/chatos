@@ -12,10 +12,12 @@ export function createUiPromptHandlers({
   startUiPromptsWatcher,
   readUiPromptsPayload,
   getMainWindow,
+  channelPrefix = '',
 } = {}) {
   const ensureWatcher = typeof startUiPromptsWatcher === 'function' ? startUiPromptsWatcher : () => {};
   const readPayload = typeof readUiPromptsPayload === 'function' ? readUiPromptsPayload : () => ({ entries: [] });
   const resolveWindow = typeof getMainWindow === 'function' ? getMainWindow : () => null;
+  const resolveChannel = (name) => (channelPrefix ? `${channelPrefix}${name}` : name);
 
   const requestUiPrompt = (payload = {}) => {
     const rawPrompt = payload?.prompt && typeof payload.prompt === 'object' ? payload.prompt : null;
@@ -158,7 +160,7 @@ export function createUiPromptHandlers({
     ensureWatcher();
     const win = resolveWindow();
     if (win) {
-      win.webContents.send('uiPrompts:update', readPayload());
+      win.webContents.send(resolveChannel('uiPrompts:update'), readPayload());
     }
 
     return { ok: true, requestId };

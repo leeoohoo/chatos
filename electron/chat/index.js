@@ -68,9 +68,13 @@ function normalizeImageAttachmentsInput(input) {
 
 export function registerChatApi(ipcMain, options = {}) {
   const {
-    adminDb,
     adminServices,
     defaultPaths,
+    runtimePaths,
+    runtimeDb,
+    runtimeDbPath,
+    runtimeEnv,
+    storeDb,
     sessionRoot,
     workspaceRoot,
     subAgentManager,
@@ -78,12 +82,13 @@ export function registerChatApi(ipcMain, options = {}) {
     mainWindowGetter,
   } = options;
   if (!ipcMain) throw new Error('ipcMain is required');
-  if (!adminDb) throw new Error('adminDb is required');
   if (!adminServices) throw new Error('adminServices is required');
   if (!defaultPaths) throw new Error('defaultPaths is required');
+  const resolvedStoreDb = storeDb || runtimeDb || options?.adminDb;
+  if (!resolvedStoreDb) throw new Error('storeDb is required');
 
   const getMainWindow = typeof mainWindowGetter === 'function' ? mainWindowGetter : () => null;
-  const store = createChatStore(adminDb);
+  const store = createChatStore(resolvedStoreDb);
   const defaultWorkspaceRoot = (() => {
     try {
       return validateWorkspaceRoot(workspaceRoot) || process.cwd();
@@ -99,6 +104,9 @@ export function registerChatApi(ipcMain, options = {}) {
   const runner = createChatRunner({
     adminServices,
     defaultPaths,
+    runtimePaths,
+    runtimeDbPath,
+    runtimeEnv,
     sessionRoot,
     workspaceRoot,
     subAgentManager,

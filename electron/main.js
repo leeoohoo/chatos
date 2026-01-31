@@ -83,6 +83,13 @@ const hostApp =
 const stateDir = ensureAppStateDir(sessionRoot, { hostApp, fallbackHostApp: 'chatos', env: runtimeEnv });
 const authDir = path.join(stateDir, 'auth');
 const terminalsDir = path.join(stateDir, 'terminals');
+const chatRuntimeHostApp = 'chatos_chat_runtime';
+const chatRuntimeStateDir = ensureAppStateDir(sessionRoot, {
+  hostApp: chatRuntimeHostApp,
+  fallbackHostApp: hostApp,
+  env: runtimeEnv,
+});
+const chatRuntimeAuthDir = path.join(chatRuntimeStateDir, 'auth');
 
 const installLogger = createRuntimeLogger({
   sessionRoot,
@@ -169,6 +176,16 @@ const defaultPaths = {
   adminDb: path.join(stateDir, `${hostApp}.db.sqlite`),
 };
 
+const chatRuntimeDbPath = path.join(chatRuntimeStateDir, 'runtime.db.sqlite');
+const chatRuntimePaths = {
+  sessionReport: path.join(chatRuntimeAuthDir, 'session-report.html'),
+  events: path.join(chatRuntimeStateDir, 'events.jsonl'),
+  fileChanges: path.join(chatRuntimeStateDir, 'file-changes.jsonl'),
+  uiPrompts: path.join(chatRuntimeStateDir, 'ui-prompts.jsonl'),
+  runs: path.join(chatRuntimeStateDir, 'runs.jsonl'),
+  adminDb: chatRuntimeDbPath,
+};
+
 const legacyAdminDb = path.join(stateDir, `${hostApp}.db.json`);
 if (ENABLE_ALL_SUBAGENTS) {
   ensureAllSubagentsInstalled({
@@ -181,6 +198,17 @@ const adminDb = createDb({
   dbPath: defaultPaths.adminDb,
   seed: readLegacyState(legacyAdminDb) || buildAdminSeed(defaultPaths),
 });
+const chatRuntimeDb = createDb({ dbPath: chatRuntimeDbPath });
+const chatRuntimeEnv = {
+  ...runtimeEnv,
+  MODEL_CLI_HOST_APP: chatRuntimeHostApp,
+  MODEL_CLI_CONFIG_HOST_APP: hostApp,
+  MODEL_CLI_TASK_DB: chatRuntimeDbPath,
+  MODEL_CLI_TASK_SCOPE: 'chat',
+  MODEL_CLI_UI_PROMPTS: chatRuntimePaths.uiPrompts,
+  MODEL_CLI_FILE_CHANGES: chatRuntimePaths.fileChanges,
+  MODEL_CLI_EVENT_LOG: chatRuntimePaths.events,
+};
 const adminServices = createAdminServices(adminDb);
 const configManager = createConfigManager(adminDb, { adminServices });
 const registryCenter = initRegistryCenter({ db: adminDb });
@@ -235,6 +263,9 @@ sessionApi = createSessionApi({
   defaultPaths,
   adminDb,
   adminServices,
+  chatRuntimePaths,
+  chatRuntimeDb,
+  chatRuntimeDbPath,
   mainWindowGetter: () => mainWindow,
   sessions: { killAllSessions: () => killAllSessions({ sessionRoot, env: runtimeEnv }) },
   uiFlags: UI_FLAGS,
@@ -340,6 +371,10 @@ chatApi = registerChatApi(ipcMain, {
   adminDb,
   adminServices,
   defaultPaths,
+  runtimePaths: chatRuntimePaths,
+  runtimeDb: chatRuntimeDb,
+  runtimeDbPath: chatRuntimeDbPath,
+  runtimeEnv: chatRuntimeEnv,
   sessionRoot,
   workspaceRoot: process.cwd(),
   subAgentManager,

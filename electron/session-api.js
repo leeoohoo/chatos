@@ -21,7 +21,17 @@ const promptLogMaxBytes = clampNumber(
 const promptLogMaxLines = clampNumber(process.env.MODEL_CLI_UI_PROMPTS_MAX_LINES, 0, 200_000, 5_000);
 const promptLogLimits = { maxBytes: promptLogMaxBytes, maxLines: promptLogMaxLines };
 
-export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWindowGetter, sessions, uiFlags } = {}) {
+export function createSessionApi({
+  defaultPaths,
+  adminDb,
+  adminServices,
+  chatRuntimePaths,
+  chatRuntimeDb,
+  chatRuntimeDbPath,
+  mainWindowGetter,
+  sessions,
+  uiFlags,
+} = {}) {
   if (!defaultPaths) {
     throw new Error('defaultPaths is required');
   }
@@ -42,6 +52,9 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     exposeSubagents,
     resolvedUiFlags,
     sanitizeAdminSnapshotForUi,
+    chatRuntimePaths,
+    chatRuntimeDb,
+    chatRuntimeDbPath,
   });
   const {
     readConfigPayload,
@@ -50,6 +63,11 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     readRunsPayload,
     readSessionPayload,
     readUiPromptsPayload,
+    readChatConfigPayload,
+    readChatEventsPayload,
+    readChatFileChangesPayload,
+    readChatRunsPayload,
+    readChatUiPromptsPayload,
   } = payloadReaders;
 
   const watchers = createSessionWatchers({
@@ -72,6 +90,41 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     dispose: disposeWatchers,
   } = watchers;
 
+  const readChatSessionPayload = () => {
+    const reportPath = chatRuntimePaths?.sessionReport || '';
+    let html = '';
+    if (reportPath) {
+      try {
+        html = fs.readFileSync(reportPath, 'utf8');
+      } catch {
+        // ignore
+      }
+    }
+    return { path: reportPath, html };
+  };
+  const chatWatchers = chatRuntimePaths
+    ? createSessionWatchers({
+        defaultPaths: chatRuntimePaths,
+        getMainWindow,
+        readConfigPayload: readChatConfigPayload,
+        readSessionPayload: readChatSessionPayload,
+        readEventsPayload: readChatEventsPayload,
+        readFileChangesPayload: readChatFileChangesPayload,
+        readUiPromptsPayload: readChatUiPromptsPayload,
+        readRunsPayload: readChatRunsPayload,
+        channelPrefix: 'chat:',
+      })
+    : null;
+  const {
+    startEventsWatcher: startChatEventsWatcher,
+    startFileChangesWatcher: startChatFileChangesWatcher,
+    startRunsWatcher: startChatRunsWatcher,
+    startSessionWatcher: startChatSessionWatcher,
+    startTasksWatcher: startChatTasksWatcher,
+    startUiPromptsWatcher: startChatUiPromptsWatcher,
+    dispose: disposeChatWatchers,
+  } = chatWatchers || {};
+
   const uiPromptHandlers = createUiPromptHandlers({
     defaultPaths,
     promptLogLimits,
@@ -80,6 +133,19 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     getMainWindow,
   });
   const { requestUiPrompt, respondUiPrompt } = uiPromptHandlers;
+
+  const chatUiPromptHandlers = chatRuntimePaths
+    ? createUiPromptHandlers({
+        defaultPaths: chatRuntimePaths,
+        promptLogLimits,
+        startUiPromptsWatcher: startChatUiPromptsWatcher,
+        readUiPromptsPayload: readChatUiPromptsPayload,
+        getMainWindow,
+        channelPrefix: 'chat:',
+      })
+    : null;
+  const { requestUiPrompt: requestChatUiPrompt, respondUiPrompt: respondChatUiPrompt } =
+    chatUiPromptHandlers || {};
 
   async function clearAllCaches() {
     const summary = {
@@ -214,6 +280,7 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
 
   function dispose() {
     disposeWatchers();
+    disposeChatWatchers?.();
   }
 
   return {
@@ -225,13 +292,26 @@ export function createSessionApi({ defaultPaths, adminDb, adminServices, mainWin
     readRunsPayload,
     readSessionPayload,
     readUiPromptsPayload,
+    readChatConfigPayload,
+    readChatEventsPayload,
+    readChatFileChangesPayload,
+    readChatRunsPayload,
+    readChatUiPromptsPayload,
     requestUiPrompt,
     respondUiPrompt,
+    requestChatUiPrompt,
+    respondChatUiPrompt,
     startEventsWatcher,
     startFileChangesWatcher,
     startRunsWatcher,
     startSessionWatcher,
     startTasksWatcher,
     startUiPromptsWatcher,
+    startChatEventsWatcher,
+    startChatFileChangesWatcher,
+    startChatRunsWatcher,
+    startChatSessionWatcher,
+    startChatTasksWatcher,
+    startChatUiPromptsWatcher,
   };
 }

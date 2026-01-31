@@ -7,6 +7,7 @@ import {
   parseModels,
   safeRead,
 } from '../../packages/aide/shared/data/legacy.js';
+import { createDb } from '../../packages/aide/shared/data/storage.js';
 import { loadSystemPromptFromDb } from '../../packages/aide/src/prompts.js';
 import { parseJsonLines, readTasksFromDbFile } from '../session-api-helpers.js';
 import { TASK_TABLES } from '../../packages/common/admin-data/task-tables.js';
@@ -17,9 +18,34 @@ export function createSessionPayloadReaders({
   exposeSubagents,
   resolvedUiFlags,
   sanitizeAdminSnapshotForUi,
+  chatRuntimePaths,
+  chatRuntimeDb,
+  chatRuntimeDbPath,
 } = {}) {
   const sanitize =
     typeof sanitizeAdminSnapshotForUi === 'function' ? sanitizeAdminSnapshotForUi : (snapshot) => snapshot;
+  const resolveChatDbPath = () => {
+    if (typeof chatRuntimeDbPath === 'string' && chatRuntimeDbPath.trim()) {
+      return chatRuntimeDbPath.trim();
+    }
+    if (chatRuntimeDb && typeof chatRuntimeDb.path === 'string' && chatRuntimeDb.path.trim()) {
+      return chatRuntimeDb.path.trim();
+    }
+    return '';
+  };
+  const listChatDb = (table) => {
+    if (chatRuntimeDb && typeof chatRuntimeDb.list === 'function') {
+      return chatRuntimeDb.list(table) || [];
+    }
+    const dbPath = resolveChatDbPath();
+    if (!dbPath) return [];
+    try {
+      const db = createDb({ dbPath });
+      return db.list(table) || [];
+    } catch {
+      return [];
+    }
+  };
 
   const readConfigPayload = () => {
     const snapshot = adminServices.snapshot();
@@ -168,5 +194,48 @@ export function createSessionPayloadReaders({
     readRunsPayload,
     readSessionPayload,
     readUiPromptsPayload,
+    readChatConfigPayload: () => {
+      const tasksListChat =
+        (chatRuntimeDb && typeof chatRuntimeDb.list === 'function'
+          ? chatRuntimeDb.list(TASK_TABLES.chat)
+          : readTasksFromDbFile(resolveChatDbPath(), { tableName: TASK_TABLES.chat })) || [];
+      return { tasksListChat };
+    },
+    readChatEventsPayload: () => {
+      const eventsPath = chatRuntimePaths?.events || '';
+      const eventsList = parseEvents(safeRead(eventsPath));
+      return {
+        path: eventsPath,
+        content: eventsList.map((e) => JSON.stringify(e)).join('\n'),
+        eventsList,
+      };
+    },
+    readChatFileChangesPayload: () => {
+      const list = listChatDb('fileChanges');
+      const sorted = list
+        .slice()
+        .sort((a, b) => String(a?.ts || a?.createdAt || '').localeCompare(String(b?.ts || b?.createdAt || '')));
+      return {
+        path: resolveChatDbPath(),
+        entries: sorted,
+        source: 'db',
+      };
+    },
+    readChatUiPromptsPayload: () => {
+      const uiPromptsPath = chatRuntimePaths?.uiPrompts || '';
+      const entries = parseJsonLines(safeRead(uiPromptsPath));
+      return {
+        path: uiPromptsPath,
+        entries,
+      };
+    },
+    readChatRunsPayload: () => {
+      const runsPath = chatRuntimePaths?.runs || '';
+      const entries = parseJsonLines(safeRead(runsPath));
+      return {
+        path: runsPath,
+        entries,
+      };
+    },
   };
 }

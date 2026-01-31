@@ -26,6 +26,29 @@ export function registerSessionIpcHandlers({ ipcMain, sessionApi, workspaceOps }
     sessionApi.startRunsWatcher();
     return sessionApi.readRunsPayload();
   });
+  ipcMain.handle('chat:config:read', async () => {
+    sessionApi.startChatTasksWatcher?.();
+    return sessionApi.readChatConfigPayload?.() || { tasksListChat: [] };
+  });
+  ipcMain.handle('chat:events:read', async () => {
+    sessionApi.startChatEventsWatcher?.();
+    return sessionApi.readChatEventsPayload?.() || { eventsList: [], content: '' };
+  });
+  ipcMain.handle('chat:fileChanges:read', async () => {
+    sessionApi.startChatTasksWatcher?.();
+    sessionApi.startChatFileChangesWatcher?.();
+    return sessionApi.readChatFileChangesPayload?.() || { entries: [] };
+  });
+  ipcMain.handle('chat:uiPrompts:read', async () => {
+    sessionApi.startChatUiPromptsWatcher?.();
+    return sessionApi.readChatUiPromptsPayload?.() || { entries: [] };
+  });
+  ipcMain.handle('chat:runs:read', async () => {
+    sessionApi.startChatRunsWatcher?.();
+    return sessionApi.readChatRunsPayload?.() || { entries: [] };
+  });
+  ipcMain.handle('chat:uiPrompts:request', async (_event, payload = {}) => sessionApi.requestChatUiPrompt?.(payload));
+  ipcMain.handle('chat:uiPrompts:respond', async (_event, payload = {}) => sessionApi.respondChatUiPrompt?.(payload));
   ipcMain.handle('uiPrompts:request', async (_event, payload = {}) => sessionApi.requestUiPrompt(payload));
   ipcMain.handle('uiPrompts:respond', async (_event, payload = {}) => sessionApi.respondUiPrompt(payload));
 

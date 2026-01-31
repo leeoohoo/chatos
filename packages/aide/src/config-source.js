@@ -12,7 +12,7 @@ import {
   upsertBuiltinMcpServers,
 } from '../shared/data/legacy.js';
 import { syncAdminToFiles } from '../shared/data/sync.js';
-import { getHostApp } from '../shared/host-app.js';
+import { getHostApp, normalizeHostApp } from '../shared/host-app.js';
 import { getMcpPromptNamesForServer } from '../shared/mcp-utils.js';
 import { normalizeKey } from '../shared/text-utils.js';
 import {
@@ -31,10 +31,15 @@ export function getAdminServices() {
   // 会话根：优先环境变量，其次读取 marker，最后回退 home/cwd
   const sessionRoot = resolveSessionRoot();
   process.env.MODEL_CLI_SESSION_ROOT = sessionRoot;
+  const configHostApp =
+    normalizeHostApp(process.env.MODEL_CLI_CONFIG_HOST_APP) || getHostApp() || 'chatos';
   const defaultsRoot = projectRoot;
-  const stateDir = ensureAppStateDir(sessionRoot);
+  const stateDir = ensureAppStateDir(sessionRoot, { hostApp: configHostApp });
   const authDir = resolveStateDirPath(stateDir, STATE_DIR_NAMES.auth);
-  const legacyAdminDb = getDefaultDbPath();
+  const legacyAdminDb = getDefaultDbPath({
+    ...process.env,
+    MODEL_CLI_HOST_APP: configHostApp,
+  });
 
   const defaultPaths = {
     defaultsRoot,
@@ -46,10 +51,10 @@ export function getAdminServices() {
     pluginsDir: path.join(projectRoot, 'subagents', 'plugins'),
     pluginsDirUser: resolveStateDirPath(stateDir, STATE_DIR_NAMES.subagents, 'plugins'),
     installedSubagents: resolveStateDirPath(stateDir, 'subagents.json'),
-    adminDb: resolveStateDirPath(stateDir, `${getHostApp() || 'chatos'}.db.sqlite`),
+    adminDb: resolveStateDirPath(stateDir, `${configHostApp || 'chatos'}.db.sqlite`),
   };
   const legacySeed = readLegacyState(legacyAdminDb);
-  const seed = legacySeed || buildAdminSeed(defaultPaths);
+  const seed = legacySeed || buildAdminSeed(defaultPaths, { hostApp: configHostApp });
   const adminDb = createDb({
     dbPath: defaultPaths.adminDb,
     seed,
@@ -57,7 +62,7 @@ export function getAdminServices() {
   const services = createAdminServices(adminDb);
   maybeReseedModels(adminDb, services, seed);
   refreshBuiltinPrompts(adminDb, services, defaultPaths);
-  upsertBuiltinMcpServers({ adminDb, adminServices: services, defaultPaths, env: process.env });
+  upsertBuiltinMcpServers({ adminDb, adminServices: services, defaultPaths, env: process.env, hostApp: configHostApp });
   maybePurgeUiAppsSyncedAdminData({ stateDir, services });
   syncAdminToFiles(services.snapshot(), {
     modelsPath: defaultPaths.models,

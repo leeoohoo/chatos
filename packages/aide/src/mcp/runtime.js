@@ -17,6 +17,7 @@ async function initializeMcpRuntime(
   workspaceRoot = process.cwd(),
   options = {}
 ) {
+  const runtimeEnv = options?.env && typeof options.env === 'object' ? { ...options.env } : { ...process.env };
   const runtimeLogger =
     options?.runtimeLogger ||
     createRuntimeLogger({
@@ -80,11 +81,12 @@ async function initializeMcpRuntime(
   const baseDirResolved = baseDir || process.cwd();
   const connectTargets = filteredServers.filter((entry) => entry && entry.url);
   const startupConcurrency = resolveConcurrency(
-    options?.mcpStartupConcurrency ?? process.env.MODEL_CLI_MCP_STARTUP_CONCURRENCY,
+    options?.mcpStartupConcurrency ?? runtimeEnv.MODEL_CLI_MCP_STARTUP_CONCURRENCY,
     4
   );
   const runtimeOptions = {
     ...options,
+    env: runtimeEnv,
     runtimeLogger,
     eventLogger,
     registerRemoteTool,

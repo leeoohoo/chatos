@@ -135,15 +135,15 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
     (async () => {
       try {
-        const payload = await api.invoke('config:read');
+        const payload = await api.invoke('chat:config:read');
         if (canceled) return;
         applyTaskSnapshot(payload);
       } catch {
-        // ignore (older hosts may not support config:read)
+        // ignore (older hosts may not support chat:config:read)
       }
     })();
 
-    const unsub = api.on('config:update', (payload) => {
+    const unsub = api.on('chat:config:update', (payload) => {
       applyTaskSnapshot(payload);
     });
 
@@ -159,14 +159,14 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
     (async () => {
       try {
-        const data = await api.invoke('uiPrompts:read');
+        const data = await api.invoke('chat:uiPrompts:read');
         if (!canceled) setUiPrompts(data || { entries: [] });
       } catch {
-        // ignore prompt load errors (older builds may not support this channel)
+        // ignore prompt load errors (older builds may not support chat:uiPrompts:read)
       }
     })();
 
-    const unsub = api.on('uiPrompts:update', (data) => {
+    const unsub = api.on('chat:uiPrompts:update', (data) => {
       if (!canceled) setUiPrompts(data || { entries: [] });
     });
 
@@ -182,15 +182,15 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
 
     (async () => {
       try {
-        const data = await api.invoke('fileChanges:read');
+        const data = await api.invoke('chat:fileChanges:read');
         if (canceled) return;
         setFileChanges(data || { entries: [] });
       } catch {
-        // ignore (older hosts may not support fileChanges:read)
+        // ignore (older hosts may not support chat:fileChanges:read)
       }
     })();
 
-    const unsub = api.on('fileChanges:update', (data) => {
+    const unsub = api.on('chat:fileChanges:update', (data) => {
       if (canceled) return;
       setFileChanges(data || { entries: [] });
     });
@@ -222,7 +222,7 @@ export function ChatView({ admin, sidebarCollapsed: sidebarCollapsedProp, onSide
       runId: typeof runId === 'string' ? runId : '',
       response: response && typeof response === 'object' ? response : null,
     };
-    const result = await api.invoke('uiPrompts:respond', payload);
+    const result = await api.invoke('chat:uiPrompts:respond', payload);
     if (result?.ok === false) {
       throw new Error(result?.message || '提交失败');
     }
