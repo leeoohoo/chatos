@@ -148,7 +148,7 @@ export function AssistantTurnCard({ messages, streaming }) {
               {blocks.map((block) => {
                 if (block.type === 'assistant') {
                   return (
-                    <MarkdownBlock key={block.key} text={block.content} alwaysExpanded container={false} showCodeActions={false} />
+                    <MarkdownBlock key={block.key} text={block.content} alwaysExpanded container={false} />
                   );
                 }
 
@@ -176,7 +176,7 @@ export function AssistantTurnCard({ messages, streaming }) {
                             </Space>
                           ),
                           children: (
-                            <MarkdownBlock text={reasoningText} maxHeight={240} alwaysExpanded container={false} showCodeActions={false} />
+                            <MarkdownBlock text={reasoningText} maxHeight={240} alwaysExpanded container={false} />
                           ),
                         },
                       ]}
