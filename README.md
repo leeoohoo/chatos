@@ -1,104 +1,43 @@
+﻿# chatos
 
-# chatos — Overview
+面向多模型的 CLI + Electron 桌面聊天工具，带子代理市场、任务追踪与可视化报告（fork 自 model-cli-js）。
 
-简体中文在后半部分；更详细的分语言指南：`README.en.md` / `README.zh.md`
+English guide: `README.en.md` · 中文详版：`README.zh.md`
 
-## Overview
-Enhanced fork of `model-cli-js` with:
-- Sub-agent marketplace (Python / Spring Boot / React)
-- Task tracking MCP tools
-- Shell MCP with built-in sessions for long-running commands
-- UI prompt MCP (`ui_prompter`) to ask the user for structured inputs/decisions via the Electron floating island
-- Live correction while running (auto inject) via the Electron floating island
-- Auto config/session reports (HTML)
-- Automatic summary + history pruning
-- English-only plugin metadata; main prompt = orchestrator-only
+## 主要特性
+- 子代理市场（默认 Python / Spring Boot / React）
+- 主代理负责编排，子代理拥有完整工具权限
+- 任务追踪（`mcp_task_manager_*`）
+- 启动自动生成 `config-report.html` / `session-report.html`
+- UI Prompt MCP（浮动岛表单/选项）
+- Shell MCP 会话支持长命令
+- 自动总结与历史裁剪
+- Electron 桌面端打包与内置 AIDE 引擎
 
-## Quick Start
-```bash
-npm install
-node src/cli.js chat           # start CLI (prints report paths)
-# Alt (npx): npx --yes -p @leeoohoo/chatos chatos chat   # ensure ~/.npm perms are ok
-# After npm install -g @leeoohoo/chatos: chatos chat    # shorter global binary
-# UI (prebuilt dist) via Electron: chatosui
-# If you installed the desktop app, you can install a terminal command from the UI (macOS/Linux: `chatos`, Windows: `chatos-desktop`) and run the CLI without a system Node.js.
-# 指定共享会话根（CLI+UI 共用）：MODEL_CLI_SESSION_ROOT=/path/to/workspace chatos chat
-```
-
-Desktop packaging (macOS/Windows): `npm run desktop:dist` (outputs to `dist_desktop/`). CI workflow: `.github/workflows/desktop-build.yml`.
-
-Common in-chat commands:
-- `/sub marketplace` | `/sub install <id>` | `/sub agents` | `/sub run <agent> <task> [--skills ...]`
-- `/prompt` (view/override system prompt)
-- `/tool [id]` (show latest tool outputs)
-- `/reset` (clear session)
-
-## Tooling & Permissions
-- **Main agent tools**: `get_current_time`, `mcp_project_files_*`, `mcp_subagent_router_*`, `mcp_task_manager_*` (no shell by default; other MCP servers are sub-agent-only unless enabled for main).
-- **Sub-agents**: all registered tools (filesystem, shell, sessions, tasks, etc.).
-- Shell MCP: `mcp_shell_tasks_run_shell_command` (short), `mcp_shell_tasks_session_run`, `mcp_shell_tasks_session_capture_output`.
-
-## Sub-Agents
-- Plugins live in the AIDE engine: `subagents/plugins/*`, listed in `subagents/marketplace.json` (desktop installs default to `<stateDir>/aide`).
-- Each plugin: `plugin.json` + `agents/*.md` (prompts) + `skills/*.md` (instructions).
-- Use `mcp_subagent_router_run_sub_agent` to invoke sub-agents and track tasks via MCP.
-
-## Reports
-- `config-report.html`: models, MCP servers, prompts, installed sub-agents.
-- `session-report.html`: chat (full width with Markdown), task list, tool history in drawers.
-- Electron UI (IPC, no HTTP): `npm run ui` builds React dashboard; live session panel renders `session-report.html`, config panel reads YAML/JSON/tasks. UI prompt MCP: `mcp_ui_prompter_prompt_key_values`, `mcp_ui_prompter_prompt_choices`.
-
-## Auto Summary & Pruning
-- Threshold (approx tokens) default 60000 or `MODEL_CLI_SUMMARY_TOKENS`.
-- On trigger, history becomes: system prompt + latest summary + current user message (main and sub-agents).
-
-## Config Paths
-- `stateRoot`: per-user state root.
-- `stateDir`: `<stateRoot>/<hostApp>` (legacy `legacyStateRoot/<hostApp>` auto-migrated).
-- Models: `<stateDir>/auth/models.yaml`
-- Prompts: stored in admin DB (`<stateDir>/chatos.db.sqlite`, table `prompts`)
-  - Main: `internal_main` / `default` / `user_prompt`
-  - Sub-agents: `internal_subagent` / `subagent_user_prompt`
-  - English variants: append `__en`
-- MCP servers: stored in admin DB (`<stateDir>/chatos.db.sqlite`, table `mcpServers`); active selection via land_config.
-- Admin DB (models/MCP/prompts/tasks/land_config): `<stateDir>/chatos.db.sqlite`
-- Sub-agent install state: `<stateDir>/subagents.json`
-
-## Troubleshooting
-- Permission errors writing reports: fix `<stateDir>` ownership.
-- Missing tool: main agent intentionally disallows shell; use sub-agent or add prefix to whitelist.
-- Long commands timing out: use session tools.
-- MCP tool timeout (~60s) errors (e.g., `mcp_subagent_router_run_sub_agent`): default MCP request timeout is now 10m (max total 20m); override via `MODEL_CLI_MCP_TIMEOUT_MS` / `MODEL_CLI_MCP_MAX_TIMEOUT_MS` if needed.
-- History too long: relies on auto-prune or `/reset`.
-- Windows garbled Unicode output: run `chcp 65001` (UTF-8 code page) before starting; the CLI also tries to switch to UTF-8 at startup (disable via `MODEL_CLI_DISABLE_WIN_UTF8=1`).
-
-## 中文概览
-本仓库在 `model-cli-js` 基础上增强：
-- 子代理市场（Python / Spring Boot / React）
-- 任务管理 MCP 工具
-- Shell MCP 内置会话，适合长命令
-- 启动自动生成配置/会话 HTML 报告
-- 自动总结并裁剪历史
-- 插件元数据英文化，主 prompt 仅负责编排
-
-快速开始：
+## 快速开始
 ```bash
 npm install
 node src/cli.js chat
 ```
-常用指令：`/sub marketplace`、`/sub install <id>`、`/sub agents`、`/sub run <agent> <任务> [--skills ...]`、`/prompt`、`/summary`、`/tool`、`/reset`
 
-工具权限：
-- 主代理：`get_current_time`、`mcp_project_files_*`、`mcp_subagent_router_*`、`mcp_task_manager_*`（默认不含 shell；其它 MCP 默认仅子代理可用）
-- 子代理：全部工具；Shell 提供 `run_shell_command`、`session_run`、`session_capture_output`
 
-自动总结：超过阈值（默认 60000 估算 token 或 `MODEL_CLI_SUMMARY_TOKENS`）后，历史裁剪为「系统 prompt + 最新总结 + 当前用户消息」，子代理同样适用。
-stateDir = `<stateRoot>/<hostApp>`（旧 `legacyStateRoot/<hostApp>` 自动迁移）。
-自动总结 prompt：来自 admin.db 的 prompts（`summary_prompt`/`summary_prompt_user`，支持 `{{history}}`；可用 `/summary prompt` 查看）。
+## 桌面端
+- 打包：`npm run desktop:dist`（产物在 `dist_desktop/`）
+- 本地运行 UI：`npm run ui`
+- 也可通过桌面端安装终端命令，实现在无 Node 环境下运行 CLI（详见 `README.en.md` / `README.zh.md`）。
 
-配置位置：`<stateDir>/auth/models.yaml`、`<stateDir>/chatos.db.sqlite`（含 prompts/MCP/land_config 等）、`<stateDir>/subagents.json`
+## 聊天内常用指令
+`/sub marketplace` · `/sub install <id>` · `/sub agents` · `/sub run <agent_id> <task> [--skills ...]` · `/prompt` · `/summary` · `/tool [id]` · `/reset`
 
-更多细节与完整指南请看 `README.en.md` / `README.zh.md`。   
+## 工具权限
+- 主代理：`get_current_time`、`mcp_project_files_*`、`mcp_subagent_router_*`、`mcp_task_manager_*`
+- 子代理：全部已注册工具（含 shell、session 等）
+
+## 配置与报告
+- `config-report.html`：模型、MCP、Prompt、子代理清单
+- `session-report.html`：聊天记录、任务与工具历史
+- 管理数据库：`<stateDir>/chatos.db.sqlite`
+- 子代理安装状态：`<stateDir>/subagents.json`
 
 ## License
-PolyForm Noncommercial 1.0.0 — non-commercial use only. Commercial use requires a separate license. See `LICENSE`.
+PolyForm Noncommercial 1.0.0（仅限非商业用途）。详见 `LICENSE`。
