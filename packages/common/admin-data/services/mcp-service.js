@@ -1,13 +1,13 @@
 import { BaseService } from './base-service.js';
 import { mcpServerSchema } from '../schema.js';
-import { getHostApp, normalizeHostApp } from '../../host-app.js';
+import { getHostApp, normalizeHostApp, resolveConfigHostApp } from '../../host-app.js';
 import { normalizeMcpServerName } from '../../mcp-utils.js';
 import { normalizeKey } from '../../text-utils.js';
 
 export class McpService extends BaseService {
   constructor(db) {
     super(db, 'mcpServers', mcpServerSchema);
-    this.appId = getHostApp() || 'chatos';
+    this.appId = resolveConfigHostApp({ env: process.env, fallbackHostApp: 'chatos' }) || getHostApp() || 'chatos';
     this.#maybeBackfillAppId();
   }
 

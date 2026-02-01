@@ -35,6 +35,28 @@ export function createTerminalDispatch({
     if (typeof fn !== 'function') return;
     fn(message, meta, err);
   };
+  const resolveCliHostApp = () => {
+    const explicit =
+      typeof runtimeEnv.MODEL_CLI_CLI_HOST_APP === 'string' ? runtimeEnv.MODEL_CLI_CLI_HOST_APP.trim() : '';
+    return explicit || 'aide';
+  };
+  const resolveCliConfigHostApp = () => {
+    const explicit =
+      typeof runtimeEnv.MODEL_CLI_CONFIG_HOST_APP === 'string'
+        ? runtimeEnv.MODEL_CLI_CONFIG_HOST_APP.trim()
+        : '';
+    return explicit || 'chatos';
+  };
+  const buildCliEnv = (overrides = {}) => {
+    const hostApp = resolveCliHostApp();
+    const configHostApp = resolveCliConfigHostApp();
+    return {
+      ...runtimeEnv,
+      MODEL_CLI_HOST_APP: hostApp,
+      MODEL_CLI_CONFIG_HOST_APP: configHostApp,
+      ...(overrides && typeof overrides === 'object' ? overrides : {}),
+    };
+  };
 
   const ensureCliRunning = async (runId, options = {}) => {
     const rid = typeof runId === 'string' ? runId.trim() : '';
@@ -104,7 +126,7 @@ export function createTerminalDispatch({
         baseTerminalsDir,
         pendingSystemTerminalLaunch,
         landConfigId,
-        env: runtimeEnv,
+        env: buildCliEnv(),
       });
       if (launched) {
         logRuntime('info', 'terminal.launch_system', launchMeta);
@@ -114,13 +136,12 @@ export function createTerminalDispatch({
       logRuntime('warn', 'terminal.launch_system_failed', launchMeta);
     }
 
-    const env = {
-      ...runtimeEnv,
+    const env = buildCliEnv({
       ELECTRON_RUN_AS_NODE: '1',
       MODEL_CLI_SESSION_ROOT: baseSessionRoot,
       MODEL_CLI_RUN_ID: rid,
       MODEL_CLI_UI_BRIDGE: '1',
-    };
+    });
     const stdio = Array.isArray(uiTerminalStdio) ? uiTerminalStdio : ['pipe', 'ignore', 'ignore'];
     let child;
     try {

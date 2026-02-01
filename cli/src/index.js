@@ -44,7 +44,18 @@ const COMMANDS = {
   CHAT: 'chat',
 };
 
-process.env.MODEL_CLI_HOST_APP = 'chatos';
+const resolvedHostApp =
+  typeof process.env.MODEL_CLI_HOST_APP === 'string' ? process.env.MODEL_CLI_HOST_APP.trim() : '';
+if (!resolvedHostApp) {
+  process.env.MODEL_CLI_HOST_APP = 'aide';
+}
+const resolvedConfigHostApp =
+  typeof process.env.MODEL_CLI_CONFIG_HOST_APP === 'string'
+    ? process.env.MODEL_CLI_CONFIG_HOST_APP.trim()
+    : '';
+if (!resolvedConfigHostApp) {
+  process.env.MODEL_CLI_CONFIG_HOST_APP = 'chatos';
+}
 
 main().catch((err) => {
   log.error('Unexpected failure', err);
@@ -131,7 +142,17 @@ async function main() {
   const sessionRoot = resolveSessionRoot();
   process.env.MODEL_CLI_SESSION_ROOT = sessionRoot;
   persistSessionRoot(sessionRoot);
-  ensureAppStateDir(sessionRoot);
+  const runtimeStateDir = ensureAppStateDir(sessionRoot);
+  const setEnvIfMissing = (key, value) => {
+    if (typeof process.env[key] === 'string' && process.env[key].trim()) return;
+    process.env[key] = value;
+  };
+  if (runtimeStateDir) {
+    setEnvIfMissing('MODEL_CLI_EVENT_LOG', path.join(runtimeStateDir, 'events.jsonl'));
+    setEnvIfMissing('MODEL_CLI_UI_PROMPTS', path.join(runtimeStateDir, 'ui-prompts.jsonl'));
+    setEnvIfMissing('MODEL_CLI_FILE_CHANGES', path.join(runtimeStateDir, 'file-changes.jsonl'));
+    setEnvIfMissing('MODEL_CLI_TASK_DB', path.join(runtimeStateDir, 'runtime.db.sqlite'));
+  }
   const argv = process.argv.slice(2);
   const command = argv[0];
   if (!command || command === '--help' || command === '-h') {

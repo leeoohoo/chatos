@@ -20,11 +20,17 @@ export const darwinSystemTerminalLauncher = {
     const resolvedTerminalsDir =
       typeof terminalsDir === 'string' && terminalsDir.trim() ? terminalsDir.trim() : process.cwd();
     const hostApp = typeof runtimeEnv.MODEL_CLI_HOST_APP === 'string' ? runtimeEnv.MODEL_CLI_HOST_APP.trim() : '';
+    const configHostApp =
+      typeof runtimeEnv.MODEL_CLI_CONFIG_HOST_APP === 'string'
+        ? runtimeEnv.MODEL_CLI_CONFIG_HOST_APP.trim()
+        : '';
     const hostEnv = hostApp ? `MODEL_CLI_HOST_APP=${escapeShell(hostApp)}` : '';
+    const configEnv = configHostApp ? `MODEL_CLI_CONFIG_HOST_APP=${escapeShell(configHostApp)}` : '';
     const envPrefix = [
       `MODEL_CLI_SESSION_ROOT=${escapeShell(resolvedSessionRoot)}`,
       `MODEL_CLI_RUN_ID=${escapeShell(rid)}`,
       hostEnv,
+      configEnv,
       'MODEL_CLI_UI_BRIDGE=1',
       'MODEL_CLI_DISABLE_INK=1',
       'ELECTRON_RUN_AS_NODE=1',

@@ -32,6 +32,12 @@ export function createTerminalManager({
   const baseSessionRoot =
     typeof sessionRoot === 'string' && sessionRoot.trim() ? path.resolve(sessionRoot) : process.cwd();
   const resolvedHostApp = getHostApp(runtimeEnv) || 'chatos';
+  const resolveCliHostApp = () => {
+    const explicit =
+      typeof runtimeEnv.MODEL_CLI_CLI_HOST_APP === 'string' ? runtimeEnv.MODEL_CLI_CLI_HOST_APP.trim() : '';
+    return explicit || 'aide';
+  };
+  const cliHostApp = resolveCliHostApp();
   const baseTerminalsDir =
     typeof terminalsDir === 'string' && terminalsDir.trim()
       ? path.resolve(terminalsDir)
@@ -47,7 +53,8 @@ export function createTerminalManager({
     env: runtimeEnv,
   });
   const getMainWindow = typeof mainWindowGetter === 'function' ? mainWindowGetter : () => null;
-  const runsPath = typeof defaultPaths?.runs === 'string' && defaultPaths.runs.trim() ? defaultPaths.runs : '';
+  const cliStateDir = resolveAppStateDir(baseSessionRoot, { hostApp: cliHostApp, fallbackHostApp: 'chatos' });
+  const runsPath = path.join(cliStateDir, 'runs.jsonl');
 
   const runRegistry = createRunRegistry({ runsPath, safeRead, isPidAlive });
   const { getRunPidFromRegistry, isRunPidAliveFromRegistry } = runRegistry;
@@ -151,7 +158,7 @@ export function createTerminalManager({
   }
 
   function appendEventLog(type, payload, runId) {
-    const eventPath = typeof defaultPaths?.events === 'string' && defaultPaths.events.trim() ? defaultPaths.events : '';
+    const eventPath = path.join(cliStateDir, 'events.jsonl');
     appendEventLogCore(eventPath, type, payload, runId);
   }
 

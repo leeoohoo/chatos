@@ -12,7 +12,7 @@ import {
   upsertBuiltinMcpServers,
 } from '../shared/data/legacy.js';
 import { syncAdminToFiles } from '../shared/data/sync.js';
-import { getHostApp, normalizeHostApp } from '../shared/host-app.js';
+import { getHostApp, resolveConfigHostApp } from '../shared/host-app.js';
 import { getMcpPromptNamesForServer } from '../shared/mcp-utils.js';
 import { normalizeKey } from '../shared/text-utils.js';
 import {
@@ -31,8 +31,7 @@ export function getAdminServices() {
   // 会话根：优先环境变量，其次读取 marker，最后回退 home/cwd
   const sessionRoot = resolveSessionRoot();
   process.env.MODEL_CLI_SESSION_ROOT = sessionRoot;
-  const configHostApp =
-    normalizeHostApp(process.env.MODEL_CLI_CONFIG_HOST_APP) || getHostApp() || 'chatos';
+  const configHostApp = resolveConfigHostApp({ env: process.env, fallbackHostApp: 'chatos' });
   const defaultsRoot = projectRoot;
   const stateDir = ensureAppStateDir(sessionRoot, { hostApp: configHostApp });
   const authDir = resolveStateDirPath(stateDir, STATE_DIR_NAMES.auth);

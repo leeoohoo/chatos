@@ -1,8 +1,157 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import { normalizeHostApp } from '../packages/common/host-app.js';
 import { getMcpPromptNamesForServer } from '../packages/common/mcp-utils.js';
 import { normalizeKey } from '../packages/common/text-utils.js';
+
+const require = createRequire(import.meta.url);
+
+function readRuntimeConfigDbTables(dbPath) {
+  if (!dbPath || !fs.existsSync(dbPath)) return null;
+  let Database;
+  try {
+    Database = require('better-sqlite3');
+  } catch (err) {
+    console.error('[runtime-config-migrate] better-sqlite3 missing', err?.message || err);
+    return null;
+  }
+  let db;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const rows = db.prepare('SELECT DISTINCT table_name as name FROM records').all();
+    return rows.map((row) => row.name).filter(Boolean);
+  } catch (err) {
+    console.error('[runtime-config-migrate] failed to read tables', err?.message || err);
+    return null;
+  } finally {
+    try {
+      db?.close?.();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function readRuntimeConfigDbRecords(dbPath, table) {
+  if (!dbPath || !table) return [];
+  let Database;
+  try {
+    Database = require('better-sqlite3');
+  } catch {
+    return [];
+  }
+  let db;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const rows = db.prepare('SELECT id, payload FROM records WHERE table_name = ?').all(table);
+    return rows
+      .map((row) => {
+        try {
+          return JSON.parse(row.payload);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  } finally {
+    try {
+      db?.close?.();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function migrateRuntimeConfigDb({
+  runtimeStateDir,
+  runtimeConfigDbPath,
+  adminDb,
+  markerName = '.runtime-config-migrated.json',
+} = {}) {
+  const stateDir = typeof runtimeStateDir === 'string' ? runtimeStateDir.trim() : '';
+  const dbPath = typeof runtimeConfigDbPath === 'string' ? runtimeConfigDbPath.trim() : '';
+  if (!stateDir || !dbPath || !adminDb) return { migrated: false, reason: 'missing_input' };
+
+  const markerPath = path.join(stateDir, markerName);
+  try {
+    if (fs.existsSync(markerPath)) {
+      return { migrated: false, reason: 'marker_exists' };
+    }
+  } catch {
+    // ignore marker errors
+  }
+
+  if (!fs.existsSync(dbPath)) return { migrated: false, reason: 'db_missing' };
+
+  const configTables = new Set([
+    'models',
+    'prompts',
+    'mcpServers',
+    'landConfigs',
+    'subagents',
+    'secrets',
+    'settings',
+    'mcpServerGrants',
+    'promptGrants',
+    'registryMcpServers',
+    'registryPrompts',
+    'appRegistrations',
+    'configs',
+    'config_items',
+  ]);
+
+  const tables = readRuntimeConfigDbTables(dbPath) || [];
+  const tablesToMigrate = tables.filter((name) => configTables.has(name));
+  if (tablesToMigrate.length === 0) {
+    return { migrated: false, reason: 'no_config_tables' };
+  }
+
+  const summary = {
+    migrated: false,
+    tables: {},
+  };
+  tablesToMigrate.forEach((table) => {
+    const list = readRuntimeConfigDbRecords(dbPath, table);
+    let inserted = 0;
+    list.forEach((record) => {
+      const id = record?.id;
+      if (!id) return;
+      try {
+        const existing = adminDb.get(table, id);
+        if (existing) return;
+        adminDb.insert(table, record);
+        inserted += 1;
+      } catch {
+        // ignore per-record failures
+      }
+    });
+    summary.tables[table] = { scanned: list.length, inserted };
+  });
+
+  summary.migrated = Object.values(summary.tables).some((entry) => entry.inserted > 0);
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${dbPath}.bak-${ts}`;
+  try {
+    fs.renameSync(dbPath, backupPath);
+    summary.backup = backupPath;
+  } catch (err) {
+    summary.backup = '';
+    summary.backupError = err?.message || String(err);
+  }
+
+  try {
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(markerPath, JSON.stringify({ ...summary, migratedAt: new Date().toISOString() }, null, 2), 'utf8');
+  } catch {
+    // ignore marker write errors
+  }
+
+  return summary;
+}
 
 export function ensureAllSubagentsInstalled({ installedSubagentsPath, pluginsDirList, enableAllSubagents = false }) {
   if (!installedSubagentsPath) return;

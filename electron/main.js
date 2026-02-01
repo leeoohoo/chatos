@@ -27,6 +27,7 @@ import {
   ensureAllSubagentsInstalled,
   maybePurgeUiAppsSyncedAdminData,
   migrateMcpServerAppIds,
+  migrateRuntimeConfigDb,
   pruneLandConfigApps,
   readLegacyState,
 } from './main-helpers.js';
@@ -88,7 +89,16 @@ const hostApp =
     .replace(/^_+|_+$/g, '') || 'chatos';
 const stateDir = ensureAppStateDir(sessionRoot, { hostApp, fallbackHostApp: 'chatos', env: runtimeEnv });
 const authDir = path.join(stateDir, 'auth');
-const terminalsDir = path.join(stateDir, 'terminals');
+const cliHostApp =
+  typeof runtimeEnv.MODEL_CLI_CLI_HOST_APP === 'string' && runtimeEnv.MODEL_CLI_CLI_HOST_APP.trim()
+    ? runtimeEnv.MODEL_CLI_CLI_HOST_APP.trim()
+    : 'aide';
+const cliStateDir = ensureAppStateDir(sessionRoot, {
+  hostApp: cliHostApp,
+  fallbackHostApp: hostApp,
+  env: runtimeEnv,
+});
+const terminalsDir = path.join(cliStateDir, 'terminals');
 const chatRuntimeHostApp = 'chatos_chat_runtime';
 const chatRuntimeSessionsHostApp = 'aide';
 const chatRuntimeStateDir = ensureAppStateDir(sessionRoot, {
@@ -184,6 +194,7 @@ const defaultPaths = {
 };
 
 const chatRuntimeDbPath = path.join(chatRuntimeStateDir, 'runtime.db.sqlite');
+const chatRuntimeConfigDbPath = path.join(chatRuntimeStateDir, `${chatRuntimeHostApp}.db.sqlite`);
 const chatRuntimePaths = {
   sessionReport: path.join(chatRuntimeAuthDir, 'session-report.html'),
   events: path.join(chatRuntimeStateDir, 'events.jsonl'),
@@ -207,6 +218,16 @@ const adminDb = createDb({
     readLegacyState(legacyAdminDb) ||
     buildAdminSeed(defaultPaths, { env: runtimeEnv, includeDefaultLandConfigs: false }),
 });
+const runtimeConfigMigration = migrateRuntimeConfigDb({
+  runtimeStateDir: chatRuntimeStateDir,
+  runtimeConfigDbPath: chatRuntimeConfigDbPath,
+  adminDb,
+});
+if (runtimeConfigMigration?.migrated) {
+  console.warn(
+    `[config] migrated runtime config db -> admin db (tables: ${Object.keys(runtimeConfigMigration.tables || {}).join(', ')})`
+  );
+}
 const migratedMcpServers = migrateMcpServerAppIds({
   adminDb,
   fromAppId: chatRuntimeHostApp,

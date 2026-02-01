@@ -1,5 +1,6 @@
 import { fork } from 'child_process';
 import { appendRunPid } from './process-utils.js';
+import { resolveConfigHostApp } from '../../shared/host-app.js';
 import { normalizeMetaValue } from './meta-utils.js';
 
 function buildJobResultPayload(result) {
@@ -111,6 +112,10 @@ export function createAsyncJobManager(options = {}) {
         MODEL_CLI_EVENT_LOG: eventLogPath,
         MODEL_CLI_SHELL_KEEP_SESSIONS: '1',
       };
+      const configHostApp = resolveConfigHostApp({ env: process.env, fallbackHostApp: 'chatos' });
+      if (configHostApp) {
+        env.MODEL_CLI_CONFIG_HOST_APP = configHostApp;
+      }
       child = fork(currentFile, ['--worker'], {
         env,
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
