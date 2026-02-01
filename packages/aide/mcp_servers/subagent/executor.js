@@ -10,6 +10,7 @@ import { createSubagentStepTracker } from './step-tracker.js';
 import { STEP_REASONING_LIMIT, STEP_TEXT_LIMIT, normalizeStepText } from './step-utils.js';
 import { normalizeSkills, withSubagentGuardrails, withTaskTracking } from './utils.js';
 import { filterSubagentTools } from '../../src/subagents/tooling.js';
+import { normalizeMetaValue } from './meta-utils.js';
 
 function normalizeAllowPrefixes(value) {
   if (!Array.isArray(value)) return null;
@@ -66,9 +67,15 @@ export function createSubagentExecutor({
     commandId,
     mcpAllowPrefixes,
     trace,
+    userMessageId,
     progress,
   } = {}) {
     const traceMeta = extractTraceMeta(trace);
+    const resolvedUserMessageId =
+      typeof userMessageId === 'string' && userMessageId.trim()
+        ? userMessageId.trim()
+        : normalizeMetaValue(trace, ['userMessageId', 'user_message_id']);
+    const toolContext = resolvedUserMessageId ? { userMessageId: resolvedUserMessageId } : null;
     const startedAt = Date.now();
     const agentRef = await pickAgent({ agentId, category, skills, query, commandId, task });
     if (!agentRef) {
@@ -184,6 +191,7 @@ export function createSubagentExecutor({
       corrections,
       reasoning,
       traceMeta,
+      toolContext,
       onAssistantStep,
       onToolCall,
       onToolResult,

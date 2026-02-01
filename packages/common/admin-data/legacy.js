@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import YAML from 'yaml';
 import { DEFAULT_RUNTIME_SETTINGS } from './schema.js';
 import { getHostApp } from '../host-app.js';
+import { resolveBoolEnv } from '../env-utils.js';
 import { normalizeKey } from '../text-utils.js';
 
 export function safeRead(filePath) {
@@ -141,13 +142,13 @@ function buildCmdUrl(command, args = []) {
 }
 
 function resolveHostApp(options = {}) {
-  const env = options?.env && typeof options.env === 'object' ? options.env : null;
-  if (env) {
-    return getHostApp(env) || 'chatos';
-  }
   const hostApp = typeof options?.hostApp === 'string' ? options.hostApp.trim() : '';
   if (hostApp) {
     return getHostApp({ MODEL_CLI_HOST_APP: hostApp }) || 'chatos';
+  }
+  const env = options?.env && typeof options.env === 'object' ? options.env : null;
+  if (env) {
+    return getHostApp(env) || 'chatos';
   }
   return getHostApp() || 'chatos';
 }
@@ -569,6 +570,13 @@ export function parseEvents(content = '') {
 export function buildAdminSeed(defaultPaths = {}, options = {}) {
   const now = new Date().toISOString();
   const hostApp = resolveHostApp(options) || 'chatos';
+  const disableDefaultLandConfigs =
+    options?.disableDefaultLandConfigs === true ||
+    resolveBoolEnv(options?.env?.MODEL_CLI_DISABLE_DEFAULT_LAND_CONFIGS, false);
+  const includeDefaultLandConfigs =
+    typeof options?.includeDefaultLandConfigs === 'boolean'
+      ? options.includeDefaultLandConfigs
+      : !disableDefaultLandConfigs;
   const seed = {
     models: [],
     mcpServers: [],
@@ -675,9 +683,15 @@ export function buildAdminSeed(defaultPaths = {}, options = {}) {
       : [];
   }
 
+  const landConfigPath =
+    typeof defaultPaths.landConfigs === 'string' && defaultPaths.landConfigs.trim()
+      ? defaultPaths.landConfigs.trim()
+      : '';
   const landConfigRaw =
-    safeRead(defaultPaths.landConfigs) ||
-    safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'land-configs.json'));
+    (landConfigPath ? safeRead(landConfigPath) : '') ||
+    (includeDefaultLandConfigs
+      ? safeRead(path.join(path.resolve(defaultPaths.defaultsRoot || ''), 'shared', 'defaults', 'land-configs.json'))
+      : '');
   const parsedLandConfigs = parseJsonSafe(landConfigRaw, {});
   const landConfigList = Array.isArray(parsedLandConfigs?.landConfigs)
     ? parsedLandConfigs.landConfigs
@@ -709,17 +723,19 @@ export function buildAdminSeed(defaultPaths = {}, options = {}) {
       updatedAt: now,
     }));
 
-  const fallbackLandConfig =
-    seed.landConfigs.find((cfg) => typeof cfg?.name === 'string' && cfg.name.trim() === '默认') ||
-    seed.landConfigs[0] ||
-    null;
   let landConfigId =
     typeof DEFAULT_RUNTIME_SETTINGS.landConfigId === 'string' ? DEFAULT_RUNTIME_SETTINGS.landConfigId.trim() : '';
   if (landConfigId && !seed.landConfigs.some((cfg) => cfg?.id === landConfigId)) {
     landConfigId = '';
   }
-  if (!landConfigId && fallbackLandConfig?.id) {
-    landConfigId = fallbackLandConfig.id;
+  if (!landConfigId && seed.landConfigs.length > 0) {
+    const fallbackLandConfig =
+      seed.landConfigs.find((cfg) => typeof cfg?.name === 'string' && cfg.name.trim() === '默认') ||
+      seed.landConfigs[0] ||
+      null;
+    if (fallbackLandConfig?.id) {
+      landConfigId = fallbackLandConfig.id;
+    }
   }
   seed.settings = [
     {

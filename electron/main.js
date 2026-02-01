@@ -23,7 +23,13 @@ import { createSessionApi } from './session-api.js';
 import { createCliShim } from './cli-shim.js';
 import { createTerminalManager } from './terminal-manager.js';
 import { registerChatApi } from './chat/index.js';
-import { ensureAllSubagentsInstalled, maybePurgeUiAppsSyncedAdminData, readLegacyState } from './main-helpers.js';
+import {
+  ensureAllSubagentsInstalled,
+  maybePurgeUiAppsSyncedAdminData,
+  migrateMcpServerAppIds,
+  pruneLandConfigApps,
+  readLegacyState,
+} from './main-helpers.js';
 import {
   createActionId,
   createInstallLog,
@@ -197,7 +203,23 @@ if (ENABLE_ALL_SUBAGENTS) {
 }
 const adminDb = createDb({
   dbPath: defaultPaths.adminDb,
-  seed: readLegacyState(legacyAdminDb) || buildAdminSeed(defaultPaths),
+  seed:
+    readLegacyState(legacyAdminDb) ||
+    buildAdminSeed(defaultPaths, { env: runtimeEnv, includeDefaultLandConfigs: false }),
+});
+const migratedMcpServers = migrateMcpServerAppIds({
+  adminDb,
+  fromAppId: chatRuntimeHostApp,
+  toAppId: hostApp,
+});
+if (migratedMcpServers > 0) {
+  console.warn(`[MCP] migrated ${migratedMcpServers} servers from ${chatRuntimeHostApp} to ${hostApp}`);
+}
+const prunedLandConfigs = pruneLandConfigApps({
+  adminDb,
+  pluginId: 'com.leeoohoo.codex_app',
+  appId: 'codex_app',
+  lockedOnly: true,
 });
 const chatRuntimeDb = createDb({ dbPath: chatRuntimeDbPath });
 const chatRuntimeEnv = {

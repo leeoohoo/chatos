@@ -49,6 +49,35 @@ export function createRuntimeConfigManager(options = {}) {
   const denyPrefixes = Array.isArray(toolDenyPrefixes) ? toolDenyPrefixes : [];
   const resolvedServerName = typeof serverName === 'string' && serverName.trim() ? serverName.trim() : 'subagent_router';
 
+  const summarizeServers = (list, limit = 8) =>
+    (Array.isArray(list) ? list : [])
+      .map((entry) => String(entry?.name || '').trim())
+      .filter(Boolean)
+      .slice(0, limit);
+  const summarizeMissing = (list, limit = 6) =>
+    (Array.isArray(list) ? list : [])
+      .slice(0, limit)
+      .map((entry) => {
+        const label = entry?.name || entry?.id || 'unknown';
+        const reason = entry?.reason || 'unknown';
+        return `${label}:${reason}`;
+      });
+  const logMcpSelection = (payload) => {
+    try {
+      console.error(`[${resolvedServerName}] MCP selection`, payload);
+    } catch {
+      // ignore
+    }
+    try {
+      eventLogger?.log?.('mcp_warning', {
+        stage: 'subagent_selection',
+        ...(payload && typeof payload === 'object' ? payload : null),
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   let cachedConfig = null;
   let cachedClient = null;
   let cachedConfigSignature = '';
@@ -98,14 +127,31 @@ export function createRuntimeConfigManager(options = {}) {
     }
     mcpRuntimePromise = (async () => {
       try {
-        const servers = (() => {
-          if (landSelection) {
-            return (landSelection.sub?.selectedServers || [])
-              .map((entry) => entry?.server)
-              .filter(Boolean);
+        const allServers = adminServices?.mcpServers?.list?.() || [];
+        const landSelected = landSelection
+          ? (landSelection.sub?.selectedServers || []).map((entry) => entry?.server).filter(Boolean)
+          : null;
+        const servers = landSelection ? landSelected : allServers;
+        if (landSelection) {
+          const missing = landSelection.sub?.missingServers || [];
+          if (servers.length === 0 || missing.length > 0) {
+            logMcpSelection({
+              mode: 'land_config',
+              total_servers: allServers.length,
+              selected_servers: servers.length,
+              selected_names: summarizeServers(servers),
+              missing_count: missing.length,
+              missing: summarizeMissing(missing),
+            });
           }
-          return adminServices?.mcpServers?.list?.() || [];
-        })();
+        } else if (allServers.length === 0) {
+          logMcpSelection({
+            mode: 'admin',
+            total_servers: 0,
+            selected_servers: 0,
+            selected_names: [],
+          });
+        }
         const seen = new Set();
         const resolved = [];
         servers.forEach((entry) => {

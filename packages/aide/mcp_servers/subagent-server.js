@@ -188,6 +188,20 @@ if (landSelection) {
   const prefixes = Array.from(
     new Set((landSelection.sub?.selectedServerNames || []).map((name) => `mcp_${name}_`))
   );
+  const missingServers = Array.isArray(landSelection.sub?.missingServers) ? landSelection.sub.missingServers : [];
+  if (missingServers.length > 0) {
+    const preview = missingServers
+      .slice(0, 6)
+      .map((entry) => {
+        const label = entry?.name || entry?.id || 'unknown';
+        const reason = entry?.reason || 'unknown';
+        return `${label}:${reason}`;
+      })
+      .join(', ');
+    console.error(
+      `[land_config] sub flow MCP unresolved: ${preview}${missingServers.length > 6 ? ' ...' : ''}`
+    );
+  }
   TOOL_ALLOW_PREFIXES = prefixes.length > 0 ? prefixes : ['__none__'];
 }
 

@@ -105,12 +105,23 @@ function findServerByApp({ pluginId, appId, mcpServers, registryMcpServers, allo
   return null;
 }
 
-function addSelectedServer({ server, source, promptLang, selected, seenNames, allowExternalOnly, consumerAppId }) {
-  if (!server || !server.name) return;
-  if (server.enabled === false) return;
-  if (!allowExternalOnly && isExternalOnlyMcpServerName(server.name)) return;
+function tryAddSelectedServer({
+  server,
+  source,
+  promptLang,
+  selected,
+  seenNames,
+  allowExternalOnly,
+  consumerAppId,
+} = {}) {
+  if (!server || !server.name) return { ok: false, reason: 'not_found' };
+  if (server.enabled === false) return { ok: false, reason: 'disabled' };
+  if (!allowExternalOnly && isExternalOnlyMcpServerName(server.name)) {
+    return { ok: false, reason: 'external_only' };
+  }
   const nameKey = normalizeKey(server.name);
-  if (!nameKey || seenNames.has(nameKey)) return;
+  if (!nameKey) return { ok: false, reason: 'invalid_name' };
+  if (seenNames.has(nameKey)) return { ok: false, reason: 'duplicate_name' };
   seenNames.add(nameKey);
   selected.push({
     server,
@@ -118,6 +129,7 @@ function addSelectedServer({ server, source, promptLang, selected, seenNames, al
     promptLang,
     ...(consumerAppId ? { consumerAppId } : null),
   });
+  return { ok: true };
 }
 
 function buildFlowSelection(flow, options) {
@@ -135,8 +147,24 @@ function buildFlowSelection(flow, options) {
   const normalizedFlow = ensureFlow(flow);
   const selectedServers = [];
   const seenNames = new Set();
+  const missingServerIds = new Set();
+  const missingServers = [];
   const missingAppServers = [];
   const registryPromptMapCache = new Map();
+  const recordMissingServer = ({ id, name, reason, source, app } = {}) => {
+    const entryId = typeof id === 'string' ? id.trim() : '';
+    const entryName = typeof name === 'string' ? name.trim() : '';
+    if (entryId) {
+      missingServerIds.add(entryId);
+    }
+    missingServers.push({
+      ...(entryId ? { id: entryId } : null),
+      ...(entryName ? { name: entryName } : null),
+      reason: reason || 'unknown',
+      ...(source ? { source } : null),
+      ...(app ? { app } : null),
+    });
+  };
 
   const resolveRegistryPromptMapForApp = (appIdRaw) => {
     if (!registryPromptGrantsByApp || !registryPromptById) return registryPromptMap;
@@ -168,9 +196,34 @@ function buildFlowSelection(flow, options) {
   );
 
   normalizedFlow.mcpServers.forEach((entry) => {
-    const server = serverById.get(String(entry?.id || ''));
+    const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+    const server = id ? serverById.get(id) : null;
     const lang = normalizePromptLanguage(entry?.promptLang, defaultPromptLang);
-    addSelectedServer({ server, source: 'admin', promptLang: lang, selected: selectedServers, seenNames, allowExternalOnly });
+    if (!server) {
+      recordMissingServer({
+        id,
+        name: typeof entry?.name === 'string' ? entry.name.trim() : '',
+        reason: id ? 'not_found' : 'missing_id',
+        source: 'admin',
+      });
+      return;
+    }
+    const result = tryAddSelectedServer({
+      server,
+      source: 'admin',
+      promptLang: lang,
+      selected: selectedServers,
+      seenNames,
+      allowExternalOnly,
+    });
+    if (!result.ok) {
+      recordMissingServer({
+        id,
+        name: typeof server?.name === 'string' ? server.name.trim() : '',
+        reason: result.reason,
+        source: 'admin',
+      });
+    }
   });
 
   normalizedFlow.apps.forEach((app) => {
@@ -193,7 +246,7 @@ function buildFlowSelection(flow, options) {
       if (key) missingAppServers.push(key);
       return;
     }
-    addSelectedServer({
+    const result = tryAddSelectedServer({
       server: resolved.server,
       source: resolved.source,
       promptLang: defaultPromptLang,
@@ -202,6 +255,15 @@ function buildFlowSelection(flow, options) {
       allowExternalOnly,
       consumerAppId: resolved.source === 'registry' ? consumerAppId : '',
     });
+    if (!result.ok) {
+      recordMissingServer({
+        id: typeof resolved?.server?.id === 'string' ? resolved.server.id : '',
+        name: typeof resolved?.server?.name === 'string' ? resolved.server.name : '',
+        reason: result.reason,
+        source: resolved.source,
+        app: consumerAppId,
+      });
+    }
   });
 
   const promptTextParts = [];
@@ -256,6 +318,8 @@ function buildFlowSelection(flow, options) {
     mcpPromptText: mcpPromptTextParts.join('\n\n'),
     mcpPromptNames,
     missingMcpPromptNames,
+    missingServers,
+    missingServerIds: Array.from(missingServerIds.values()),
     missingAppServers,
   };
 }

@@ -195,3 +195,65 @@ export function maybePurgeUiAppsSyncedAdminData({ stateDir, adminServices, hostA
 
   return { removedServers, removedPrompts };
 }
+
+export function migrateMcpServerAppIds({ adminDb, fromAppId, toAppId } = {}) {
+  if (!adminDb) return 0;
+  const from = normalizeHostApp(fromAppId);
+  const to = normalizeHostApp(toAppId);
+  if (!from || !to || from === to) return 0;
+  let list = [];
+  try {
+    list = adminDb.list('mcpServers') || [];
+  } catch {
+    return 0;
+  }
+  let updated = 0;
+  list.forEach((record) => {
+    const id = record?.id;
+    if (!id) return;
+    const appId = normalizeHostApp(record?.app_id);
+    if (appId !== from) return;
+    try {
+      adminDb.update('mcpServers', id, { app_id: to });
+      updated += 1;
+    } catch {
+      // ignore update failures
+    }
+  });
+  return updated;
+}
+
+export function pruneLandConfigApps({ adminDb, pluginId, appId, lockedOnly = true } = {}) {
+  if (!adminDb) return 0;
+  const pid = normalizeKey(pluginId);
+  const aid = normalizeKey(appId);
+  if (!pid || !aid) return 0;
+  let list = [];
+  try {
+    list = adminDb.list('landConfigs') || [];
+  } catch {
+    return 0;
+  }
+  let updated = 0;
+  list.forEach((record) => {
+    const id = record?.id;
+    if (!id) return;
+    if (lockedOnly && record?.locked !== true) return;
+    const sub = record?.sub && typeof record.sub === 'object' ? record.sub : {};
+    const apps = Array.isArray(sub.apps) ? sub.apps : [];
+    if (apps.length === 0) return;
+    const nextApps = apps.filter((entry) => {
+      const entryPid = normalizeKey(entry?.pluginId);
+      const entryAid = normalizeKey(entry?.appId);
+      return !(entryPid === pid && entryAid === aid);
+    });
+    if (nextApps.length === apps.length) return;
+    try {
+      adminDb.update('landConfigs', id, { sub: { ...sub, apps: nextApps } });
+      updated += 1;
+    } catch {
+      // ignore update failures
+    }
+  });
+  return updated;
+}

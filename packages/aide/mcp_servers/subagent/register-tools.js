@@ -1,4 +1,5 @@
 import { createSubagentProgressEmitter } from './progress.js';
+import { normalizeMetaValue } from './meta-utils.js';
 
 export function registerSubagentTools(context = {}) {
   const {
@@ -32,6 +33,10 @@ export function registerSubagentTools(context = {}) {
   if (typeof formatJobStatus !== 'function') throw new Error('Missing formatJobStatus');
   if (typeof hydrateStaleStatus !== 'function') throw new Error('Missing hydrateStaleStatus');
   if (typeof getJobStore !== 'function') throw new Error('Missing getJobStore');
+  const pickUserMessageId = (extra) => {
+    const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : null;
+    return normalizeMetaValue(meta, ['userMessageId', 'user_message_id']);
+  };
 
   server.registerTool(
     'get_sub_agent',
@@ -186,6 +191,7 @@ export function registerSubagentTools(context = {}) {
       extra
     ) => {
       const progress = createSubagentProgressEmitter(server, extra?._meta);
+      const userMessageId = pickUserMessageId(extra);
       try {
         const result = await executeSubAgent({
           task,
@@ -198,6 +204,7 @@ export function registerSubagentTools(context = {}) {
           commandId,
           mcpAllowPrefixes,
           trace: extra?._meta,
+          userMessageId,
           progress,
         });
         const payload = buildJobResultPayload(result);
@@ -278,6 +285,7 @@ export function registerSubagentTools(context = {}) {
       extra
     ) => {
       const progress = createSubagentProgressEmitter(server, extra?._meta);
+      const userMessageId = pickUserMessageId(extra);
       const job = createAsyncJob({
         task,
         agentId,
@@ -289,6 +297,7 @@ export function registerSubagentTools(context = {}) {
         commandId,
         mcpAllowPrefixes,
         trace: extra?._meta,
+        userMessageId,
       });
       if (progress) {
         job.progress = progress;

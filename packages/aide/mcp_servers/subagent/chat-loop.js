@@ -5,6 +5,7 @@ export async function runSubagentChatLoop({
   maxAttempts = 40,
   reasoning,
   traceMeta,
+  toolContext,
   onAssistantStep,
   onToolCall,
   onToolResult,
@@ -37,6 +38,7 @@ export async function runSubagentChatLoop({
           onToolCall,
           onToolResult,
           ...(Array.isArray(resolvedToolsOverride) ? { toolsOverride: resolvedToolsOverride } : null),
+          ...(toolContext ? { toolContext } : null),
         });
         break;
       } catch (err) {

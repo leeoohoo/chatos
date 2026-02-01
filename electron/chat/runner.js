@@ -6,7 +6,13 @@ import { createMcpRuntimeHelpers } from './mcp-runtime-helpers.js';
 import { createMcpNotificationHandler } from './mcp-notifications.js';
 import { createUiAppRegistryHelpers } from './ui-app-registry.js';
 import { createConversationManager } from './conversation-manager.js';
-import { buildSystemPrompt, normalizeAgentMode, normalizeId, normalizeWorkspaceRoot } from './runner-helpers.js';
+import {
+  buildSystemPrompt,
+  normalizeAgentMode,
+  normalizeId,
+  normalizeMcpServerName,
+  normalizeWorkspaceRoot,
+} from './runner-helpers.js';
 import { loadEngineDeps } from './engine-deps.js';
 import { formatLogValue } from './runner-log-utils.js';
 import { runWithContextLengthRecovery } from '../../packages/common/context-recovery-utils.js';
@@ -49,6 +55,10 @@ export function createChatRunner({
   let mcpSignature = '';
   let mcpInitSignature = '';
   const MCP_INIT_TIMEOUT_MS = 4_000;
+  const MCP_FLOW_INIT_TIMEOUT_MS = 15_000;
+  const MCP_INIT_TIMEOUT_MAX_MS = 60_000;
+  const MCP_INIT_TIMEOUT_PER_WAVE_MS = 4_000;
+  const MCP_INIT_TIMEOUT_ENV = 'MODEL_CLI_MCP_INIT_TIMEOUT_MS';
   const MCP_INIT_TIMEOUT = Symbol('mcp_init_timeout');
   const eventLogPath =
     typeof runtimePaths?.events === 'string' && runtimePaths.events.trim()
@@ -153,6 +163,32 @@ export function createChatRunner({
 
   const listActiveSessionIds = () => Array.from(activeRuns.keys());
 
+  const mcpInitNotified = new WeakSet();
+  const resolveMcpStartupConcurrency = (runtimeConfig) => {
+    const fromConfig = Number(runtimeConfig?.mcpStartupConcurrency);
+    if (Number.isFinite(fromConfig) && fromConfig > 0) return fromConfig;
+    const fromEnv = Number(process.env.MODEL_CLI_MCP_STARTUP_CONCURRENCY);
+    if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+    return 4;
+  };
+  const resolveMcpInitTimeoutMs = ({ runtimeConfig, servers, isFlow } = {}) => {
+    const envValue = Number(process.env[MCP_INIT_TIMEOUT_ENV]);
+    if (Number.isFinite(envValue) && envValue > 0) {
+      return envValue;
+    }
+    if (envValue === 0) {
+      return 0;
+    }
+    const base = isFlow ? MCP_FLOW_INIT_TIMEOUT_MS : MCP_INIT_TIMEOUT_MS;
+    const count = Array.isArray(servers) ? servers.length : 0;
+    if (count <= 0) return base;
+    const concurrency = resolveMcpStartupConcurrency(runtimeConfig);
+    const waves = Math.max(1, Math.ceil(count / Math.max(1, concurrency)));
+    const extra = MCP_INIT_TIMEOUT_PER_WAVE_MS * Math.max(0, waves - 1);
+    const computed = base + extra;
+    return Math.min(MCP_INIT_TIMEOUT_MAX_MS, Math.max(base, computed));
+  };
+
   const ensureMcp = async ({
     timeoutMs = MCP_INIT_TIMEOUT_MS,
     workspaceRoot: desiredWorkspaceRoot,
@@ -250,6 +286,20 @@ export function createChatRunner({
           type: 'notice',
           message: `[MCP] 初始化超过 ${timeoutMs}ms，已跳过（后台仍会继续初始化）。`,
         });
+        if (mcpInitPromise && !mcpInitNotified.has(mcpInitPromise)) {
+          mcpInitNotified.add(mcpInitPromise);
+          mcpInitPromise
+            .then((runtime) => {
+              if (!runtime) return;
+              notify({
+                type: 'notice',
+                message: '[MCP] 初始化完成，可以使用 MCP 工具。',
+              });
+            })
+            .catch(() => {
+              // ignore
+            });
+        }
         return null;
       }
       return result;
@@ -817,11 +867,17 @@ export function createChatRunner({
     });
     const shouldInitMcp = runtimeMcpServers.length > 0;
     if (shouldInitMcp) {
+      const initTimeoutMs = resolveMcpInitTimeoutMs({
+        runtimeConfig,
+        servers: runtimeMcpServers,
+        isFlow: false,
+      });
       await ensureMcp({
         workspaceRoot: effectiveWorkspaceRoot,
         servers: runtimeMcpServers,
         emitEvent: scopedSendEvent,
         eventLogger,
+        timeoutMs: initTimeoutMs,
       });
     }
 
@@ -847,12 +903,44 @@ export function createChatRunner({
       };
       systemPrompt = appendPromptBlock(landSelection.main.promptText, landSelection.main.mcpPromptText);
       subagentUserPrompt = appendPromptBlock(landSelection.sub.promptText, landSelection.sub.mcpPromptText);
-      allowedMcpPrefixes = Array.from(
+      const formatMissing = (list = []) =>
+        list
+          .slice(0, 6)
+          .map((entry) => {
+            const label = entry?.name || entry?.id || 'unknown';
+            const reason = entry?.reason || 'unknown';
+            return `${label}:${reason}`;
+          })
+          .join(', ');
+      const mainMissingServers = Array.isArray(landSelection.main?.missingServers)
+        ? landSelection.main.missingServers
+        : [];
+      const subMissingServers = Array.isArray(landSelection.sub?.missingServers)
+        ? landSelection.sub.missingServers
+        : [];
+      const mainPrefixes = Array.from(
         new Set((landSelection.main?.selectedServerNames || []).map((name) => `mcp_${name}_`))
       );
       const subPrefixes = Array.from(
         new Set((landSelection.sub?.selectedServerNames || []).map((name) => `mcp_${name}_`))
       );
+      if (mainPrefixes.length === 0 && mainMissingServers.length > 0) {
+        scopedSendEvent({
+          type: 'notice',
+          message: `[land_config] 主流程 MCP 未命中: ${formatMissing(mainMissingServers)}${
+            mainMissingServers.length > 6 ? ' ...' : ''
+          }`,
+        });
+      }
+      allowedMcpPrefixes = mainPrefixes.length > 0 ? mainPrefixes : ['__none__'];
+      if (subPrefixes.length === 0 && subMissingServers.length > 0) {
+        scopedSendEvent({
+          type: 'notice',
+          message: `[land_config] 子流程 MCP 未命中: ${formatMissing(subMissingServers)}${
+            subMissingServers.length > 6 ? ' ...' : ''
+          }`,
+        });
+      }
       subagentMcpAllowPrefixes = subPrefixes.length > 0 ? subPrefixes : ['__none__'];
       const landSelectedIds = [];
       const appendSelectedIds = (entries) => {
@@ -869,13 +957,25 @@ export function createChatRunner({
         servers: mcpServers,
         extraServers: landSelection.extraMcpServers,
       });
+      if (landSelectedIds.length === 0 && (mainMissingServers.length > 0 || subMissingServers.length > 0)) {
+        scopedSendEvent({
+          type: 'notice',
+          message: '[land_config] 未选中任何 MCP server，MCP 将不会初始化（请检查 land_config / app_id / enabled）。',
+        });
+      }
       const shouldInitMcp = runtimeMcpServers.length > 0;
       if (shouldInitMcp) {
+        const initTimeoutMs = resolveMcpInitTimeoutMs({
+          runtimeConfig,
+          servers: runtimeMcpServers,
+          isFlow: true,
+        });
         await ensureMcp({
           workspaceRoot: effectiveWorkspaceRoot,
           servers: runtimeMcpServers,
           emitEvent: scopedSendEvent,
           eventLogger,
+          timeoutMs: initTimeoutMs,
         });
       }
       toolsOverride = resolveAllowedTools({
