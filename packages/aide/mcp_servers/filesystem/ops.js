@@ -416,7 +416,17 @@ export function createFilesystemOps({
     return map;
   }
 
-  async function buildChangeEntry({ relPath, absolutePath, before, after, tool, mode, patchText, userMessageId }) {
+  async function buildChangeEntry({
+    relPath,
+    absolutePath,
+    before,
+    after,
+    tool,
+    mode,
+    patchText,
+    userMessageId,
+    sessionId,
+  }) {
     const resolvedRel = relPath || (absolutePath ? relativePath(absolutePath) : '');
     if (!resolvedRel && !absolutePath) {
       return null;
@@ -436,9 +446,14 @@ export function createFilesystemOps({
         patchText || (await generateUnifiedDiff(resolvedRel, beforeContent, afterContent));
     const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
     const normalizedUserMessageId = typeof userMessageId === 'string' ? userMessageId.trim() : '';
+    const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : '';
+    const envSessionId =
+      typeof process.env.MODEL_CLI_SESSION_ID === 'string' ? process.env.MODEL_CLI_SESSION_ID.trim() : '';
+    const resolvedSessionId = normalizedSessionId || envSessionId;
     return {
       ts: new Date().toISOString(),
       ...(runId ? { runId } : {}),
+      ...(resolvedSessionId ? { sessionId: resolvedSessionId } : {}),
       ...(normalizedUserMessageId ? { userMessageId: normalizedUserMessageId } : {}),
       path: resolvedRel,
       absolutePath,
@@ -466,7 +481,7 @@ export function createFilesystemOps({
     }
   }
 
-  async function logPatchChanges({ affectedPaths = [], before, after, patchText, workDir, userMessageId }) {
+  async function logPatchChanges({ affectedPaths = [], before, after, patchText, workDir, userMessageId, sessionId }) {
     try {
       const entries = [];
       const keys = new Set();
@@ -496,6 +511,7 @@ export function createFilesystemOps({
             tool: 'apply_patch',
             mode: 'patch',
             userMessageId,
+            sessionId,
           });
           if (entry) {
             entries.push(entry);
@@ -509,9 +525,14 @@ export function createFilesystemOps({
       if (entries.length === 0 && patchText) {
         const runId = typeof process.env.MODEL_CLI_RUN_ID === 'string' ? process.env.MODEL_CLI_RUN_ID.trim() : '';
         const normalizedUserMessageId = typeof userMessageId === 'string' ? userMessageId.trim() : '';
+        const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : '';
+        const envSessionId =
+          typeof process.env.MODEL_CLI_SESSION_ID === 'string' ? process.env.MODEL_CLI_SESSION_ID.trim() : '';
+        const resolvedSessionId = normalizedSessionId || envSessionId;
         entries.push({
           ts: new Date().toISOString(),
           ...(runId ? { runId } : {}),
+          ...(resolvedSessionId ? { sessionId: resolvedSessionId } : {}),
           ...(normalizedUserMessageId ? { userMessageId: normalizedUserMessageId } : {}),
           path: 'patch',
           workspaceRoot: root,

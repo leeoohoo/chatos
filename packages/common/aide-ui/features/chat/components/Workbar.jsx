@@ -474,6 +474,18 @@ export function Workbar({
     const list = Array.isArray(fileChanges?.entries) ? fileChanges.entries : [];
     return list;
   }, [fileChanges]);
+  const sessionFileChanges = useMemo(() => {
+    const sid = normalizeId(sessionId);
+    if (!sid) return fileChangeEntries;
+    return fileChangeEntries.filter((item) => {
+      const entrySessionId = normalizeId(item?.sessionId);
+      if (entrySessionId) {
+        return entrySessionId === sid;
+      }
+      const entryUserMessageId = normalizeId(item?.userMessageId);
+      return entryUserMessageId && userMessageIdSet.has(entryUserMessageId);
+    });
+  }, [fileChangeEntries, sessionId, userMessageIdSet]);
 
   const boundTaskRows = useMemo(() => {
     return taskRows.filter((task) => {
@@ -483,11 +495,11 @@ export function Workbar({
   }, [taskRows, userMessageIdSet]);
 
   const boundFileChanges = useMemo(() => {
-    return fileChangeEntries.filter((item) => {
+    return sessionFileChanges.filter((item) => {
       const id = normalizeId(item?.userMessageId);
       return id && userMessageIdSet.has(id);
     });
-  }, [fileChangeEntries, userMessageIdSet]);
+  }, [sessionFileChanges, userMessageIdSet]);
 
   const fileChangesCount = boundFileChanges.length;
   const sessionRows = useMemo(() => {
@@ -727,7 +739,7 @@ export function Workbar({
           const groupFileChanges = boundFileChanges.filter(
             (item) => normalizeId(item?.userMessageId) === group.key
           );
-          const fallbackFileChanges = groupFileChanges.length > 0 ? groupFileChanges : fileChangeEntries;
+          const fallbackFileChanges = groupFileChanges.length > 0 ? groupFileChanges : sessionFileChanges;
           const previewCount = Number.isFinite(previewLimit) && previewLimit > 0 ? previewLimit : 0;
           let displayRunSubAgent = runSubAgentInvocations;
           let displayOthers = otherInvocations;

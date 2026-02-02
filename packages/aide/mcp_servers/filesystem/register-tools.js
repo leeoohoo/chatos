@@ -219,6 +219,16 @@ export function registerFilesystemTools({
           : '';
     return raw.trim();
   };
+  const pickSessionId = (extra) => {
+    const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : {};
+    const raw =
+      typeof meta.sessionId === 'string'
+        ? meta.sessionId
+        : typeof meta.session_id === 'string'
+          ? meta.session_id
+          : '';
+    return raw.trim();
+  };
 
   server.registerTool(
     'list_directory',
@@ -363,6 +373,8 @@ ${note}`,
     },
     async (args, extra) => {
       const userMessageId = pickUserMessageId(extra);
+      const sessionId = pickSessionId(extra);
+      const sessionId = pickSessionId(extra);
       const target = await ensurePath(args.path);
       const relPathLabel = relativePath(target);
       const before = await readFileSnapshot(target);
@@ -414,6 +426,7 @@ ${note}`,
         tool: 'write_file',
         mode,
         userMessageId,
+        sessionId,
       });
       const summary = mode === 'append' ? 'Appended' : 'Overwrote';
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
@@ -458,6 +471,7 @@ ${note}`,
     },
     async ({ path: filePath, old_string: oldRaw, new_string: newRaw, expected_replacements: expectedRaw }, extra) => {
       const userMessageId = pickUserMessageId(extra);
+      const sessionId = pickSessionId(extra);
       const target = await ensurePath(filePath);
       const relPathLabel = relativePath(target);
       const expectedReplacements = Number.isFinite(Number(expectedRaw)) ? Number(expectedRaw) : 1;
@@ -633,6 +647,7 @@ ${note}`,
         tool: 'edit_file',
         mode: isCreateNewFile ? 'create' : 'edit',
         userMessageId,
+        sessionId,
       });
 
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
@@ -665,6 +680,7 @@ ${note}`,
     },
     async ({ path: targetPath }, extra) => {
       const userMessageId = pickUserMessageId(extra);
+      const sessionId = pickSessionId(extra);
       const target = await ensurePath(targetPath);
       const relPathLabel = relativePath(target);
       const before = await readFileSnapshot(target);
@@ -691,6 +707,7 @@ ${note}`,
         tool: 'delete_path',
         mode: 'delete',
         userMessageId,
+        sessionId,
       });
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';
       return structuredResponse(`✓ Deleted ${relativePath(target)}.${remark}`, {
@@ -902,6 +919,7 @@ ${note}`,
         patchText: normalizedPatch,
         workDir: applyDir,
         userMessageId,
+        sessionId,
       });
 
       const remark = confirmResult?.remark ? `\nUser remark: ${confirmResult.remark}` : '';

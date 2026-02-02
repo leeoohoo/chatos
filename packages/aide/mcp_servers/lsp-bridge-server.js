@@ -75,6 +75,16 @@ function pickUserMessageId(extra) {
         : '';
   return raw.trim();
 }
+function pickSessionId(extra) {
+  const meta = extra?._meta && typeof extra._meta === 'object' ? extra._meta : {};
+  const raw =
+    typeof meta.sessionId === 'string'
+      ? meta.sessionId
+      : typeof meta.session_id === 'string'
+        ? meta.session_id
+        : '';
+  return raw.trim();
+}
 
 async function main() {
   const transport = new StdioServerTransport();
@@ -282,7 +292,8 @@ function registerTools() {
     },
     async (input, extra) => {
       const userMessageId = pickUserMessageId(extra);
-      const result = await lspManager.formatDocument({ ...input, signal: extra?.signal, userMessageId });
+      const sessionId = pickSessionId(extra);
+      const result = await lspManager.formatDocument({ ...input, signal: extra?.signal, userMessageId, sessionId });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -307,7 +318,8 @@ function registerTools() {
     },
     async (input, extra) => {
       const userMessageId = pickUserMessageId(extra);
-      const result = await lspManager.rename({ ...input, signal: extra?.signal, userMessageId });
+      const sessionId = pickSessionId(extra);
+      const result = await lspManager.rename({ ...input, signal: extra?.signal, userMessageId, sessionId });
       return structuredResponse(renderJson(result.result), result);
     }
   );
@@ -589,6 +601,7 @@ class LspManager {
     apply,
     signal,
     userMessageId,
+    sessionId,
   } = {}) {
     return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
       const doc = await client.syncDocument({ path: filePath });
@@ -607,7 +620,7 @@ class LspManager {
 
       let applied = null;
       if (apply) {
-        applied = await client.applyTextEditsToDisk({ uri: doc.uri, edits, userMessageId });
+        applied = await client.applyTextEditsToDisk({ uri: doc.uri, edits, userMessageId, sessionId });
       }
 
       return {
@@ -630,6 +643,7 @@ class LspManager {
     apply,
     signal,
     userMessageId,
+    sessionId,
   } = {}) {
     return await this.runWithClient(filePath, serverIdOverride, async (client, serverId) => {
       const doc = await client.syncDocument({ path: filePath });
@@ -646,7 +660,7 @@ class LspManager {
 
       let applied = null;
       if (apply) {
-        applied = await client.applyWorkspaceEditToDisk(edit, { userMessageId });
+        applied = await client.applyWorkspaceEditToDisk(edit, { userMessageId, sessionId });
       }
 
       return {
