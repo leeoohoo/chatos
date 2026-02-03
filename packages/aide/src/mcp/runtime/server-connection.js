@@ -8,6 +8,7 @@ import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/webso
 import { adjustCommandArgs, parseMcpEndpoint } from './endpoints.js';
 import { createMcpStreamTracker, registerMcpNotificationHandlers } from './stream-utils.js';
 import { ensureUiAppNodeModules, isUiAppMcpServer } from './ui-app-utils.js';
+import { resolveConfigHostApp } from '../../../shared/host-app.js';
 import { ensureAppDbPath } from '../../../shared/state-paths.js';
 
 function resolveMcpCommandLine(command, args, env) {
@@ -209,7 +210,20 @@ export async function connectMcpServer(entry, baseDir, sessionRoot, workspaceRoo
   };
 
   if (endpoint.type === 'command') {
-    if (isUiAppMcpServer(entry, { endpoint, baseDir, sessionRoot })) {
+    const configHostApp = resolveConfigHostApp({ env: baseEnv, fallbackHostApp: '' });
+    const uiAppMeta = entry?.callMeta?.chatos?.uiApp;
+    const hasUiAppMeta =
+      Boolean(uiAppMeta?.pluginId) || Boolean(uiAppMeta?.appId) || Boolean(uiAppMeta?.dataDir);
+    const isUiAppServer =
+      hasUiAppMeta ||
+      isUiAppMcpServer(entry, {
+        endpoint,
+        baseDir,
+        sessionRoot,
+        env: baseEnv,
+        hostApp: configHostApp,
+      });
+    if (isUiAppServer) {
       ensureUiAppNodeModules(sessionRoot, runtimeLogger);
     }
     const client = new Client({
@@ -224,6 +238,9 @@ export async function connectMcpServer(entry, baseDir, sessionRoot, workspaceRoo
     });
     // Inherit parent env so API keys are available to MCP servers (e.g., subagent_router using ModelClient)
     const env = { ...baseEnv };
+    if (isUiAppServer && configHostApp) {
+      env.MODEL_CLI_HOST_APP = configHostApp;
+    }
     if (sessionRoot) {
       env.MODEL_CLI_SESSION_ROOT = sessionRoot;
     }

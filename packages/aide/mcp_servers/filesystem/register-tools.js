@@ -374,7 +374,6 @@ ${note}`,
     async (args, extra) => {
       const userMessageId = pickUserMessageId(extra);
       const sessionId = pickSessionId(extra);
-      const sessionId = pickSessionId(extra);
       const target = await ensurePath(args.path);
       const relPathLabel = relativePath(target);
       const before = await readFileSnapshot(target);

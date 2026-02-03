@@ -57,7 +57,13 @@ export function isUiAppMcpServer(entry, options = {}) {
   const endpoint = options?.endpoint;
   if (!endpoint || endpoint.type !== 'command') return false;
   const sessionRoot = typeof options?.sessionRoot === 'string' ? options.sessionRoot.trim() : '';
-  const stateDir = resolveAppStateDir(sessionRoot || process.cwd());
+  const env = options?.env && typeof options.env === 'object' ? options.env : process.env;
+  const hostApp = typeof options?.hostApp === 'string' ? options.hostApp.trim() : '';
+  const stateDir = resolveAppStateDir(sessionRoot || process.cwd(), {
+    env,
+    hostApp,
+    fallbackHostApp: hostApp,
+  });
   if (!stateDir) return false;
   const uiAppsRoot = resolveStateDirPath(stateDir, STATE_DIR_NAMES.uiApps, 'plugins');
   const args = Array.isArray(endpoint.args) ? endpoint.args : [];
